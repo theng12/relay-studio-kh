@@ -6,9 +6,17 @@ Each extension keeps Story Studio and standalone modes and gains Gateway Studio 
 
 ## Build and Gateway integration
 
-Use Node with built-in fetch, FormData and `node:test`; there are no frontend dependencies. `npm run build` reads `VERSION`, validates the newest `CHANGELOG.md` entry with the shared KH What's New tool and generates the connector in `dist/`.
+Building requires Node with built-in fetch, FormData and `node:test`, Python 3 supporting `-I -X utf8`, and the existing `kh-shared-ui` checkout. There are no frontend packages to install. End users do not need Node or Python to use the connector served by Gateway.
 
-The build uses `/build/Developer/kh-shared-ui` (override with `KH_SHARED_UI`). Generated outputs are not committed. Gateway's lead pins a reviewed Relay commit and rebuilds or vendors these two outputs:
+Put `kh-shared-ui` next to this repository, or set `KH_SHARED_UI` to its folder. Relative overrides resolve from the command's working directory; paths containing spaces are supported. The build uses `python3` on macOS and `python` on Windows. Set `RELAY_PYTHON` to a Python 3 executable name or full path if different; pass only the executable, without arguments or shell quotes in the value. Python runs isolated with explicit UTF-8 output so translated What's New entries do not depend on Windows' console encoding.
+
+From the repository, run:
+
+```bash
+npm run build
+```
+
+The build reads `VERSION`, validates the newest `CHANGELOG.md` entry with the shared KH What's New tool and generates `dist/`. Missing shared tools, a missing interpreter or mismatched release metadata fail the build. Generated outputs are not committed. Gateway's lead pins a reviewed Relay commit and rebuilds or vendors these two outputs:
 
 - `relay-pane.html`: markup and styles scoped under `.relay-connector`, with `relay-` prefixed element IDs.
 - `relay-pane.js`: the browser bundle exposing `window.mountRelayConnector`.
@@ -36,6 +44,20 @@ The accepted management boundary is:
 Unknown credits remain unknown; a reported zero stays zero. Online readback means transport connected, not provider readiness. Pairing blocks duplicate requests and dialog dismissal while a token is being created, and clears the displayed token on close. Failed requests are never retried automatically. Gateway supports the actual limit and auth; this surface does not add pricing or paid submission policy.
 
 The fixture preview runs via the `relay-connector-preview` configuration in the parent `.claude/launch.json`. It serves the same compiled fragment on loopback port 7896 with explicit preview labels and fake data. Its bootstrap, control route and in-memory workers are development fixtures only; do not deploy `scripts/preview.mjs` or the preview `index.html`.
+
+## Mac, Windows and browsers
+
+Relay is shared web content plus Chrome Manifest V3 extension sources. A Windows browser worker can pair to the existing Mac-hosted Gateway over the approved LAN/Tailscale connection. This does not supply a standalone Windows Gateway, native Relay installer or another server. Management writes remain local-app-only; a remote browser does not gain token mint/revoke authority. Use Gateway's existing browser authentication for permitted readback, and pair the extension with its scoped worker token.
+
+Compatibility acceptance requires disposable native Chrome checks on both Mac and Windows, including Gateway mode, preserved Story/Standalone modes, authenticated connection, suspension/restart holds and exact retained artifact delivery without paid generation. Edge must be checked separately before being claimed. Firefox and Safari are not claimed. No minimum browser version is asserted without evidence. A successful source build or embedded browser preview does not establish native Chrome/Windows/Edge compatibility.
+
+For a bounded offline build and management-schema check, with shared tools configured:
+
+```bash
+node --test test/build.test.mjs test/connector-api.test.mjs
+```
+
+Build fixtures use Node's temporary directory by default; set `RELAY_TEST_ROOT` to an existing disposable workspace to retain them elsewhere. They run the actual build and shared tools from relocated paths containing spaces, preserve Unicode release text, verify the generated mount entrypoint and refuse missing tools/interpreters or mismatched versions. These tests do not launch a real extension or contact Gateway. The development preview exercises the generated fragment against fake workers; its management controls do not demonstrate production authorization.
 
 ## Sources and ownership
 

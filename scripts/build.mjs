@@ -1,12 +1,19 @@
-import { readFile, mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { access, readFile, mkdir, copyFile, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(import.meta.dirname, '..');
-const shared = process.env.KH_SHARED_UI || '/build/Developer/kh-shared-ui';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const shared = resolve(process.env.KH_SHARED_UI || resolve(root, '../kh-shared-ui'));
+const python = process.env.RELAY_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+try {
+  await Promise.all(['whats-new.py', 'design-tokens.json'].map((name) => access(resolve(shared, name))));
+} catch (cause) {
+  throw new Error('Shared KH UI tools are missing. Place kh-shared-ui next to Relay or set KH_SHARED_UI to its folder.', { cause });
+}
 const version = (await readFile(resolve(root, 'VERSION'), 'utf8')).trim();
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('VERSION must be MAJOR.MINOR.PATCH.');
-const releases = JSON.parse(execFileSync('python3', ['-I', resolve(shared, 'whats-new.py'), resolve(root, 'CHANGELOG.md')], { encoding: 'utf8' }));
+const releases = JSON.parse(execFileSync(python, ['-I', '-X', 'utf8', resolve(shared, 'whats-new.py'), resolve(root, 'CHANGELOG.md')], { encoding: 'utf8' }));
 if (releases[0]?.version !== version) throw new Error('VERSION and the newest CHANGELOG entry must match.');
 const tokens = JSON.parse(await readFile(resolve(shared, 'design-tokens.json'), 'utf8'));
 const declarations = [];
