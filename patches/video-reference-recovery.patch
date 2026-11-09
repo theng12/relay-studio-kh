@@ -1,0 +1,47 @@
+--- a/src/background.js
++++ b/src/background.js
+@@ -385,14 +385,16 @@
+   await chrome.storage.local.set({ [GATEWAY_REFERENCES_KEY]: stored });
+ }
+ 
+-async function takeGatewayReferences(jobId) {
++async function getGatewayReferences(jobId) {
+   const stored = (await chrome.storage.local.get(GATEWAY_REFERENCES_KEY))[GATEWAY_REFERENCES_KEY] || {};
+-  const references = Array.isArray(stored[jobId]) ? stored[jobId] : [];
+-  if (references.length) {
+-    delete stored[jobId];
+-    await chrome.storage.local.set({ [GATEWAY_REFERENCES_KEY]: stored });
+-  }
+-  return references;
++  return Array.isArray(stored[jobId]) ? stored[jobId] : [];
++}
++
++async function clearGatewayReferences(jobId) {
++  const stored = (await chrome.storage.local.get(GATEWAY_REFERENCES_KEY))[GATEWAY_REFERENCES_KEY] || {};
++  if (!(jobId in stored)) return;
++  delete stored[jobId];
++  await chrome.storage.local.set({ [GATEWAY_REFERENCES_KEY]: stored });
+ }
+ 
+ async function gatewayTick() {
+@@ -616,7 +618,10 @@
+     if (item.gatewayJobId) {
+       // Gateway jobs carry their own reference image; without one the start
+       // image is generated, exactly like the other modes.
+-      const references = await takeGatewayReferences(item.gatewayJobId);
++      const references = await getGatewayReferences(item.gatewayJobId);
++      if (!references.length && item.videoSource === 'existing') {
++        throw new Error('Gateway reference image is no longer available; refusing paid start-image generation.');
++      }
+       if (references[0]) {
+         await writeStatus(`${item.label}: uploading the reference image…`, 'running');
+         const uploaded = await runFlow(tab.id, 'uploadImage', {
+@@ -703,7 +708,7 @@
+   if (item.target === 'gateway') {
+     const gateway = await gatewaySettings();
+     await reportGatewayResult(gateway, item.gatewayJobId, mp4, 'video/mp4');
+-    await takeGatewayReferences(item.gatewayJobId).catch(() => {});
++    await clearGatewayReferences(item.gatewayJobId).catch(() => {});
+     return `${item.gatewayJobId}.mp4`;
+   }
+   if (item.target === 'download') {

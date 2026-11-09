@@ -25,4 +25,8 @@ npm test
 
 Tests load the current extension source read-only. Set `RELAY_VIDEO_SOURCE` to test another checkout. Transport uses an intercepted fetch; background tests use a fresh VM, in-memory Chrome storage and fake Flow responses. There are no live providers, listening ports, Chrome profile access or paid calls. A passing test proves only the named mocked behavior, not a live integration.
 
+`patches/video-reference-recovery.patch` is an unapplied extension patch: retain staged references until a result is accepted, and refuse a missing reference instead of generating a paid replacement. Its tests copy only `src/background.js` into a new folder under `/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/relay-studio-kh/`, apply the patch there with Git, and run the patched text in the VM. Test copies are retained for inspection; they are not Git worktrees or install kits. Set `RELAY_TEST_ROOT` to an existing writable test workspace on another machine. The original source is never patched by these checks.
+
+Writer handover is still required to integrate this patch into the extension. A future integration must rerun the relevant extension checks and normal release process; this repository cannot claim the patch is installed.
+
 There is no installable Relay app yet. Version, What's New, signing and feed requirements apply if a standalone product is explicitly scoped later; integration releases belong to the existing apps.
