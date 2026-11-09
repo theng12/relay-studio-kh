@@ -1,0 +1,34 @@
+--- a/src/lib/flow-exec.js
++++ b/src/lib/flow-exec.js
+@@ -20,6 +20,7 @@
+       imageToVideo: 'MZZa6b',
+       checkVideo: 'jwpduf',
+       getMedia: 'as29s',
++      getCredits: 'nzlxg',
+     };
+     const IMAGE_MODELS = {
+       'nano-banana-2': 'NARWHAL',
+@@ -312,6 +313,15 @@
+       return { url };
+     };
+ 
++    const getCredits = async () => {
++      const result = await rpc(RPC.getCredits, [], projectIdFor(payload.projectId));
++      const value = result?.[0];
++      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
++        throw new Error('Flow returned no valid credit balance.');
++      }
++      return { value, source: 'flow.nzlxg', observedAt: new Date().toISOString() };
++    };
++
+     const listVideoModels = async () => {
+       // The current app has no page-side model manifest. Return no entries so
+       // the worker uses its tested catalog; still report sign-in and project.
+@@ -347,6 +357,7 @@
+       submitVideo,
+       checkVideo,
+       getMedia,
++      getCredits,
+       listVideoModels,
+       getContext,
+       createProject,

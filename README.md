@@ -27,6 +27,8 @@ Tests load the current extension source read-only. Set `RELAY_VIDEO_SOURCE` to t
 
 `patches/video-reference-recovery.patch` is an unapplied extension patch: retain staged references until a result is accepted, and refuse a missing reference instead of generating a paid replacement. Its tests copy only `src/background.js` into a new folder under `/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/relay-studio-kh/`, apply the patch there with Git, and run the patched text in the VM. Test copies are retained for inspection; they are not Git worktrees or install kits. Set `RELAY_TEST_ROOT` to an existing writable test workspace on another machine. The original source is never patched by these checks.
 
-Writer handover is still required to integrate this patch into the extension. A future integration must rerun the relevant extension checks and normal release process; this repository cannot claim the patch is installed.
+`patches/video-flow-credits.patch` adds the captured read-only Flow `nzlxg` operation. It returns the observed balance with source and timestamp; a stated zero stays zero, while missing, malformed, negative or rejected data fails explicitly. It does not infer prices or submit generation work. Credit telemetry transport and worker integration remain to be wired after handover.
+
+Writer handover is still required to integrate these patches into the extension. A future integration must rerun the relevant extension checks and normal release process; this repository cannot claim the patches are installed.
 
 There is no installable Relay app yet. Version, What's New, signing and feed requirements apply if a standalone product is explicitly scoped later; integration releases belong to the existing apps.

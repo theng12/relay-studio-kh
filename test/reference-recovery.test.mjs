@@ -1,24 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, copyFile, mkdir, mkdtemp, readFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
-import { resolve, join } from 'node:path';
-import { videoRoot } from './source.mjs';
 import { background, worker, JOB } from './background-fixture.mjs';
+import { patchFixture } from './patch-fixture.mjs';
 
-// Copy only this source file; never edit the original or copy a Chrome profile.
-const testRoot = process.env.RELAY_TEST_ROOT || '/Volumes/KH-STUDIO-ATLAS/KH-Worktrees';
-await access(testRoot);
-const parent = join(testRoot, 'relay-studio-kh');
-await mkdir(parent).catch((error) => { if (error.code !== 'EEXIST') throw error; });
-const isolated = await mkdtemp(join(parent, 'reference-recovery-'));
-await mkdir(join(isolated, 'src'));
-await copyFile(resolve(videoRoot, 'src/background.js'), join(isolated, 'src/background.js'));
-const patch = resolve(import.meta.dirname, '../patches/video-reference-recovery.patch');
-execFileSync('git', ['apply', '--check', patch], { cwd: isolated });
-execFileSync('git', ['apply', patch], { cwd: isolated });
-const sourceText = await readFile(join(isolated, 'src/background.js'), 'utf8');
-console.info(`Isolated patched source retained: ${isolated}`);
+const { sourceText } = await patchFixture('video-reference-recovery.patch', 'src/background.js');
 
 const reference = { mediaType: 'image/png', dataBase64: 'AQID' };
 function imageItem() {
