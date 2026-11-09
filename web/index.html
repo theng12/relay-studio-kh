@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Relay Studio KH</title>
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./app.css">
+  <script type="module" src="./bootstrap.mjs"></script>
+</head>
+<body>
+  <section class="relay-connector">
+  <main class="app">
+    <header class="app-header">
+      <div><h1>Relay Studio KH</h1><p>Connect your browser extensions to Gateway Studio KH.</p></div>
+      <button id="relay-refresh" type="button">Refresh</button>
+    </header>
+    <div id="relay-preview" class="notice" hidden>Preview data. No real Gateway is connected.</div>
+    <section class="gateway" aria-label="Gateway connection">
+      <div><strong>This Gateway</strong><code id="relay-gateway-url"></code></div>
+      <span id="relay-readback" role="status">Not checked</span>
+    </section>
+    <div id="relay-error" class="notice error" role="alert" hidden><span id="relay-error-text"></span><a id="relay-login" href="/admin/login" hidden>Open Gateway sign-in</a></div>
+    <section aria-labelledby="relay-extensions-heading">
+      <div class="list-heading"><h2 id="relay-extensions-heading">Your extensions</h2><span>Story Studio and standalone modes stay available.</span></div>
+      <div id="relay-workers" class="workers" aria-busy="true"><p class="loading">Reading connections…</p></div>
+    </section>
+    <p id="relay-management-note" class="help">Create and revoke worker tokens in the Gateway app on this Mac. The browser shows connection details.</p>
+    <p id="relay-limits" class="secondary"></p>
+    <p class="help">Choose <strong>Gateway Studio KH</strong> in each extension, then use its worker ID to connect it here. A connection only becomes ready when the extension reports back.</p>
+    <footer><span>Relay uses Gateway’s existing queue and artifact storage.</span><button id="relay-version" class="text-button" type="button" disabled>Version not read</button></footer>
+  </main>
+  <dialog id="relay-pair-dialog" aria-labelledby="relay-pair-title">
+    <form id="relay-pair-form">
+      <header><h2 id="relay-pair-title">Connect extension</h2></header>
+      <div id="relay-pair-fields">
+        <p>Copy the worker ID from the extension’s Gateway Studio KH settings.</p>
+        <label for="relay-worker-id">Worker ID</label><input id="relay-worker-id" name="workerId" required maxlength="120" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="relay-token-view" hidden>
+        <p>Your worker token is shown once. Paste it into the extension’s Gateway settings together with this Gateway address.</p>
+        <p id="relay-pair-worker"></p>
+        <label for="relay-pair-url">Gateway address</label><input id="relay-pair-url" readonly>
+        <label for="relay-worker-token">Worker token</label><input id="relay-worker-token" type="password" readonly autocomplete="off" spellcheck="false">
+        <p id="relay-copy-status" role="status">The token is not saved in this browser.</p>
+      </div>
+      <p id="relay-pair-error" class="error-text" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="close" type="button">Close</button><button id="relay-pair-submit" class="primary" type="submit">Create worker token</button><button id="relay-copy-token" class="primary" type="button" hidden>Copy token</button></div>
+    </form>
+  </dialog>
+  <dialog id="relay-revoke-dialog" aria-labelledby="relay-revoke-title">
+    <form id="relay-revoke-form"><h2 id="relay-revoke-title">Revoke worker access?</h2><p id="relay-revoke-description"></p><p>This disconnects the worker. Any uncertain paid work stays held for review.</p><p id="relay-revoke-error" class="error-text" role="alert" hidden></p><div class="dialog-actions"><button class="close" type="button">Keep access</button><button id="relay-revoke-submit" class="danger" type="submit">Revoke access</button></div></form>
+  </dialog>
+  <dialog id="relay-whats-new" aria-labelledby="relay-whats-new-title"><header><h2 id="relay-whats-new-title">What's New</h2></header><div id="relay-release-notes"></div><div class="dialog-actions"><button class="primary close" type="button">Done</button></div></dialog>
+  </section>
+</body>
+</html>

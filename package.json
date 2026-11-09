@@ -1,8 +1,9 @@
 {
-  "name": "relay-studio-kh-contract-checks",
+  "name": "relay-studio-kh",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-vm-modules --test test/*.test.mjs"
+    "test": "node --experimental-vm-modules --test test/*.test.mjs",
+    "build": "node scripts/build.mjs"
   }
 }

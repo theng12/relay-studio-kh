@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T11:14:47.740703+00:00",
+  "title": "Design System: Relay Studio KH",
+  "extensions": {
+    "colorMeta": {
+      "ground-light": {
+        "role": "neutral",
+        "displayName": "Ground Light",
+        "canonical": "#f3f5f8"
+      },
+      "surface-light": {
+        "role": "neutral",
+        "displayName": "Surface Light",
+        "canonical": "#ffffff"
+      },
+      "text-light": {
+        "role": "neutral",
+        "displayName": "Text Light",
+        "canonical": "#202a38"
+      },
+      "muted-light": {
+        "role": "neutral",
+        "displayName": "Muted Light",
+        "canonical": "#566474"
+      },
+      "line-light": {
+        "role": "neutral",
+        "displayName": "Line Light",
+        "canonical": "#d8dee7"
+      },
+      "accent-light": {
+        "role": "primary",
+        "displayName": "Gateway Blue",
+        "canonical": "#235cc2"
+      },
+      "accent-soft-light": {
+        "role": "primary",
+        "displayName": "Gateway Blue Soft",
+        "canonical": "#edf3ff"
+      },
+      "ok-light": {
+        "role": "semantic",
+        "displayName": "OK Green",
+        "canonical": "#226346"
+      },
+      "warn-light": {
+        "role": "semantic",
+        "displayName": "Warn Amber",
+        "canonical": "#82561b"
+      },
+      "bad-light": {
+        "role": "semantic",
+        "displayName": "Bad Red",
+        "canonical": "#a32630"
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Ground Dark",
+        "canonical": "#151b24"
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Surface Dark",
+        "canonical": "#1e2733"
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "Text Dark",
+        "canonical": "#e7edf6"
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Muted Dark",
+        "canonical": "#afbdce"
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Line Dark",
+        "canonical": "#3a4759"
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Gateway Blue Dark",
+        "canonical": "#9bbfff"
+      },
+      "accent-soft-dark": {
+        "role": "primary",
+        "displayName": "Gateway Blue Soft Dark",
+        "canonical": "#273a56"
+      },
+      "ok-dark": {
+        "role": "semantic",
+        "displayName": "OK Green Dark",
+        "canonical": "#91d9b0"
+      },
+      "warn-dark": {
+        "role": "semantic",
+        "displayName": "Warn Amber Dark",
+        "canonical": "#e8c18c"
+      },
+      "bad-dark": {
+        "role": "semantic",
+        "displayName": "Bad Red Dark",
+        "canonical": "#ffb2b9"
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text for descriptions, help, and dialog paragraphs."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Gateway URLs in code elements; IDs and token inputs use system sans."
+      }
+    },
+    "motion": [
+      {
+        "name": "dialog-appear",
+        "value": "translate 0 6px -> 0 0 over 160ms cubic-bezier(.16,1,.3,1)",
+        "purpose": "Native dialog entrance animation, gated behind prefers-reduced-motion: no-preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "680px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action button for pairing and confirmation dialogs.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Create worker token</button>",
+      "css": ".ds-btn-primary { min-height:44px; padding:8px 16px; border:1px solid #235cc2; border-radius:6px; background:#235cc2; color:#fff; font-weight:600; font-size:13px; cursor:pointer; } .ds-btn-primary:hover { background:color-mix(in srgb,#235cc2,#000 15%); } .ds-btn-primary:focus-visible { outline:2px solid #235cc2; outline-offset:3px; } .ds-btn-primary:disabled { opacity:.58; cursor:default; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Secondary actions, close buttons, and detail toggles.",
+      "html": "<button class=\"ds-btn-default\" type=\"button\">Refresh</button>",
+      "css": ".ds-btn-default { min-height:44px; padding:8px 16px; border:1px solid #d8dee7; border-radius:6px; background:#fff; color:#202a38; font-weight:600; font-size:13px; cursor:pointer; } .ds-btn-default:hover { background:#edf3ff; border-color:#235cc2; } .ds-btn-default:focus-visible { outline:2px solid #235cc2; outline-offset:3px; } .ds-btn-default:disabled { opacity:.58; cursor:default; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive confirmation only, such as revoking worker access.",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">Revoke access</button>",
+      "css": ".ds-btn-danger { min-height:44px; padding:8px 16px; border:1px solid #a32630; border-radius:6px; background:#fff; color:#a32630; font-weight:600; font-size:13px; cursor:pointer; } .ds-btn-danger:hover { background:#edf3ff; border-color:#235cc2; } .ds-btn-danger:focus-visible { outline:2px solid #235cc2; outline-offset:3px; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Worker ID entry and readonly token/address display.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Paste worker ID\" />",
+      "css": ".ds-input { width:100%; min-height:44px; padding:12px; font-size:16px; color:#202a38; background:#fff; border:1px solid #d8dee7; border-radius:6px; caret-color:#235cc2; } .ds-input:focus-visible { outline:2px solid #235cc2; outline-offset:3px; } .ds-input[readonly] { background:#f3f5f8; }"
+    },
+    {
+      "name": "State Indicator",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Inline status dot and label for worker connection state.",
+      "html": "<span class=\"ds-state ds-state-ok\">Connected</span>",
+      "css": ".ds-state { display:inline-flex; gap:6px; align-items:center; font-size:12px; font-weight:600; } .ds-state::before { content:\"\"; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; } .ds-state-ok { color:#226346; } .ds-state-warn { color:#82561b; } .ds-state-off { color:#566474; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Connection Register",
+    "overview": "A flat operator surface for three browser extensions. The design is a direct expression of shared KH conventions: system sans type, cool white/slate surfaces, one restrained blue accent, and honest states that never pretend to know what they do not. No imagery, no charts, no decorative form \u2014 just a list that shows what is connected, what it reports, and what needs attention.\n\nLight mode is the desktop working default; dark mode follows prefers-color-scheme with its own complete palette. Every token comes from either the shared KH design-tokens.json (spacing, radii, type scale) or the connector's own app.css (colors). Nothing is invented.",
+    "keyCharacteristics": [
+      "Flat list layout with expandable details in place",
+      "Shared KH spacing and radius scale, applied through scoped CSS custom properties",
+      "System font stack only; no web fonts",
+      "One blue accent for interactive elements; semantic colors for state only",
+      "Light and dark palettes are both first-class, not afterthoughts"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Gateway Blue is the only non-semantic color used for interaction. No second accent, no gradient, no decorative color. If something is clickable or focused, it uses this blue or its soft variant. Everything else is neutral or semantic.",
+        "section": "colors"
+      },
+      {
+        "name": "The System Type Rule",
+        "body": "All typography uses the platform's native font stack. No @font-face, no Google Fonts, no variable font axes. Sizes follow the shared token scale, with 16px form inputs for mobile usability.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do use the shared KH spacing scale for layout rhythm; fixed viewport safety margins and focus offsets remain literal in the implementation.",
+      "Do keep the connection list flat. Expandable details stay inline; never create a separate detail page or modal for worker information.",
+      "Do show unknown honestly. \"Not reported\", \"Unknown\", \"Time unavailable\" are valid display states. Never substitute zero, empty string, or a guessed value.",
+      "Do use semantic colors only for state. OK/warn/bad appear in state dots, error text, and danger buttons. They never decorate headers, backgrounds, or non-state elements."
+    ],
+    "donts": [
+      "Don't add shadows, gradients, or decorative elevation. The surface is intentionally flat; depth comes from color contrast and borders.",
+      "Don't introduce a second accent color. Gateway Blue is the sole interactive color. Charts, illustrations, and multi-color encoding are out of scope.",
+      "Don't use web fonts or custom typefaces. The system font stack is a deliberate choice for native rendering quality and zero load cost.",
+      "Don't animate beyond the dialog entrance. No hover transitions, no loading spinners, no progress bars. Loading states use text and aria-busy.",
+      "Don't invent token values outside the shared scale. If a spacing or size need falls between existing steps, use the next larger step rather than creating an intermediate value."
+    ]
+  }
+}
