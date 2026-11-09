@@ -56,4 +56,18 @@ Run `npm test` with Node VM module support (the script supplies the flag). Tests
 
 `patches/video-flow-credits.patch` adds the captured read-only Flow `nzlxg` operation with source and timestamp. Missing, malformed, negative or rejected balances fail explicitly. No price or generation call is inferred. Credit telemetry and reference fixes still require source handover, integration checks and the extension's normal release process.
 
-The connector fragment has its own version and What's New. It ships inside Gateway's release; it is not a separately signed native app, feed or installed package. Live handshake, telemetry and nonpaid artifact proof remain required after reviewed Gateway deployment.
+## Corrected Gateway HTTP proof
+
+`relay-gateway-proof` in the parent preview configuration runs `scripts/gateway-proof.py` with Gateway's existing virtualenv on loopback 7916. The fixture pins corrected Gateway commit `5b0ed72`, isolates every Gateway path in a new retained folder under `_orchestra/relay-lead/worker-contract-20261109/`, disables application lifespan/startup services, and exposes only fixture jobs to the real Worker/adapter/API. No signed-in provider or production queue is involved. Never deploy this fixture script or expose its control routes.
+
+Start that named preview and wait for its ready log. Then run the opt-in client proof:
+
+```bash
+node test/gateway-http-proof.mjs
+```
+
+Set `RELAY_PROOF_RECEIPT` to retain a JSON receipt. This is excluded from `npm test`: it requires that fresh disposable server. It imports the original extension's real HTTP client, validates text/image-key reference bytes, exact result artifact bytes, claim deduplication, silent/ambiguous holds, definite late failure, late result ownership, JSON-safe telemetry, stated zero, hashed token storage and immediate revocation. Tokens stay in process memory; receipts contain only non-secret metadata and hashes. The known-bad `c0973d7` baseline is refused. Review a new candidate before changing the pins; `RELAY_GATEWAY_SOURCE` and `RELAY_GATEWAY_COMMIT` on the fixture select a separately reviewed source checkout, and the client pin must be updated to match.
+
+The deterministic lease/result and first-terminal-answer race checks live in Gateway's focused `ConcurrencyTests` suite; they complement this HTTP proof. The first external-drive-backed fixture startup stalled before listening and is retained as a failed attempt; a small local isolated instance completed the proof. Production behavior, installed binaries and a real extension/provider session remain unverified by these tests.
+
+The connector fragment has its own version and What's New. It ships inside Gateway's release; it is not a separately signed native app, feed or installed package. Gateway owns its native Browser workers pane integration; Relay's fragment is a compatible integration artifact, not evidence that it has been vendored unchanged. Live handshake, telemetry and nonpaid artifact proof remain required after reviewed Gateway deployment.
