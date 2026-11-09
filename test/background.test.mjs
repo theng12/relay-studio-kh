@@ -116,6 +116,42 @@ test('a known media id polls and returns bytes without paid resubmission', async
   assert.equal(h.stored.gatewayJobReferences[JOB.jobId], undefined);
 });
 
+test('a staged reference travels claim through upload, submit, poll and result', async () => {
+  const operations = [];
+  const h = await background({ flow: async ({ op, payload }) => {
+    operations.push(op);
+    if (op === 'listVideoModels') return { entries: [], signedIn: true };
+    if (op === 'uploadImage') {
+      assert.equal(payload.base64, 'AQID');
+      assert.equal(payload.mime, 'image/png');
+      return { mediaId: 'fixture_reference' };
+    }
+    if (op === 'submitVideo') {
+      assert.equal(payload.mode, 'image');
+      assert.equal(payload.mediaId, 'fixture_reference');
+      assert.equal(h.stored.videoQueue[0].phase, 'submitting');
+      assert.ok(h.stored.videoQueue[0].submissionStartedAt);
+      return { mediaId: 'fixture_video' };
+    }
+    if (op === 'checkVideo') return { done: true };
+    if (op === 'getMedia') return { url: 'https://flow-content.google/video/fixture' };
+    throw new Error(`Unexpected operation: ${op}`);
+  } });
+  h.settings.mode = 'gateway';
+  h.stored.videoQueuePaused = true;
+  h.setClaim({ ...JOB, videoMode: 'image', referenceImages: [{ mediaType: 'image/png', dataBase64: 'AQID' }] });
+  await h.api.gatewayTick();
+  await new Promise(setImmediate);
+  h.stored.videoQueuePaused = false;
+  await h.api.processQueue();
+  assert.deepEqual(operations, ['listVideoModels', 'uploadImage', 'submitVideo', 'checkVideo', 'getMedia']);
+  assert.equal(h.stored.videoQueue[0].status, 'done');
+  assert.equal(h.stored.videoQueue[0].videoMediaId, 'fixture_video');
+  assert.equal(h.reports.filter(([kind]) => kind === 'result').length, 1);
+  assert.equal(h.reports.filter(([kind]) => kind === 'fail').length, 0);
+  assert.equal(h.stored.gatewayJobReferences[JOB.jobId], undefined);
+});
+
 test('lost paid submission acknowledgement reports ambiguity and pauses', async () => {
   const h = await background({ flow: async ({ op }) => {
     if (op === 'listVideoModels') return { entries: [], signedIn: true };
