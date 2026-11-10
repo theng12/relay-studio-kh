@@ -66,6 +66,7 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
   } else if (name === 'manager_pair_gateway') {
     throw Error('Fixture only: pairing is not performed. No token was stored or sent.');
   } else if (name !== 'manager_snapshot') throw Error('Unknown fixture command: '+name);
+  manager.memory.used_mb=manager.profiles.reduce((sum,p)=>sum+(p.memory_mb??0),0);
   manager.memory.queued=manager.profiles.filter(p=>p.process_state==='queued').length;
   return structuredClone(manager);
 } } };

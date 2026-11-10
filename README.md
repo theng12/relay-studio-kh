@@ -38,7 +38,7 @@ npm run desktop:assets
 node --test test/desktop.test.mjs
 ```
 
-For source UI inspection, `relay-desktop-source-preview` serves these assets on loopback 7920 with a visibly labeled, in-memory fake native bridge. It tests browser rendering and UI wiring only, never OS login settings, file persistence, real Gateway connectivity, Tauri permissions or WKWebView behavior. Never deploy `scripts/desktop-preview.mjs` or include its bridge in the native assets.
+For source UI inspection, `relay-browser-manager-source-preview` serves these assets on loopback 7921 with a visibly labeled, in-memory fake native bridge. It tests browser rendering and UI wiring only, never OS login settings, file persistence, real Gateway connectivity, Tauri permissions or WKWebView behavior. Never deploy `scripts/desktop-preview.mjs` or include its bridge in the native assets.
 
 Desktop asset preparation also generates the Mac icon set from the versioned artwork in `scripts/make-icon.py`, using Python's standard library. It uses Relay's existing blue accent and a white three-to-one connection mark. PNGs contain source provenance; PNG/ICNS outputs stay ignored under `src-tauri/icons/`. The normal Tauri configuration references those generated assets while bundling stays disabled. Icon asset checks do not prove a native package or Dock appearance.
 
