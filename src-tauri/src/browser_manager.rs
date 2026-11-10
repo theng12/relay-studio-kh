@@ -9,6 +9,7 @@
 //! is a preference, and closing waits instead of stopping Chrome. No endpoint or credential is
 //! implemented here.
 
+use crate::manager_gateway;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -49,8 +50,15 @@ pub(crate) struct GatewayReading {
     pub provider: Option<String>,
     pub account_id: Option<String>,
     pub observed_at: Option<String>,
+    /// Authenticated adapter only. Presence and spend fields are reported at the snapshot root so
+    /// the UI never has to dig them out of `credits`; conflicting account rows stay unknown.
     pub credits: Option<serde_json::Value>,
     pub next_eligible_at: Option<String>,
+    pub gateway_enabled: Option<bool>,
+    pub reserved: Option<f64>,
+    pub available: Option<f64>,
+    /// Worker/account readings disagree or are stale; the profile needs attention.
+    pub attention: bool,
 }
 
 #[derive(Clone)]
@@ -89,11 +97,10 @@ pub(crate) trait ManagerGateway: Send + Sync {
     /// refreshes asynchronously and leaves fields unknown while a read is outstanding.
     fn read(&self, profiles: &[GatewayProfile]) -> HashMap<String, GatewayReading>;
     fn support(&self) -> GatewaySupport;
-    /// Called on explicit open. The adapter may request `dispatchEnabled: true` through its
-    /// authenticated manager control only for an enabled profile whose bound workers have no
-    /// held or durably uncertain job. Gateway's account enable stays a separate state and never
-    /// starts spending. The default does nothing.
-    fn open_requested(&self, _profile: &GatewayProfile) {}
+    /// Called after pacing settings are saved. The adapter may send the saved pacing only to
+    /// workers whose current dispatch value is known, passing that exact value back so a paused
+    /// worker is never resumed by saving settings. The default does nothing.
+    fn pacing_requested(&self, _profile: &GatewayProfile, _pacing: manager_gateway::Pacing) {}
     /// Called while moving a profile to close: the adapter issues control for both paired worker
     /// ids with `dispatchEnabled: false` and `closeRequested: true`, then returns `Safe` only
     /// after a fresh paused acknowledgement plus `safeToClose`. Missing worker bindings must
@@ -136,6 +143,9 @@ struct LiveGateway {
 
 #[derive(Default)]
 struct GatewayCache {
+    /// Origin this cached view was fetched for. A view is never shown or used for close
+    /// authorization under a different saved origin.
+    origin: Option<String>,
     view: Option<manager_gateway::ManagerView>,
     error: Option<String>,
     refreshing: bool,
@@ -147,6 +157,22 @@ struct GatewayCache {
 struct CloseState {
     in_flight: bool,
     last_attempt: Option<Instant>,
+}
+
+impl GatewayCache {
+    /// Returns the cached view only for the origin it was fetched from. Changing the saved
+    /// origin invalidates the view, error and close bookkeeping before anything can use them.
+    fn view_for(&mut self, origin: Option<&str>) -> Option<manager_gateway::ManagerView> {
+        if origin.is_none() || self.origin.as_deref() != origin {
+            self.origin = origin.map(ToString::to_string);
+            self.view = None;
+            self.error = None;
+            self.last_view = None;
+            self.closes.clear();
+            return None;
+        }
+        self.view.clone()
+    }
 }
 
 impl LiveGateway {
@@ -166,6 +192,8 @@ impl LiveGateway {
     fn refresh(&self) {
         let origin = gateway_origin(&self.app);
         let mut cache = self.cache();
+        // Validate against the saved origin before anything else can consume the cache.
+        cache.view_for(origin.as_deref());
         if cache.refreshing {
             return;
         }
@@ -182,6 +210,10 @@ impl LiveGateway {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             cache.refreshing = false;
+            // A view fetched for an older origin is discarded, never displayed.
+            if cache.origin.as_deref() != Some(origin.as_str()) {
+                return;
+            }
             match result {
                 Ok(view) => {
                     cache.view = Some(view);
@@ -193,15 +225,18 @@ impl LiveGateway {
         });
     }
 
-    fn remember(&self, view: manager_gateway::ManagerView) {
+    fn remember(&self, origin: String, view: manager_gateway::ManagerView) {
         let mut cache = self.cache();
+        cache.origin = Some(origin);
         cache.view = Some(view);
         cache.error = None;
         cache.last_view = Some(Instant::now());
+        cache.closes.clear();
     }
 
     fn forget(&self) {
         let mut cache = self.cache();
+        cache.origin = None;
         cache.view = None;
         cache.error = None;
         cache.last_view = None;
@@ -211,9 +246,11 @@ impl LiveGateway {
 
 impl ManagerGateway for LiveGateway {
     fn read(&self, profiles: &[GatewayProfile]) -> HashMap<String, GatewayReading> {
+        let origin = gateway_origin(&self.app);
         let stale = {
             let cache = self.cache();
-            cache.view.is_none()
+            cache.origin.as_deref() != origin.as_deref()
+                || cache.view.is_none()
                 || cache
                     .last_view
                     .map_or(true, |at| at.elapsed() >= Duration::from_secs(5))
@@ -221,7 +258,7 @@ impl ManagerGateway for LiveGateway {
         if stale {
             self.refresh();
         }
-        let view = self.cache().view.clone();
+        let view = self.cache().view_for(origin.as_deref());
         let Some(view) = view else {
             return HashMap::new();
         };
@@ -232,14 +269,14 @@ impl ManagerGateway for LiveGateway {
     }
 
     fn support(&self) -> GatewaySupport {
-        let manager_paired = gateway_origin(&self.app)
-            .is_some_and(|origin| manager_gateway::paired(&origin).unwrap_or(false));
-        let cache = self.cache();
-        let fresh = cache
-            .view
-            .as_ref()
-            .is_some_and(|view| view.is_fresh(epoch_now()));
-        let authorized = cache.view.is_some();
+        let origin = gateway_origin(&self.app);
+        let manager_paired = origin
+            .as_deref()
+            .is_some_and(|origin| manager_gateway::paired(origin).unwrap_or(false));
+        let mut cache = self.cache();
+        let view = cache.view_for(origin.as_deref());
+        let fresh = view.as_ref().is_some_and(|view| view.is_fresh(epoch_now()));
+        let authorized = view.is_some();
         let mut telemetry_error = cache.error.clone();
         if telemetry_error.is_none() && authorized && !fresh {
             telemetry_error = Some("Gateway manager readback is stale.".into());
@@ -248,7 +285,7 @@ impl ManagerGateway for LiveGateway {
             telemetry_error = Some("Waiting for the first Gateway manager readback.".into());
         }
         let pacing_applied = fresh
-            && cache.view.as_ref().is_some_and(|view| {
+            && view.as_ref().is_some_and(|view| {
                 view.workers.iter().any(|worker| {
                     matches!(
                         (worker.control.pacing.as_ref(), worker.state.as_ref().and_then(|state| state.pacing.as_ref())),
@@ -268,37 +305,53 @@ impl ManagerGateway for LiveGateway {
         }
     }
 
-    fn open_requested(&self, profile: &GatewayProfile) {
-        let ids = worker_ids(profile);
-        if ids.is_empty() {
-            return;
-        }
-        let ready = self
-            .cache()
-            .view
-            .as_ref()
-            .is_some_and(|view| view.is_fresh(epoch_now()) && can_dispatch(view, &ids));
-        if !ready {
-            return;
-        }
+    fn pacing_requested(&self, profile: &GatewayProfile, pacing: manager_gateway::Pacing) {
         let Some(origin) = gateway_origin(&self.app) else {
             return;
         };
+        let targets = {
+            let mut cache = self.cache();
+            let Some(view) = cache.view_for(Some(origin.as_str())) else {
+                return;
+            };
+            worker_ids(profile)
+                .into_iter()
+                .filter_map(|id| {
+                    let worker = view.workers.iter().find(|worker| worker.worker_id == id)?;
+                    // Preserve the exact recorded dispatch value; never guess one for a stale or
+                    // closing worker, so saving settings can never resume paused work.
+                    (worker.fresh && worker.control.close_requested != Some(true))
+                        .then_some((id, worker.control.dispatch_enabled))
+                })
+                .collect::<Vec<_>>()
+        };
+        if targets.is_empty() {
+            return;
+        }
         let shared_cache = self.cache.clone();
-        let _ = tauri::async_runtime::spawn(async move {
-            let result = manager_gateway::control(&origin, &ids, true, None, None).await;
-            let mut cache = shared_cache
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            match result {
-                Ok(view) => {
-                    cache.view = Some(view);
-                    cache.error = None;
-                    cache.last_view = Some(Instant::now());
+        for (id, dispatch_enabled) in targets {
+            let origin = origin.clone();
+            let pacing = pacing.clone();
+            let shared_cache = shared_cache.clone();
+            let _ = tauri::async_runtime::spawn(async move {
+                let ids = vec![id];
+                let Ok(view) =
+                    manager_gateway::control(&origin, &ids, dispatch_enabled, None, Some(pacing))
+                        .await
+                else {
+                    return;
+                };
+                let mut cache = shared_cache
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if cache.origin.as_deref() != Some(origin.as_str()) {
+                    return;
                 }
-                Err(error) => cache.error = Some(error.to_string()),
-            }
-        });
+                cache.view = Some(view);
+                cache.error = None;
+                cache.last_view = Some(Instant::now());
+            });
+        }
     }
 
     fn close_authorization(&self, profile: &GatewayProfile) -> CloseAuthorization {
@@ -308,9 +361,12 @@ impl ManagerGateway for LiveGateway {
                 "No image or video worker is bound to this profile; close waits.".into(),
             );
         }
+        let origin = gateway_origin(&self.app);
         let mut cache = self.cache();
+        // A view from another origin can never authorize stopping this profile's Chrome.
+        let view = cache.view_for(origin.as_deref());
         let mut waiting = None;
-        if let Some(view) = cache.view.as_ref() {
+        if let Some(view) = view.as_ref() {
             let safety = manager_gateway::close_safety(view, &ids);
             if safety.safe_to_close {
                 return CloseAuthorization::Safe;
@@ -328,7 +384,7 @@ impl ManagerGateway for LiveGateway {
                     .unwrap_or_else(|| "Waiting for Gateway's fresh pause acknowledgement.".into()),
             );
         }
-        let Some(origin) = gateway_origin(&self.app) else {
+        let Some(origin) = origin else {
             return CloseAuthorization::NotAcknowledged("Save a Gateway address first.".into());
         };
         state.in_flight = true;
@@ -341,13 +397,16 @@ impl ManagerGateway for LiveGateway {
             let mut cache = shared_cache
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            match result {
-                Ok(view) => {
-                    cache.view = Some(view);
-                    cache.error = None;
-                    cache.last_view = Some(Instant::now());
+            // Only the origin that sent this control may receive its result.
+            if cache.origin.as_deref() == Some(origin.as_str()) {
+                match result {
+                    Ok(view) => {
+                        cache.view = Some(view);
+                        cache.error = None;
+                        cache.last_view = Some(Instant::now());
+                    }
+                    Err(error) => cache.error = Some(error.to_string()),
                 }
-                Err(error) => cache.error = Some(error.to_string()),
             }
             if let Some(state) = cache.closes.get_mut(&profile_id) {
                 state.in_flight = false;
@@ -363,6 +422,11 @@ fn gateway_origin(app: &tauri::AppHandle) -> Option<String> {
     super::current(app)
         .ok()
         .and_then(|settings| settings.gateway_url)
+}
+
+/// Pairing uses the saved, already-normalized Gateway origin; the caller never supplies one.
+fn required_origin(origin: Option<String>) -> Result<String, String> {
+    origin.ok_or_else(|| "Save a Gateway address first.".to_string())
 }
 
 fn epoch_now() -> f64 {
@@ -402,57 +466,106 @@ fn close_reason(safety: &manager_gateway::CloseSafety) -> String {
     }
 }
 
-fn can_dispatch(view: &manager_gateway::ManagerView, ids: &[String]) -> bool {
-    ids.iter().all(|id| {
-        view.workers
-            .iter()
-            .find(|worker| &worker.worker_id == id)
-            .is_some_and(|worker| {
-                worker.fresh
-                    && worker.current_job.is_none()
-                    && worker.held_jobs.is_empty()
-                    && !worker.durable_busy
-            })
-    })
+/// Worker state is current only while its telemetry is fresh and inside the view's age limit.
+fn live_state<'a>(
+    view: &'a manager_gateway::ManagerView,
+    id: &str,
+    now: f64,
+) -> Option<&'a manager_gateway::WorkerState> {
+    let worker = view.workers.iter().find(|worker| worker.worker_id == id)?;
+    if !worker.fresh {
+        return None;
+    }
+    let received_at = worker.received_at?;
+    if !received_at.is_finite() || received_at <= 0.0 || now - received_at > view.max_age_seconds {
+        return None;
+    }
+    worker.state.as_ref()
+}
+
+/// Every bound worker must report the same value; missing, stale or differing readings stay unknown.
+fn agreed_state(
+    states: &[Option<&manager_gateway::WorkerState>],
+    field: fn(&manager_gateway::WorkerState) -> Option<String>,
+) -> Option<String> {
+    let values: Option<Vec<String>> = states
+        .iter()
+        .map(|state| (*state).and_then(|state| field(state)))
+        .collect();
+    let values = values?;
+    let first = values.first()?.clone();
+    values.iter().all(|value| *value == first).then_some(first)
+}
+
+fn latest_observed(states: &[Option<&manager_gateway::WorkerState>]) -> Option<String> {
+    let values: Option<Vec<f64>> = states
+        .iter()
+        .map(|state| (*state).and_then(|state| state.observed_at))
+        .collect();
+    values?
+        .into_iter()
+        .reduce(f64::max)
+        .map(|value| value.to_string())
 }
 
 fn reading_for(view: &manager_gateway::ManagerView, profile: &GatewayProfile) -> GatewayReading {
+    reading_for_at(view, profile, epoch_now())
+}
+
+fn reading_for_at(
+    view: &manager_gateway::ManagerView,
+    profile: &GatewayProfile,
+    now: f64,
+) -> GatewayReading {
     let ids = worker_ids(profile);
-    let state = view
-        .workers
-        .iter()
-        .find(|worker| ids.iter().any(|id| id == &worker.worker_id))
-        .and_then(|worker| worker.state.as_ref());
-    let account = view
+    // A stale view or an unbound profile is fully unknown, never last-known state shown as now.
+    if ids.is_empty() || !view.is_fresh(now) {
+        return GatewayReading::default();
+    }
+    let states: Vec<Option<&manager_gateway::WorkerState>> =
+        ids.iter().map(|id| live_state(view, id, now)).collect();
+    let rows: Vec<&manager_gateway::ManagerAccount> = view
         .accounts
         .iter()
-        .find(|account| account.workers.iter().any(|id| ids.contains(id)));
+        .filter(|account| account.workers.iter().any(|id| ids.contains(id)))
+        .collect();
+    // Two different accounts on one physical profile must not share credits as if they matched.
+    let mismatched = rows.first().is_some_and(|first| {
+        rows.iter()
+            .any(|row| row.provider != first.provider || row.account_id != first.account_id)
+    });
+    let account = rows.first().copied().filter(|_| !mismatched);
     GatewayReading {
-        connection: state.and_then(|state| state.connection.clone()),
-        sign_in: state.and_then(|state| state.sign_in.clone()),
-        readiness: state.and_then(|state| state.readiness.clone()),
-        activity: state.and_then(|state| state.activity.clone()),
+        connection: agreed_state(&states, |state| state.connection.clone()),
+        sign_in: agreed_state(&states, |state| state.sign_in.clone()),
+        readiness: agreed_state(&states, |state| state.readiness.clone()),
+        activity: agreed_state(&states, |state| state.activity.clone()),
         provider: account.map(|account| account.provider.clone()),
         account_id: account.map(|account| account.account_id.clone()),
-        observed_at: state
-            .and_then(|state| state.observed_at)
-            .map(|value| value.to_string()),
+        observed_at: latest_observed(&states),
         credits: account
             .filter(|account| account.balance.is_some() || account.credit_buckets.is_some())
             .map(|account| {
                 serde_json::json!({
                     "balance": account.balance.clone(),
                     "fresh": account.fresh,
-                    "reset_at": account.reset_at.clone(),
+                    "reset_at": account.reset_at,
                     "credit_buckets": account.credit_buckets.clone(),
                     "gateway_enabled": account.gateway_enabled,
-                    "reserved": account.reserved.clone(),
+                    "reserved": account.reserved,
                     "available": account.available,
                 })
             }),
-        next_eligible_at: state
-            .and_then(|state| state.next_eligible_at)
-            .map(|value| value.to_string()),
+        next_eligible_at: agreed_state(&states, |state| {
+            state.next_eligible_at.map(|value| value.to_string())
+        }),
+        gateway_enabled: account.map(|account| account.gateway_enabled),
+        reserved: account.and_then(|account| account.reserved),
+        available: account.and_then(|account| account.available),
+        attention: mismatched
+            || states
+                .iter()
+                .any(|state| (*state).and_then(|state| state.attention).unwrap_or(false)),
     }
 }
 
@@ -588,6 +701,10 @@ struct GatewaySnapshot {
     observed_at: Option<String>,
     credits: Option<serde_json::Value>,
     next_eligible_at: Option<String>,
+    // Reported at the root to match the UI; `credits` may repeat them but they are never summed.
+    gateway_enabled: Option<bool>,
+    reserved: Option<f64>,
+    available: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -750,21 +867,22 @@ pub(crate) fn manager_snapshot(
 }
 
 /// Pairing is a local-window action; the raw token is handed to the auth module and never
-/// stored, logged or placed in the saved snapshot. Returns the normal manager snapshot.
+/// stored, logged or placed in the saved snapshot. The origin is the saved, validated Gateway
+/// address, so the UI passes only the token. Returns the normal manager snapshot.
 #[tauri::command]
 pub(crate) async fn manager_pair_gateway(
     window: WebviewWindow,
     manager: State<'_, BrowserManager>,
-    origin: String,
     token: String,
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
+    let origin = required_origin(gateway_origin(window.app_handle()))?;
     let shared = manager.shared.clone();
     drop(manager);
     let view = manager_gateway::pair(&origin, &token)
         .await
         .map_err(|error| error.to_string())?;
-    shared.gateway.remember(view);
+    shared.gateway.remember(origin, view);
     build_snapshot(&shared)
 }
 
@@ -828,11 +946,17 @@ pub(crate) fn manager_update_profile(
                 }
             }
         }
+        // Bindings are frozen while this physical profile is resident or closing, so close
+        // authorization always evaluates the workers that were bound when close was requested.
+        // Filling a missing binding stays allowed; replacing or clearing a recorded one does not.
+        let frozen = profile.pid.is_some() || profile.close_pending;
         if let Some(worker) = image_worker_id {
-            profile.image_worker_id = normalize_worker(worker)?;
+            let next = normalize_worker(worker)?;
+            profile.image_worker_id = updated_binding(&profile.image_worker_id, next, frozen)?;
         }
         if let Some(worker) = video_worker_id {
-            profile.video_worker_id = normalize_worker(worker)?;
+            let next = normalize_worker(worker)?;
+            profile.video_worker_id = updated_binding(&profile.video_worker_id, next, frozen)?;
         }
         Ok(())
     })?;
@@ -847,7 +971,8 @@ pub(crate) fn manager_open_profiles(
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
     let mut rejected: Vec<(String, String)> = Vec::new();
-    let mut opened: Vec<GatewayProfile> = Vec::new();
+    // (profile, whether its Chrome was already resident when Open was requested)
+    let mut opened: Vec<(GatewayProfile, bool)> = Vec::new();
     mutate(&manager.shared, |stored| {
         for id in &profile_ids {
             let profile = stored
@@ -866,14 +991,18 @@ pub(crate) fn manager_open_profiles(
                 ));
                 continue;
             }
-            // Open intent is saved before any process starts, so a restart restores it.
+            // Only local Chrome intent is saved; Gateway dispatch stays Gateway's decision.
+            let resident = profile.pid.is_some();
             profile.desired_open = true;
             profile.open_failures = 0;
-            opened.push(GatewayProfile {
-                id: profile.id.clone(),
-                image_worker_id: profile.image_worker_id.clone(),
-                video_worker_id: profile.video_worker_id.clone(),
-            });
+            opened.push((
+                GatewayProfile {
+                    id: profile.id.clone(),
+                    image_worker_id: profile.image_worker_id.clone(),
+                    video_worker_id: profile.video_worker_id.clone(),
+                },
+                resident,
+            ));
         }
         Ok(())
     })?;
@@ -885,20 +1014,68 @@ pub(crate) fn manager_open_profiles(
         }
     }
     let snapshot = finish(&manager.shared)?;
-    if let Some(authority) = authority() {
-        for profile in &opened {
-            // Only a profile whose real Chrome process actually started may ask for dispatch.
-            let running = snapshot
-                .profiles
-                .iter()
-                .find(|entry| entry.id == profile.id)
-                .is_some_and(|entry| matches!(entry.process_state, "open" | "opening"));
-            if running {
-                authority.open_requested(profile);
+    // Opening never authorizes jobs. A profile that was already resident is shown, which only
+    // brings its own window forward and cannot resume paused or held work.
+    let alive = locked(&manager.shared)?.measurement.alive.clone();
+    let mut failures: Vec<(String, String)> = Vec::new();
+    for (profile, resident) in &opened {
+        if *resident && alive.contains(&profile.id) {
+            if let Err(reason) = show(&manager.shared, &profile.id) {
+                failures.push((profile.id.clone(), reason));
             }
         }
     }
+    if !failures.is_empty() {
+        let mut inner = locked(&manager.shared)?;
+        for (id, reason) in failures {
+            inner.errors.insert(id, reason);
+        }
+    }
     Ok(snapshot)
+}
+
+/// Show brings the exact managed profile forward by asking that profile's own Chrome instance to
+/// come up again. It creates no managed process, submits no job and never touches dispatch.
+#[tauri::command]
+pub(crate) fn manager_show_profiles(
+    window: WebviewWindow,
+    manager: State<'_, BrowserManager>,
+    profile_ids: Vec<String>,
+) -> Result<Snapshot, String> {
+    super::local_only(&window)?;
+    reconcile(&manager.shared)?;
+    let mut shows: Vec<String> = Vec::new();
+    let mut failures: Vec<(String, String)> = Vec::new();
+    {
+        let inner = locked(&manager.shared)?;
+        let stored = stored_or_error(&inner)?;
+        for id in &profile_ids {
+            if !stored.profiles.iter().any(|profile| &profile.id == id) {
+                return Err("Unknown browser profile.".into());
+            }
+            if inner.measurement.alive.contains(id) {
+                shows.push(id.clone());
+            } else {
+                failures.push((
+                    id.clone(),
+                    "This profile's Chrome process is not verified open, so nothing was shown."
+                        .into(),
+                ));
+            }
+        }
+    }
+    for id in &shows {
+        if let Err(reason) = show(&manager.shared, id) {
+            failures.push((id.clone(), reason));
+        }
+    }
+    if !failures.is_empty() {
+        let mut inner = locked(&manager.shared)?;
+        for (id, reason) in failures {
+            inner.errors.insert(id, reason);
+        }
+    }
+    build_snapshot(&manager.shared)
 }
 
 #[tauri::command]
@@ -945,7 +1122,28 @@ pub(crate) fn manager_save_settings(
         };
         Ok(())
     })?;
-    finish(&manager.shared)
+    let snapshot = finish(&manager.shared)?;
+    if let Some(authority) = authority() {
+        let pacing = manager_gateway::Pacing {
+            min_seconds: snapshot.settings.pause_min_seconds as f64,
+            max_seconds: snapshot.settings.pause_max_seconds as f64,
+        };
+        for profile in &snapshot.profiles {
+            // Workers already closing are left alone; dispatch stays exactly as Gateway recorded it.
+            if profile.close_pending {
+                continue;
+            }
+            authority.pacing_requested(
+                &GatewayProfile {
+                    id: profile.id.clone(),
+                    image_worker_id: profile.gateway.image_worker_id.clone(),
+                    video_worker_id: profile.gateway.video_worker_id.clone(),
+                },
+                pacing.clone(),
+            );
+        }
+    }
+    Ok(snapshot)
 }
 
 // ---------------------------------------------------------------------------
@@ -997,7 +1195,10 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
                 memory_mb: measurement.profile_mb.get(&profile.id).copied(),
                 close_pending: profile.close_pending,
                 error: errors.get(&profile.id).cloned(),
-                attention: attention.contains(&profile.id),
+                attention: attention.contains(&profile.id)
+                    || readings
+                        .get(&profile.id)
+                        .is_some_and(|reading| reading.attention),
                 gateway: gateway_snapshot(profile, readings.get(&profile.id)),
             }
         })
@@ -1083,6 +1284,9 @@ fn gateway_snapshot(profile: &StoredProfile, reading: Option<&GatewayReading>) -
         observed_at: reading.observed_at,
         credits: reading.credits,
         next_eligible_at: reading.next_eligible_at,
+        gateway_enabled: reading.gateway_enabled,
+        reserved: reading.reserved,
+        available: reading.available,
     }
 }
 
@@ -1103,40 +1307,47 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     let mut changed = false;
 
     for profile in stored.profiles.iter_mut() {
-        let row = profile
+        let ownership = profile
             .pid
-            .and_then(|pid| measurement.rows.get(&pid).cloned());
-        let owned = row
-            .as_ref()
-            .is_some_and(|row| owned_process(row, profile, chrome.as_deref()));
-        if profile.pid.is_some() && !owned {
-            let wanted = profile.desired_open;
-            profile.pid = None;
-            profile.pid_started = None;
-            profile.binary = None;
-            changed = true;
-            if wanted && !profile.close_pending {
-                profile.open_failures = profile.open_failures.saturating_add(1);
-                errors.insert(profile.id.clone(), exit_message(profile.open_failures));
-                if profile.open_failures >= MAX_OPEN_ATTEMPTS {
-                    attention.insert(profile.id.clone());
+            .and_then(|pid| measurement.rows.get(&pid))
+            .map(|row| ownership(row, profile, chrome.as_deref()));
+        let mut owned = false;
+        match ownership {
+            Some(Ownership::Verified) => {
+                owned = true;
+                if profile.open_failures != 0 {
+                    profile.open_failures = 0;
+                    changed = true;
+                    errors.remove(&profile.id);
+                    attention.remove(&profile.id);
                 }
-            } else {
-                profile.close_pending = false;
-                errors.remove(&profile.id);
-                attention.remove(&profile.id);
             }
-        } else if let Some(row) = row {
-            if profile.pid_started.is_none() {
-                profile.pid_started = Some(row.started.clone());
+            Some(Ownership::Unverified) => {
+                // Our binary but no recorded launch time: hold, never adopt, stop or restart it.
+                errors.insert(
+                    profile.id.clone(),
+                    "Chrome process identity could not be verified; it was not stopped or restarted."
+                        .into(),
+                );
+                attention.insert(profile.id.clone());
+            }
+            Some(Ownership::Reused) | None if profile.pid.is_some() => {
+                let wanted = profile.desired_open;
+                forget_process(profile);
                 changed = true;
+                if wanted && !profile.close_pending {
+                    profile.open_failures = profile.open_failures.saturating_add(1);
+                    errors.insert(profile.id.clone(), exit_message(profile.open_failures));
+                    if profile.open_failures >= MAX_OPEN_ATTEMPTS {
+                        attention.insert(profile.id.clone());
+                    }
+                } else {
+                    profile.close_pending = false;
+                    errors.remove(&profile.id);
+                    attention.remove(&profile.id);
+                }
             }
-            if profile.open_failures != 0 {
-                profile.open_failures = 0;
-                changed = true;
-                errors.remove(&profile.id);
-                attention.remove(&profile.id);
-            }
+            _ => {}
         }
         if profile.close_pending {
             if profile.pid.is_none() {
@@ -1238,24 +1449,9 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     }
 
     if launched {
+        // Re-measure so admission and the snapshot see the new processes. Identity was recorded
+        // at launch; it is never adopted later from a possibly reused pid.
         measurement = measure(&stored, chrome.as_deref());
-        // Capture the exact start time observed for each freshly started process.
-        for profile in stored.profiles.iter_mut() {
-            let Some(pid) = profile.pid else { continue };
-            if profile.pid_started.is_some() {
-                continue;
-            }
-            if let Some(row) = measurement.rows.get(&pid) {
-                let expected = profile
-                    .binary
-                    .as_deref()
-                    .is_some_and(|binary| binary == row.comm);
-                if expected {
-                    profile.pid_started = Some(row.started.clone());
-                    changed = true;
-                }
-            }
-        }
     }
     let saved = if changed {
         save_state(&shared.state_path, &stored)
@@ -1527,30 +1723,91 @@ fn subtree_mb(table: &ProcessTable, root: u32) -> u64 {
     rss_kb / 1024
 }
 
-fn owned_process(row: &ProcessRow, profile: &StoredProfile, chrome: Option<&Path>) -> bool {
+/// Why a recorded pid may or may not be Relay's own Chrome. The recorded launch time is the only
+/// identity proof; a matching pid alone is never enough because pids are reused.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ownership {
+    Verified,
+    Reused,
+    Unverified,
+}
+
+fn ownership(row: &ProcessRow, profile: &StoredProfile, chrome: Option<&Path>) -> Ownership {
     let expected = profile
         .binary
         .clone()
         .or_else(|| chrome.map(|path| path.to_string_lossy().into_owned()));
     if expected.as_deref() != Some(row.comm.as_str()) {
-        return false;
+        return Ownership::Reused;
     }
     match profile.pid_started.as_deref() {
-        Some(started) => started == row.started,
-        None => true,
+        Some(started) if started == row.started => Ownership::Verified,
+        Some(_) => Ownership::Reused,
+        None => Ownership::Unverified,
     }
+}
+
+fn owned_process(row: &ProcessRow, profile: &StoredProfile, chrome: Option<&Path>) -> bool {
+    ownership(row, profile, chrome) == Ownership::Verified
+}
+
+fn forget_process(profile: &mut StoredProfile) {
+    profile.pid = None;
+    profile.pid_started = None;
+    profile.binary = None;
 }
 
 fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result<(), String> {
     let directory = profile_dir(shared, &profile.id)?;
     let child = Command::new(chrome)
-        .arg(format!("--user-data-dir={}", directory.display()))
+        .arg(user_data_arg(&directory))
         .spawn()
         .map_err(|_| "Could not start Google Chrome for this profile.".to_string())?;
+    let binary = chrome.to_string_lossy().into_owned();
     profile.pid = Some(child.id());
-    profile.binary = Some(chrome.to_string_lossy().into_owned());
-    profile.pid_started = None;
+    profile.binary = Some(binary.clone());
+    // Record the exact start time now. Waiting until a later tick could adopt a reused pid.
+    profile.pid_started = process_identity(child.id(), &binary);
     // Reap the child so an exited Chrome does not linger as a zombie; state comes from the table.
+    thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+/// Identity of the process just spawned: its own start time, confirmed against our binary.
+fn process_identity(pid: u32, binary: &str) -> Option<String> {
+    for _ in 0..10 {
+        if let Ok(table) = process_table() {
+            if let Some(row) = table.rows.get(&pid) {
+                if row.comm == binary {
+                    return Some(row.started.clone());
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    None
+}
+
+/// Args are exactly Chrome's own user-data-dir selection; no credential or security flag is ever
+/// added. Re-invoking it asks that profile's running instance to come forward.
+fn user_data_arg(directory: &Path) -> String {
+    format!("--user-data-dir={}", directory.display())
+}
+
+fn show(shared: &Shared, id: &str) -> Result<(), String> {
+    let chrome = shared
+        .chrome
+        .as_deref()
+        .ok_or("Google Chrome was not found in Applications; nothing was shown.")?;
+    let directory = profile_dir(shared, id)?;
+    let child = Command::new(chrome)
+        .arg(user_data_arg(&directory))
+        .spawn()
+        .map_err(|_| "Could not show this Chrome profile.".to_string())?;
+    // The forwarding invocation exits once the running profile takes focus.
     thread::spawn(move || {
         let mut child = child;
         let _ = child.wait();
@@ -1673,6 +1930,21 @@ fn normalize_worker(value: String) -> Result<Option<String>, String> {
     Ok(Some(value.to_string()))
 }
 
+/// A resident or closing profile may keep its recorded binding or fill a missing one; it may not
+/// swap or clear a recorded binding while its Chrome process could still hold a job.
+fn updated_binding(
+    current: &Option<String>,
+    next: Option<String>,
+    frozen: bool,
+) -> Result<Option<String>, String> {
+    if frozen && current.is_some() && *current != next {
+        return Err(
+            "Worker bindings stay fixed while this Chrome profile is open or closing.".into(),
+        );
+    }
+    Ok(next)
+}
+
 fn validate_worker(value: Option<&str>) -> Result<(), String> {
     let Some(value) = value else { return Ok(()) };
     if value.is_empty() || value.chars().count() > WORKER_ID_LIMIT {
@@ -1729,10 +2001,17 @@ fn validate_state(stored: &Stored) -> Result<(), String> {
 }
 
 fn parse_state(bytes: &[u8]) -> Result<Stored, String> {
-    let stored: Stored = serde_json::from_slice(bytes).map_err(|_| {
+    let mut stored: Stored = serde_json::from_slice(bytes).map_err(|_| {
         "Saved browser profiles are unreadable. The file has not been reset.".to_string()
     })?;
     validate_state(&stored)?;
+    // A locally disabled profile may never carry open intent, including from older or hand-edited
+    // state. Normalize it off in memory; the retained profile is persisted on the next save.
+    for profile in &mut stored.profiles {
+        if !profile.enabled {
+            profile.desired_open = false;
+        }
+    }
     Ok(stored)
 }
 
@@ -1834,16 +2113,26 @@ mod tests {
         profile.binary = Some(row.comm.clone());
         profile.pid_started = Some(row.started.clone());
         assert!(owned_process(&row, &profile, None));
+        assert_eq!(ownership(&row, &profile, None), Ownership::Verified);
+
+        profile.pid_started = None;
+        assert!(
+            !owned_process(&row, &profile, None),
+            "a missing start time is never adopted as ownership"
+        );
+        assert_eq!(ownership(&row, &profile, None), Ownership::Unverified);
 
         profile.pid_started = Some("Thu Nov 12 00:42:11 2026".into());
         assert!(
             !owned_process(&row, &profile, None),
             "a reused pid must not match"
         );
+        assert_eq!(ownership(&row, &profile, None), Ownership::Reused);
 
         profile.pid_started = Some(row.started.clone());
         profile.binary = Some("/Applications/Other.app/Contents/MacOS/Other".into());
         assert!(!owned_process(&row, &profile, None));
+        assert_eq!(ownership(&row, &profile, None), Ownership::Reused);
     }
 
     #[test]
@@ -1977,81 +2266,240 @@ mod tests {
         assert!(id.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 
-    #[test]
-    fn manager_view_maps_explicit_worker_and_single_account_credits() {
-        let view: manager_gateway::ManagerView = serde_json::from_value(serde_json::json!({
-            "schema": 1,
-            "receivedAt": 1.0,
-            "maxAgeSeconds": 30.0,
-            "workers": [{
-                "worker_id": "image-1",
-                "kind": "image",
-                "has_live_token": true,
-                "control": {
-                    "dispatchEnabled": false,
-                    "revision": "revision-1",
-                    "pacing": {"minSeconds": 5, "maxSeconds": 15}
-                },
-                "state": {
-                    "connection": "online",
-                    "sign_in": "signed_in",
-                    "readiness": "ready",
-                    "activity": "idle",
-                    "observed_at": 1794350000.0,
-                    "pacing": {"minSeconds": 5, "maxSeconds": 15}
-                },
-                "fresh": true,
-                "held_jobs": [],
-                "durableBusy": false,
-                "safeToClose": true
-            }],
-            "accounts": [{
-                "provider": "openai",
-                "account_id": "account-1",
-                "balance": {
-                    "value": 10.0,
-                    "unit": "credits",
-                    "source": "gateway",
-                    "observed_at": 1794350000.0
-                },
-                "fresh": true,
-                "gateway_enabled": false,
-                "workers": ["image-1"]
-            }]
-        }))
-        .expect("manager view fixture");
-        let profile = GatewayProfile {
-            id: "profile-1".into(),
-            image_worker_id: Some("image-1".into()),
-            video_worker_id: None,
-        };
-        assert!(can_dispatch(&view, &worker_ids(&profile)));
-        let reading = reading_for(&view, &profile);
-        assert_eq!(reading.connection.as_deref(), Some("online"));
-        assert_eq!(reading.activity.as_deref(), Some("idle"));
-        assert_eq!(reading.account_id.as_deref(), Some("account-1"));
-        let credits = reading.credits.expect("credits");
-        assert_eq!(credits["balance"]["value"], 10.0);
-        assert_eq!(credits["gateway_enabled"], false);
-        assert_eq!(credits["credit_buckets"], serde_json::Value::Null);
+    const NOW: f64 = 1794350060.0;
 
-        let unbound = GatewayProfile {
-            id: "profile-2".into(),
-            image_worker_id: None,
-            video_worker_id: None,
-        };
-        assert!(reading_for(&view, &unbound).account_id.is_none());
-        assert!(reading_for(&view, &unbound).credits.is_none());
-        assert!(!can_dispatch(&view, &["missing".into()]));
+    fn worker(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "worker_id": id,
+            "kind": "image",
+            "has_live_token": true,
+            "control": {"dispatchEnabled": false},
+            "state": {
+                "connection": "connected",
+                "sign_in": "signed_in",
+                "readiness": "ready",
+                "activity": "idle",
+                "observed_at": NOW - 5.0,
+                "next_eligible_at": NOW + 30.0
+            },
+            "receivedAt": NOW - 2.0,
+            "fresh": true,
+            "held_jobs": [],
+            "durableBusy": false,
+            "safeToClose": false
+        })
+    }
+
+    fn account(provider: &str, id: &str, workers: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "provider": provider,
+            "account_id": id,
+            "balance": {"value": 10.0, "unit": "credits", "source": "gateway", "observed_at": NOW - 5.0},
+            "fresh": true,
+            "gateway_enabled": true,
+            "reserved": 4.0,
+            "available": -3.0,
+            "workers": workers
+        })
+    }
+
+    fn manager_view(
+        workers: Vec<serde_json::Value>,
+        accounts: Vec<serde_json::Value>,
+    ) -> manager_gateway::ManagerView {
+        serde_json::from_value(serde_json::json!({
+            "schema": 1,
+            "receivedAt": NOW,
+            "maxAgeSeconds": 90.0,
+            "workers": workers,
+            "accounts": accounts
+        }))
+        .expect("manager view fixture")
+    }
+
+    fn profile(image: Option<&str>, video: Option<&str>) -> GatewayProfile {
+        GatewayProfile {
+            id: "profile-1".into(),
+            image_worker_id: image.map(ToString::to_string),
+            video_worker_id: video.map(ToString::to_string),
+        }
     }
 
     #[test]
-    fn worker_ids_drop_duplicates() {
-        let profile = GatewayProfile {
+    fn manager_view_aggregates_both_workers_and_exposes_gateway_spend_at_root() {
+        let view = manager_view(
+            vec![worker("image-1"), worker("video-1")],
+            vec![account("flow", "account-1", &["image-1", "video-1"])],
+        );
+        let reading = reading_for_at(&view, &profile(Some("image-1"), Some("video-1")), NOW);
+        assert_eq!(reading.connection.as_deref(), Some("connected"));
+        assert_eq!(reading.account_id.as_deref(), Some("account-1"));
+        assert_eq!(reading.observed_at, Some((NOW - 5.0).to_string()));
+        assert_eq!(reading.next_eligible_at, Some((NOW + 30.0).to_string()));
+        assert!(!reading.attention);
+
+        let root = gateway_snapshot(&sample_profile(), Some(&reading));
+        assert_eq!(root.connection, "connected");
+        assert_eq!(root.gateway_enabled, Some(true));
+        assert_eq!(root.reserved, Some(4.0));
+        assert_eq!(
+            root.available,
+            Some(-3.0),
+            "an observed available deficit stays negative"
+        );
+        let credits = reading.credits.expect("credits");
+        assert_eq!(credits["balance"]["value"], 10.0);
+        assert_eq!(credits["gateway_enabled"], true);
+    }
+
+    #[test]
+    fn stale_or_absent_worker_telemetry_stays_unknown() {
+        let mut stale = worker("image-1");
+        stale["fresh"] = serde_json::json!(false);
+        let view = manager_view(
+            vec![stale],
+            vec![account("flow", "account-1", &["image-1"])],
+        );
+        let reading = reading_for_at(&view, &profile(Some("image-1"), None), NOW);
+        assert!(reading.connection.is_none(), "stale state is not current");
+        assert!(reading.activity.is_none());
+
+        // A two-worker profile cannot claim aggregate state from only one worker.
+        let view = manager_view(
+            vec![worker("image-1")],
+            vec![account("flow", "account-1", &["image-1"])],
+        );
+        let reading = reading_for_at(&view, &profile(Some("image-1"), Some("video-1")), NOW);
+        assert!(reading.connection.is_none());
+        assert!(reading.next_eligible_at.is_none());
+
+        // A stale view is entirely unknown, including its accounts.
+        let mut view = manager_view(
+            vec![worker("image-1")],
+            vec![account("flow", "account-1", &["image-1"])],
+        );
+        view.received_at = NOW - 1000.0;
+        let reading = reading_for_at(&view, &profile(Some("image-1"), None), NOW);
+        assert!(reading.connection.is_none());
+        assert!(reading.account_id.is_none());
+        assert!(reading.credits.is_none());
+
+        let unbound = reading_for_at(&view, &profile(None, None), NOW);
+        assert!(unbound.account_id.is_none());
+        assert!(unbound.credits.is_none());
+    }
+
+    #[test]
+    fn mismatched_worker_accounts_are_unknown_and_need_attention() {
+        let view = manager_view(
+            vec![worker("image-1"), worker("video-1")],
+            vec![
+                account("flow", "account-1", &["image-1"]),
+                account("flow", "account-2", &["video-1"]),
+            ],
+        );
+        let reading = reading_for_at(&view, &profile(Some("image-1"), Some("video-1")), NOW);
+        assert!(reading.account_id.is_none());
+        assert!(reading.credits.is_none());
+        assert!(reading.gateway_enabled.is_none());
+        assert!(reading.reserved.is_none());
+        assert!(reading.available.is_none());
+        assert!(
+            reading.attention,
+            "different accounts must not share credits"
+        );
+    }
+
+    #[test]
+    fn disabled_profile_with_saved_open_intent_loads_closed_and_keeps_its_data() {
+        let state = r#"{
+            "schema": 1,
+            "next_number": 2,
+            "profiles": [
+                {"id":"0123456789abcdef01234567","number":1,"label":"A","enabled":false,"desired_open":true}
+            ],
+            "settings": {}
+        }"#;
+        let stored = parse_state(state.as_bytes()).expect("state loads");
+        assert!(!stored.profiles[0].desired_open);
+        assert_eq!(stored.profiles[0].label, "A");
+        assert_eq!(stored.profiles[0].number, 1);
+    }
+
+    #[test]
+    fn worker_bindings_freeze_only_for_a_resident_or_closing_profile() {
+        let recorded = Some("worker-a".to_string());
+        assert!(updated_binding(&recorded, Some("worker-b".into()), true).is_err());
+        assert!(updated_binding(&recorded, None, true).is_err());
+        assert_eq!(
+            updated_binding(&recorded, recorded.clone(), true).unwrap(),
+            recorded
+        );
+        // A missing initial binding may still be filled so a close is not deadlocked.
+        assert_eq!(
+            updated_binding(&None, Some("worker-a".into()), true).unwrap(),
+            Some("worker-a".to_string())
+        );
+        assert_eq!(
+            updated_binding(&recorded, Some("worker-b".into()), false).unwrap(),
+            Some("worker-b".to_string())
+        );
+    }
+
+    #[test]
+    fn cache_view_is_discarded_when_the_saved_origin_changes() {
+        let view = manager_view(vec![worker("image-1")], vec![]);
+        let mut cache = GatewayCache {
+            origin: Some("https://old.example".into()),
+            view: Some(view.clone()),
+            last_view: Some(Instant::now()),
+            ..GatewayCache::default()
+        };
+        assert!(cache.view_for(Some("https://new.example")).is_none());
+        assert!(cache.view.is_none(), "the old-origin view was invalidated");
+
+        cache.origin = Some("https://old.example".into());
+        cache.view = Some(view);
+        assert!(cache.view_for(Some("https://old.example")).is_some());
+        assert!(cache.view_for(None).is_none());
+        assert!(cache.view.is_none(), "no view survives an unset origin");
+    }
+
+    #[test]
+    fn show_targets_the_profiles_own_user_data_directory_without_extra_flags() {
+        let directory = Path::new(
+            "/Users/x/Library/Application Support/relay/browser-profiles/0123456789abcdef01234567",
+        );
+        let arg = user_data_arg(directory);
+        assert_eq!(
+            arg,
+            "--user-data-dir=/Users/x/Library/Application Support/relay/browser-profiles/0123456789abcdef01234567"
+        );
+        assert!(!arg.contains("disable"));
+        assert!(!arg.contains("original"));
+    }
+
+    #[test]
+    fn pairing_requires_the_saved_gateway_origin() {
+        assert!(required_origin(None).is_err());
+        assert_eq!(
+            required_origin(Some("https://gateway.example".into())).unwrap(),
+            "https://gateway.example"
+        );
+    }
+
+    #[test]
+    fn worker_ids_aggregate_each_explicit_binding_once() {
+        let same = GatewayProfile {
             id: "profile-1".into(),
             image_worker_id: Some("same".into()),
             video_worker_id: Some("same".into()),
         };
-        assert_eq!(worker_ids(&profile), vec!["same".to_string()]);
+        assert_eq!(worker_ids(&same), vec!["same".to_string()]);
+        let different = profile(Some("image-1"), Some("video-1"));
+        assert_eq!(
+            worker_ids(&different),
+            vec!["image-1".to_string(), "video-1".to_string()]
+        );
     }
 }
