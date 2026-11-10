@@ -39,6 +39,7 @@
   .account-meta { display: flex; align-items: center; gap: var(--space-s); flex-wrap: wrap; margin-top: var(--space-xs); color: var(--muted); font-size: var(--type-secondary); }
   .state.bad { color: var(--bad); }
   .account-status .account-meta { margin-top: 0; }
+  .account-credits { color: var(--muted); font-size: var(--type-secondary); font-variant-numeric: tabular-nums; }
 
   .account-details { padding: 0 var(--space-l) var(--space-m); }
   .account-details dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: var(--space-s) var(--space-l); max-width: 780px; margin: var(--space-m) 0; line-height: 1.5; }

@@ -110,7 +110,7 @@ export function creditsView(gateway = {}, now = Date.now()) {
   if (typeof credits !== 'object') return { known: true, balance: null, source: null, observedAt: null, resetAt: null, stale: null, buckets: [{ label: 'Reported credits', value: String(credits) }] };
   const balance = credits.balance && typeof credits.balance === 'object' ? credits.balance : null;
   const source = value(balance?.source ?? credits.source);
-  const observedAt = value(balance?.observedAt ?? credits.observed_at ?? credits.observedAt);
+  const observedAt = value(balance?.observed_at ?? balance?.observedAt ?? credits.observed_at ?? credits.observedAt);
   const resetAt = value(credits.reset_at ?? credits.resetAt);
   const raw = credits.credit_buckets ?? credits.creditBuckets ?? credits.buckets;
   const buckets = [];
@@ -121,7 +121,7 @@ export function creditsView(gateway = {}, now = Date.now()) {
       const amount = bucketValue(item);
       if (amount === null) continue;
       const unit = value(item.unit);
-      const reset = value(item.resetAt ?? item.reset_at);
+      const reset = value(item.reset_at ?? item.resetAt);
       buckets.push({
         label: id ? humanize(id) : 'Observed bucket',
         value: `${amount}${unit ? ` ${unit}` : ''}${reset ? ` · reset ${timeLabel(reset) || 'time unavailable'}` : ''}`,
@@ -134,9 +134,19 @@ export function creditsView(gateway = {}, now = Date.now()) {
   const timeUsable = observedMs !== null && observedMs <= now;
   const stale = fresh === false ? true : fresh === true && timeUsable ? false : null;
   const balanceView = balance && value(balance.value) !== null
-    ? { value: String(balance.value), unit: value(balance.unit) || '', source: value(balance.source), observedAt: value(balance.observedAt) }
+    ? { value: String(balance.value), unit: value(balance.unit) || '', source: value(balance.source), observedAt: value(balance.observed_at ?? balance.observedAt) }
     : null;
   return { known: true, balance: balanceView, source, observedAt, resetAt, stale, fresh, buckets };
+}
+
+export function creditsLine(gateway = {}, now = Date.now()) {
+  const credits = creditsView(gateway, now);
+  if (!credits.known) return 'Credits not reported';
+  if (!credits.balance) return 'Balance not reported';
+  const amount = `${credits.balance.value}${credits.balance.unit ? ` ${credits.balance.unit}` : ''}`;
+  if (credits.stale === true) return `${amount} · stale`;
+  if (credits.stale === null) return `${amount} · freshness unknown`;
+  return `${amount} · fresh`;
 }
 
 export function gatewaySpend(gateway = {}) {
@@ -223,6 +233,22 @@ export function settingsPayload(fields = {}) {
   return { memoryBudgetMb, reserveMb, maxActive, pauseMinSeconds, pauseMaxSeconds };
 }
 
+const formatAmount = (amount) => number(amount) === null ? 'Not reported' : new Intl.NumberFormat().format(number(amount));
+
+export function memorySummary(memory = {}) {
+  const used = number(memory.used_mb);
+  const budget = number(memory.budget_mb);
+  const available = number(memory.available_mb);
+  const physical = number(memory.physical_mb);
+  const parts = [used === null ? 'Measured use not reported' : `Measured use ${formatAmount(used)} MB`];
+  parts.push(budget === null ? 'budget not set' : `budget ${formatAmount(budget)} MB`);
+  if (used !== null && budget !== null) parts.push(`${formatAmount(budget - used)} MB headroom`);
+  if (number(memory.per_profile_mb) !== null) parts.push(`${formatAmount(memory.per_profile_mb)} MB per open account`);
+  if (physical !== null) parts.push(available === null ? `${formatAmount(physical)} MB physical memory; available not reported` : `${formatAmount(available)} MB available of ${formatAmount(physical)} MB physical`);
+  if (number(memory.queued)) parts.push(`${formatAmount(memory.queued)} waiting to open${value(memory.reason) ? `: ${memory.reason}` : ''}`);
+  return parts.join(' · ');
+}
+
 export function mountAccounts(invoke) {
   const $ = (id) => document.getElementById(id);
   const list = $('profiles');
@@ -243,7 +269,7 @@ export function mountAccounts(invoke) {
     $('manager-pair-error').textContent = text;
     $('manager-pair-error').hidden = !text;
   };
-  const fmt = (amount) => number(amount) === null ? 'Not reported' : new Intl.NumberFormat().format(number(amount));
+  const fmt = formatAmount;
   const setInput = (input, next) => {
     if (document.activeElement !== input) input.value = next === null || next === undefined ? '' : String(next);
   };
@@ -300,7 +326,9 @@ export function mountAccounts(invoke) {
     connectionDetail.className = 'account-meta';
     const activityState = document.createElement('span');
     activityState.className = 'state';
-    status.append(connectionState, connectionDetail, activityState);
+    const creditsRow = document.createElement('span');
+    creditsRow.className = 'account-credits';
+    status.append(connectionState, connectionDetail, activityState, creditsRow);
 
     const action = document.createElement('button');
     action.type = 'button';
@@ -394,7 +422,7 @@ export function mountAccounts(invoke) {
     details.append(summary, dl, form);
 
     li.append(row, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, action, show, fields, labelInput, imageInput, videoInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, fields, labelInput, imageInput, videoInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -413,6 +441,7 @@ export function mountAccounts(invoke) {
     const activity = activityTier(profile.gateway);
     refs.activityState.className = `state ${activity.tone}`;
     refs.activityState.textContent = activity.label;
+    refs.creditsRow.textContent = creditsLine(profile.gateway);
     const action = rowAction(profile);
     refs.action.textContent = action.label;
     refs.action.disabled = action.disabled || busyIds.has(profile.id) || busy;
@@ -510,23 +539,14 @@ export function mountAccounts(invoke) {
     const attention = profiles.filter(needsAttention).length;
     const parts = [`${profiles.length} saved ${profiles.length === 1 ? 'account' : 'accounts'}`, `${open} open`];
     if (queued) parts.push(`${queued} waiting to open`);
-    if (attention) parts.push(`${attention} need attention`);
+    if (attention) parts.push(`${attention} ${attention === 1 ? 'needs' : 'need'} attention`);
     $('accounts-summary').textContent = parts.join(' · ');
   }
 
   function renderMemory() {
     if (!snapshot) return;
-    const memory = snapshot.memory || {};
     const settings = snapshot.settings || {};
-    const parts = [];
-    parts.push(memory.used_mb === null || memory.used_mb === undefined ? 'Measured use not reported' : `Measured use ${fmt(memory.used_mb)} MB`);
-    if (memory.budget_mb === null || memory.budget_mb === undefined) parts.push('budget not set');
-    else parts.push(`budget ${fmt(memory.budget_mb)} MB`);
-    if (number(memory.used_mb) !== null && number(memory.budget_mb) !== null) parts.push(`${fmt(Math.max(0, number(memory.budget_mb) - number(memory.used_mb)))} MB headroom`);
-    if (number(memory.per_profile_mb) !== null) parts.push(`${fmt(memory.per_profile_mb)} MB per open account`);
-    if (number(memory.physical_mb) !== null) parts.push(`${fmt(memory.available_mb)} MB available of ${fmt(memory.physical_mb)} MB`);
-    if (number(memory.queued)) parts.push(`${fmt(memory.queued)} waiting to open${value(memory.reason) ? `: ${memory.reason}` : ''}`);
-    $('memory-summary').textContent = parts.join(' · ');
+    $('memory-summary').textContent = memorySummary(snapshot.memory || {});
     setInput($('memory-budget'), settings.memory_budget_mb ?? '');
     setInput($('memory-reserve'), settings.reserve_mb ?? '');
     setInput($('memory-max'), settings.max_active ?? '');

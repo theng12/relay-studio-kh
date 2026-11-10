@@ -34,6 +34,7 @@
         <button id="close-selected" type="button" disabled>Close selected</button>
         <span class="secondary">Open and close follow measured memory and Gateway safe-stop acknowledgement.</span>
       </div>
+      <p id="memory-summary" class="secondary">Memory measurements have not been read yet.</p>
 
       <div id="account-head" class="account-head" aria-hidden="true" hidden><span></span><span>Account</span><span>Connection · Activity</span><span></span></div>
       <ul id="profiles" class="account-list" aria-label="Saved browser accounts" hidden></ul>
@@ -42,7 +43,6 @@
 
       <details class="disclosure" id="memory-disclosure">
         <summary>Memory and pacing</summary>
-        <p id="memory-summary" class="secondary">Memory measurements have not been read yet.</p>
         <form id="manager-settings">
           <div class="edit-grid">
             <label class="field">Memory budget (MB)<input id="memory-budget" type="number" min="1" step="1" placeholder="Measured use"></label>

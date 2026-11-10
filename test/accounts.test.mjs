@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
-  activityTier, closableIds, connectionTier, creditsView, gatewaySpend, needsAttention, openableIds,
+  activityTier, closableIds, connectionTier, creditsLine, creditsView, gatewaySpend, memorySummary, needsAttention, openableIds,
   pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
@@ -109,9 +109,9 @@ test('credits follow the Gateway balance/credit_buckets shape without summing wo
   const now = Date.parse('2026-11-11T12:00:00Z');
   assert.equal(creditsView({ credits: null }, now).known, false);
   const fresh = creditsView({ credits: {
-    balance: { value: 0, unit: 'credits', source: 'flow.balance', observedAt: '2026-11-11T11:59:00Z' },
+    balance: { value: 0, unit: 'credits', source: 'flow.balance', observed_at: '2026-11-11T11:59:00Z' },
     fresh: true,
-    credit_buckets: [{ id: 'image', value: 4, unit: 'credits' }, { id: 'video', value: 4, unit: 'credits' }],
+    credit_buckets: [{ id: 'image', value: 4, unit: 'credits', reset_at: '2026-11-11T13:00:00Z' }, { id: 'video', value: 4, unit: 'credits' }],
   } }, now);
   assert.equal(fresh.known, true);
   assert.equal(fresh.stale, false);
@@ -119,7 +119,13 @@ test('credits follow the Gateway balance/credit_buckets shape without summing wo
   assert.equal(fresh.balance.unit, 'credits');
   assert.equal(fresh.source, 'flow.balance');
   assert.deepEqual(fresh.buckets.map((bucket) => bucket.label), ['Image', 'Video']);
+  assert.match(fresh.buckets[0].value, /reset /);
   assert.equal('total' in fresh, false);
+  assert.equal(creditsLine({ credits: null }, now), 'Credits not reported');
+  assert.equal(creditsLine({ credits: { balance: null } }, now), 'Balance not reported');
+  assert.equal(creditsLine({ credits: { balance: { value: 2, unit: 'credits', observed_at: '2026-11-11T11:59:00Z' }, fresh: true } }, now), '2 credits · fresh');
+  assert.equal(creditsLine({ credits: { balance: { value: 2, unit: 'credits', observed_at: '2026-11-11T11:59:00Z' }, fresh: false } }, now), '2 credits · stale');
+  assert.equal(creditsLine({ credits: { balance: { value: 2, unit: 'credits', observed_at: '2026-11-11T11:59:00Z' } } }, now), '2 credits · freshness unknown');
   const stale = creditsView({ credits: { balance: null, fresh: false, observed_at: '2026-11-11T11:00:00Z', reset_at: null } }, now);
   assert.equal(stale.stale, true);
   assert.equal(stale.balance, null);
@@ -159,6 +165,17 @@ test('settings payload keeps zero pacing, maps blanks to null and rejects invali
   assert.throws(() => settingsPayload({ reserveMb: '0', pauseMinSeconds: '', pauseMaxSeconds: '5' }), /required/);
 });
 
+test('memory readout keeps deficits negative and never turns missing measurements into zero', () => {
+  const summary = memorySummary({ used_mb: 5000, budget_mb: 4096, available_mb: -100, physical_mb: 8192, per_profile_mb: 512, queued: 1, reason: 'Below reserve' });
+  assert.match(summary, /-904 MB headroom/);
+  assert.match(summary, /-100 MB available of/);
+  assert.match(summary, /1 waiting to open: Below reserve/);
+  const unknown = memorySummary({});
+  assert.doesNotMatch(unknown, /headroom/);
+  assert.match(unknown, /Measured use not reported/);
+  assert.match(unknown, /budget not set/);
+});
+
 test('label input is one account per non-empty line', () => {
   assert.deepEqual(parseLabels(' Studio\n\n  Draft \r\n'), ['Studio', 'Draft']);
   assert.deepEqual(parseLabels('   '), []);
@@ -171,6 +188,9 @@ test('desktop surface keeps native commands, password pairing and no browser tok
     assert.match(html, new RegExp(`id="${id}"`), `missing control ${id}`);
   }
   assert.match(html, /id="manager-token" type="password" autocomplete="off"/);
+  const tokenTag = html.match(/<input id="manager-token"[^>]*>/)[0];
+  assert.doesNotMatch(tokenTag, /PASSWORD_|\{\{|\}\}/);
+  assert.ok(html.indexOf('id="memory-summary"') < html.indexOf('id="memory-disclosure"'), 'memory readout must sit outside the disclosure');
   assert.equal(html.includes('localStorage'), false);
   const accounts = await load('../desktop/accounts.mjs');
   const app = await load('../desktop/app.mjs');
