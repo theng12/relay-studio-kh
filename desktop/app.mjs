@@ -1,10 +1,12 @@
 import info from './app-info.mjs';
+import { mountAccounts } from './accounts.mjs';
 import { createRecovery } from './recovery.mjs';
 import { setupExtensions } from './setup.mjs';
 
 const $ = (id) => document.getElementById(id);
 const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
+const accounts = mountAccounts(invoke);
 setupExtensions(invoke, showError);
 let loginChanged = false;
 $('start-at-login').addEventListener('change', () => { loginChanged = true; });
@@ -55,7 +57,9 @@ try {
   await window.__TAURI__.event.listen('relay-error', event => showError(event.payload));
   await loadSettings();
   await tick();
+  await accounts.refresh();
   setInterval(tick, 15000);
+  setInterval(() => accounts.refresh(), 5000);
 } catch (error) {
   showError(error);
   $('save').disabled = true;
