@@ -1,20 +1,48 @@
 """Disposable real-Gateway fixture. No lifespan, provider calls, or production state."""
 import base64
 import hashlib
+import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
 import threading
 from unittest.mock import patch
 
-GATEWAY = Path(os.environ.get('RELAY_GATEWAY_SOURCE', '/build/Developer/gateway-kh/repository')).resolve()
-EXPECTED = os.environ.get('RELAY_GATEWAY_COMMIT', '5b0ed72')
-head = subprocess.check_output(['git', '-C', str(GATEWAY), 'rev-parse', 'HEAD'], text=True).strip()
-if not head.startswith(EXPECTED):
-    raise RuntimeError('Gateway candidate changed; review it before updating the proof pin.')
-workspace = Path(os.environ.get('RELAY_PROOF_ROOT', '/build/Developer/_orchestra/relay-lead/worker-contract-20261109'))
+LOCK = json.loads(Path(__file__).with_name('gateway-proof-lock.json').read_text())
+if LOCK.get('schema') != 1 or LOCK.get('status') != 'reviewed-merged':
+    raise RuntimeError('Gateway proof is pending review of the final merged source; no fixture was started.')
+GATEWAY = Path(os.environ.get('RELAY_GATEWAY_SOURCE', '/build/Developer/My Own Apps/gateway-kh/repository')).resolve()
+EXPECTED = LOCK['gateway']['commit']
+SOURCE_FILES = ('gateway/extension_workers.py', 'gateway/adapters/chrome_extension.py')
+if not isinstance(EXPECTED, str) or not re.fullmatch(r'[0-9a-f]{40}', EXPECTED):
+    raise RuntimeError('The reviewed Gateway proof lock needs an exact commit.')
+if set(LOCK['gateway']['source_hashes']) != set(SOURCE_FILES) or any(
+        not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value)
+        for value in LOCK['gateway']['source_hashes'].values()):
+    raise RuntimeError('The reviewed Gateway proof lock needs exact source hashes.')
+if os.environ.get('RELAY_GATEWAY_COMMIT', EXPECTED) != EXPECTED:
+    raise RuntimeError('RELAY_GATEWAY_COMMIT cannot override the reviewed proof lock.')
+
+
+def verified_gateway_source():
+    def git(*args):
+        return subprocess.check_output(['git', '--no-optional-locks', '-C', str(GATEWAY), *args], text=True).strip()
+    if git('rev-parse', 'HEAD') != EXPECTED or git('status', '--porcelain', '--untracked-files=normal'):
+        raise RuntimeError('Gateway proof requires the exact reviewed clean source.')
+    if subprocess.run(['git', '-C', str(GATEWAY), 'merge-base', '--is-ancestor', EXPECTED, 'refs/heads/main'],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        raise RuntimeError('The reviewed Gateway proof commit is not merged into main.')
+    hashes = {name: hashlib.sha256((GATEWAY / name).read_bytes()).hexdigest() for name in SOURCE_FILES}
+    if hashes != LOCK['gateway']['source_hashes']:
+        raise RuntimeError('Gateway proof source hashes differ from the reviewed lock.')
+    return {'gateway_commit': EXPECTED, 'source_hashes': hashes}
+
+
+verified_gateway_source()
+workspace = Path(os.environ.get('RELAY_PROOF_ROOT', str(Path(__file__).resolve().parents[2] / '_evidence/worker-contract-20261109'))).resolve()
 if not workspace.is_dir():
     raise RuntimeError('The configured isolated test workspace is unavailable.')
 print('Creating isolated Gateway proof storage.', flush=True)
@@ -72,10 +100,8 @@ runs = {}
 
 @api.app.get('/__relay_proof/info')
 def info():
-    return {'fixture': True, 'gateway_commit': head, 'root': str(ROOT),
-            'model': TEXT.model_id, 'duration': TEXT.duration_min,
-            'source_hashes': {name: hashlib.sha256((GATEWAY / name).read_bytes()).hexdigest()
-                              for name in ['gateway/extension_workers.py', 'gateway/adapters/chrome_extension.py']}}
+    return {'fixture': True, **verified_gateway_source(), 'root': str(ROOT),
+            'model': TEXT.model_id, 'duration': TEXT.duration_min}
 
 @api.app.post('/__relay_proof/offer')
 def offer(mode: str = 'text'):
@@ -119,5 +145,5 @@ def settled(row_id: str):
             'unknown': row.get('recovery_state') == RECOVERY_UNKNOWN, 'artifacts': artifacts}
 
 if __name__ == '__main__':
-    print(f'Relay isolated Gateway {head[:7]} on loopback7916; data retained at {ROOT}', flush=True)
+    print(f'Relay isolated Gateway {EXPECTED[:7]} on loopback7916; data retained at {ROOT}', flush=True)
     uvicorn.run(api.app, host='127.0.0.1', port=7916, lifespan='off', access_log=False, log_level='warning')

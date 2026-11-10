@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "status": "pending-final-merged-gateway",
+  "gateway": {
+    "commit": null,
+    "source_hashes": {
+      "gateway/extension_workers.py": null,
+      "gateway/adapters/chrome_extension.py": null
+    }
+  },
+  "video": {
+    "commit": "eeb06f8a8d2cf76c2104892f254af79976c31b93",
+    "client_sha256": "091435f100b22603c3f7b9f8d2decd0dcd398ce2f144d210b1a32bc1695db977"
+  }
+}
