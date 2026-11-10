@@ -174,6 +174,8 @@ pub(crate) struct WorkerControl {
     pub dispatch_enabled: bool,
     #[serde(rename = "closeRequested")]
     pub close_requested: Option<bool>,
+    #[serde(rename = "credentialGeneration")]
+    pub credential_generation: Option<String>,
     pub revision: Option<String>,
     #[serde(rename = "requestedAt")]
     pub requested_at: Option<f64>,
@@ -249,6 +251,17 @@ impl ManagerView {
             }
             validate_optional_epoch(worker.received_at)?;
             validate_optional_epoch(worker.control.requested_at)?;
+            if worker
+                .control
+                .credential_generation
+                .as_deref()
+                .is_some_and(|generation| !valid_id(generation))
+            {
+                return Err(ManagerError::InvalidView);
+            }
+            if worker.kind.as_deref().is_some_and(|kind| !valid_id(kind)) {
+                return Err(ManagerError::InvalidView);
+            }
             if let Some(pacing) = &worker.control.pacing {
                 pacing.validate()?;
             }
@@ -403,40 +416,86 @@ pub(crate) struct CloseSafety {
     pub reason: Option<String>,
 }
 
-/// Caller must pass every worker id sharing the profile. A pause-only control
-/// call is never close permission, and a stale/missing acknowledgement waits.
-pub(crate) fn close_safety(view: &ManagerView, worker_ids: &[String]) -> CloseSafety {
-    close_safety_at(view, worker_ids, now_epoch())
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct ExpectedWorkerBinding {
+    pub worker_id: String,
+    pub kind: String,
+    pub credential_generation: String,
 }
 
-pub(crate) fn close_safety_at(
+/// Bind every worker sharing the profile to the exact expected kind and
+/// credential generation. A legacy or re-paired worker without that evidence
+/// stays pending until the caller reconciles the profile binding.
+pub(crate) fn close_safety_for_bindings(
     view: &ManagerView,
-    worker_ids: &[String],
+    bindings: &[ExpectedWorkerBinding],
+) -> CloseSafety {
+    close_safety_for_bindings_at(view, bindings, now_epoch())
+}
+
+pub(crate) fn close_safety_for_bindings_at(
+    view: &ManagerView,
+    bindings: &[ExpectedWorkerBinding],
     now_epoch: f64,
 ) -> CloseSafety {
+    let waiting_on: Vec<String> = bindings
+        .iter()
+        .map(|binding| binding.worker_id.clone())
+        .collect();
     if !view_time_ok(view, now_epoch) {
         return CloseSafety {
             safe_to_close: false,
-            waiting_on: worker_ids.to_vec(),
+            waiting_on,
             reason: Some("Manager view is stale or dated in the future.".into()),
         };
     }
-    let mut waiting_on = Vec::new();
-    let mut reasons = Vec::new();
-    if worker_ids.is_empty() {
+    if bindings.is_empty() || bindings.len() > MAX_WORKERS {
         return CloseSafety {
             safe_to_close: false,
             waiting_on,
-            reason: Some("No worker IDs were supplied.".into()),
+            reason: Some("No valid generation-bound worker bindings were supplied.".into()),
         };
     }
-    for id in worker_ids {
+    let mut seen = HashSet::new();
+    for binding in bindings {
+        if !valid_id(&binding.worker_id)
+            || !valid_id(&binding.kind)
+            || !valid_id(&binding.credential_generation)
+            || !seen.insert(binding.worker_id.as_str())
+        {
+            return CloseSafety {
+                safe_to_close: false,
+                waiting_on,
+                reason: Some(
+                    "Worker bindings must have one nonempty, unique id, kind and credential generation."
+                        .into(),
+                ),
+            };
+        }
+    }
+    let mut waiting_on = Vec::new();
+    let mut reasons = Vec::new();
+    for binding in bindings {
+        let id = &binding.worker_id;
         let Some(worker) = view.workers.iter().find(|worker| &worker.worker_id == id) else {
             waiting_on.push(id.clone());
             reasons.push(format!("{id}: not present in the manager view"));
             continue;
         };
         let mut problems = Vec::new();
+        if !worker.has_live_token {
+            problems.push("worker has no live credential");
+        }
+        if worker.kind.as_deref() != Some(binding.kind.as_str()) {
+            problems.push("worker kind does not match the profile binding");
+        }
+        match worker.control.credential_generation.as_deref() {
+            None | Some("") => problems.push("credential generation is not reported"),
+            Some(generation) if generation != binding.credential_generation => {
+                problems.push("credential generation does not match the profile binding")
+            }
+            Some(_) => {}
+        }
         match worker.received_at {
             None => problems.push("worker receive time is not reported"),
             Some(received_at) if !received_at.is_finite() || received_at <= 0.0 => {
@@ -508,6 +567,27 @@ pub(crate) fn close_safety_at(
             Some(reasons.join("; "))
         },
     }
+}
+
+fn generation_unbound(worker_ids: &[String]) -> CloseSafety {
+    CloseSafety {
+        safe_to_close: false,
+        waiting_on: worker_ids.to_vec(),
+        reason: Some("Generation-bound worker bindings are required for close.".into()),
+    }
+}
+
+/// Legacy unbound callers never authorize close; use `close_safety_for_bindings`.
+pub(crate) fn close_safety(_view: &ManagerView, worker_ids: &[String]) -> CloseSafety {
+    generation_unbound(worker_ids)
+}
+
+pub(crate) fn close_safety_at(
+    _view: &ManagerView,
+    worker_ids: &[String],
+    _now_epoch: f64,
+) -> CloseSafety {
+    generation_unbound(worker_ids)
 }
 
 fn normalize_origin(value: &str) -> Result<String, ManagerError> {
@@ -908,6 +988,7 @@ mod tests {
             "control": {
                 "dispatchEnabled": false,
                 "closeRequested": true,
+                "credentialGeneration": "generation-1",
                 "revision": "revision-1",
                 "requestedAt": 1794350000.0,
                 "pacing": {"minSeconds": 5, "maxSeconds": 15}
@@ -934,6 +1015,16 @@ mod tests {
             "safeToClose": true,
             "accountBinding": null
         })
+    }
+
+    fn bindings(ids: &[&str]) -> Vec<ExpectedWorkerBinding> {
+        ids.iter()
+            .map(|id| ExpectedWorkerBinding {
+                worker_id: (*id).into(),
+                kind: "video".into(),
+                credential_generation: "generation-1".into(),
+            })
+            .collect()
     }
 
     fn view(workers: Vec<Value>) -> ManagerView {
@@ -1008,47 +1099,55 @@ mod tests {
         ] {
             assert_eq!(parse_view(document).err(), Some(ManagerError::InvalidView));
         }
+        let mut empty_generation = worker("a");
+        empty_generation["control"]["credentialGeneration"] = json!("");
+        assert_eq!(
+            parse_view(json!({"schema": 1, "receivedAt": 1.0, "maxAgeSeconds": 90, "workers": [empty_generation], "accounts": []})).err(),
+            Some(ManagerError::InvalidView)
+        );
     }
 
     #[test]
     fn close_is_safe_only_with_fresh_pause_ack_revision_and_no_work() {
-        let ids = vec!["profile-a-video".to_string()];
-        let safe = close_safety_at(&view(vec![worker("profile-a-video")]), &ids, NOW);
+        let ids = bindings(&["profile-a-video"]);
+        let safe = close_safety_for_bindings_at(&view(vec![worker("profile-a-video")]), &ids, NOW);
         assert!(safe.safe_to_close);
         assert!(safe.waiting_on.is_empty());
 
         let mut stale = worker("profile-a-video");
         stale["fresh"] = json!(false);
-        assert!(!close_safety_at(&view(vec![stale]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![stale]), &ids, NOW).safe_to_close);
 
         let mut running = worker("profile-a-video");
         running["current_job"] = json!({"jobId": "job-1"});
-        assert!(!close_safety_at(&view(vec![running]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![running]), &ids, NOW).safe_to_close);
 
         let mut held = worker("profile-a-video");
         held["held_jobs"] = json!([{"jobId": "job-2"}]);
-        assert!(!close_safety_at(&view(vec![held]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![held]), &ids, NOW).safe_to_close);
 
         let mut durable = worker("profile-a-video");
         durable["durableBusy"] = json!(true);
-        assert!(!close_safety_at(&view(vec![durable]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![durable]), &ids, NOW).safe_to_close);
 
         let mut not_paused = worker("profile-a-video");
         not_paused["state"]["paused"] = json!(false);
-        assert!(!close_safety_at(&view(vec![not_paused]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![not_paused]), &ids, NOW).safe_to_close);
 
         let mut wrong_revision = worker("profile-a-video");
         wrong_revision["state"]["control_revision"] = json!("revision-0");
-        assert!(!close_safety_at(&view(vec![wrong_revision]), &ids, NOW).safe_to_close);
+        assert!(
+            !close_safety_for_bindings_at(&view(vec![wrong_revision]), &ids, NOW).safe_to_close
+        );
 
         let mut pause_only = worker("profile-a-video");
         pause_only["control"]["closeRequested"] = json!(false);
-        assert!(!close_safety_at(&view(vec![pause_only]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![pause_only]), &ids, NOW).safe_to_close);
 
         assert!(
-            !close_safety_at(
+            !close_safety_for_bindings_at(
                 &view(vec![worker("profile-a-video")]),
-                &["missing".into()],
+                &bindings(&["missing"]),
                 NOW
             )
             .safe_to_close
@@ -1056,13 +1155,61 @@ mod tests {
     }
 
     #[test]
+    fn close_requires_generation_and_kind_binding() {
+        let ids = bindings(&["profile-a-video"]);
+        let safe_view = view(vec![worker("profile-a-video")]);
+        assert!(close_safety_for_bindings_at(&safe_view, &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&safe_view, &[], NOW).safe_to_close);
+        assert!(
+            !close_safety_for_bindings_at(
+                &safe_view,
+                &bindings(&["profile-a-video", "profile-a-video"]),
+                NOW
+            )
+            .safe_to_close
+        );
+        assert!(!close_safety(&safe_view, &["profile-a-video".into()]).safe_to_close);
+        assert!(!close_safety_at(&safe_view, &["profile-a-video".into()], NOW).safe_to_close);
+
+        let mut missing = worker("profile-a-video");
+        missing["control"]
+            .as_object_mut()
+            .unwrap()
+            .remove("credentialGeneration");
+        assert!(!close_safety_for_bindings_at(&view(vec![missing]), &ids, NOW).safe_to_close);
+
+        let mut legacy = worker("profile-a-video");
+        legacy["control"]["credentialGeneration"] = json!(null);
+        assert!(!close_safety_for_bindings_at(&view(vec![legacy]), &ids, NOW).safe_to_close);
+
+        let mut changed = worker("profile-a-video");
+        changed["control"]["credentialGeneration"] = json!("generation-2");
+        assert!(!close_safety_for_bindings_at(&view(vec![changed]), &ids, NOW).safe_to_close);
+
+        let mut wrong_kind = worker("profile-a-video");
+        wrong_kind["kind"] = json!("image");
+        assert!(!close_safety_for_bindings_at(&view(vec![wrong_kind]), &ids, NOW).safe_to_close);
+
+        let mut revoked = worker("profile-a-video");
+        revoked["has_live_token"] = json!(false);
+        assert!(!close_safety_for_bindings_at(&view(vec![revoked]), &ids, NOW).safe_to_close);
+
+        let wrong_binding = vec![ExpectedWorkerBinding {
+            worker_id: "profile-a-video".into(),
+            kind: "image".into(),
+            credential_generation: "generation-1".into(),
+        }];
+        assert!(!close_safety_for_bindings_at(&safe_view, &wrong_binding, NOW).safe_to_close);
+    }
+
+    #[test]
     fn close_requires_observed_safe_activity() {
-        let ids = vec!["profile-a-video".to_string()];
+        let ids = bindings(&["profile-a-video"]);
         for activity in ["idle", "cooling", "resting", "waiting"] {
             let mut observed = worker("profile-a-video");
             observed["state"]["activity"] = json!(activity);
             assert!(
-                close_safety_at(&view(vec![observed]), &ids, NOW).safe_to_close,
+                close_safety_for_bindings_at(&view(vec![observed]), &ids, NOW).safe_to_close,
                 "activity {activity}"
             );
         }
@@ -1074,37 +1221,37 @@ mod tests {
         ] {
             let mut observed = worker("profile-a-video");
             observed["state"]["activity"] = activity;
-            assert!(!close_safety_at(&view(vec![observed]), &ids, NOW).safe_to_close);
+            assert!(!close_safety_for_bindings_at(&view(vec![observed]), &ids, NOW).safe_to_close);
         }
         let mut missing = worker("profile-a-video");
         if let Some(state) = missing["state"].as_object_mut() {
             state.remove("activity");
         }
-        assert!(!close_safety_at(&view(vec![missing]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![missing]), &ids, NOW).safe_to_close);
     }
 
     #[test]
     fn close_rejects_future_or_stale_times() {
-        let ids = vec!["profile-a-video".to_string()];
+        let ids = bindings(&["profile-a-video"]);
         let mut future_worker = worker("profile-a-video");
         future_worker["receivedAt"] = json!(NOW + 100.0);
-        assert!(!close_safety_at(&view(vec![future_worker]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![future_worker]), &ids, NOW).safe_to_close);
 
         let mut stale_worker = worker("profile-a-video");
         stale_worker["receivedAt"] = json!(NOW - 1000.0);
-        assert!(!close_safety_at(&view(vec![stale_worker]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![stale_worker]), &ids, NOW).safe_to_close);
 
         let mut missing_time = worker("profile-a-video");
         missing_time["receivedAt"] = json!(null);
-        assert!(!close_safety_at(&view(vec![missing_time]), &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view(vec![missing_time]), &ids, NOW).safe_to_close);
 
         let mut future_view = view(vec![worker("profile-a-video")]);
         future_view.received_at = NOW + 100.0;
-        assert!(!close_safety_at(&future_view, &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&future_view, &ids, NOW).safe_to_close);
 
         let mut stale_view = view(vec![worker("profile-a-video")]);
         stale_view.received_at = NOW - 1000.0;
-        assert!(!close_safety_at(&stale_view, &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&stale_view, &ids, NOW).safe_to_close);
 
         assert!(view(vec![worker("profile-a-video")])
             .validate_times(NOW)
@@ -1301,7 +1448,7 @@ mod tests {
 
     #[test]
     fn first_pairing_with_null_revision_is_valid_but_never_close_safe() {
-        let ids = vec!["profile-a-video".to_string()];
+        let ids = bindings(&["profile-a-video"]);
         let mut first = worker("profile-a-video");
         first["control"]["revision"] = json!(null);
         first["control"]["requestedAt"] = json!(null);
@@ -1312,7 +1459,7 @@ mod tests {
         first["safeToClose"] = json!(false);
         let view = view(vec![first]);
         assert_eq!(view.workers[0].control.revision, None);
-        assert!(!close_safety_at(&view, &ids, NOW).safe_to_close);
+        assert!(!close_safety_for_bindings_at(&view, &ids, NOW).safe_to_close);
     }
 
     #[test]
@@ -1329,7 +1476,11 @@ mod tests {
         let view = view(vec![worker("profile-a-video"), revoked]);
         assert_eq!(view.workers.len(), 2);
         assert_eq!(view.workers[1].kind, None);
-        assert!(!close_safety_at(&view, &["profile-b-video".into()], NOW).safe_to_close);
-        assert!(close_safety_at(&view, &["profile-a-video".into()], NOW).safe_to_close);
+        assert!(
+            !close_safety_for_bindings_at(&view, &["profile-b-video".into()], NOW).safe_to_close
+        );
+        assert!(
+            close_safety_for_bindings_at(&view, &["profile-a-video".into()], NOW).safe_to_close
+        );
     }
 }
