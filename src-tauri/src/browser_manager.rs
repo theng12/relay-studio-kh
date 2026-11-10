@@ -229,7 +229,7 @@ impl LiveGateway {
         let origin = gateway_origin(&self.app);
         let mut cache = self.cache();
         // Validate against the saved origin before anything else can consume the cache.
-        cache.view_for(origin.as_deref());
+        let _ = cache.view_for(origin.as_deref());
         if cache.refreshing {
             return;
         }
@@ -261,7 +261,7 @@ impl LiveGateway {
 
     fn remember(&self, origin: String, view: manager_gateway::ManagerView) {
         let mut cache = self.cache();
-        cache.view_for(Some(origin.as_str()));
+        let _ = cache.view_for(Some(origin.as_str()));
         cache.publish_view(view);
         cache.closes.clear();
     }
