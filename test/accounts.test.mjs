@@ -68,7 +68,8 @@ test('open and close actions follow desired intent and never replay a pending cl
 
 test('attention keeps a direct show action even while the profile is already open', () => {
   assert.equal(showAction(profile(1, { attention: true, process_state: 'open' })).visible, true);
-  assert.equal(showAction(profile(1, { attention: true, desired_open: true })).visible, true);
+  assert.equal(showAction(profile(1, { attention: true, desired_open: true })).visible, false);
+  assert.equal(showAction(profile(1, { attention: true, desired_open: true, process_state: 'queued' })).visible, false);
   assert.equal(showAction(profile(1, { attention: true })).visible, false);
   assert.equal(showAction(profile(1, { process_state: 'open' })).visible, false);
   assert.equal(showAction(profile(1, { attention: true, process_state: 'open', close_pending: true })).disabled, true);
@@ -161,8 +162,20 @@ test('settings payload keeps zero pacing, maps blanks to null and rejects invali
   });
   assert.throws(() => settingsPayload({ reserveMb: '0', pauseMinSeconds: '15', pauseMaxSeconds: '5' }), /same as or greater than/);
   assert.throws(() => settingsPayload({ reserveMb: '-1', pauseMinSeconds: '0', pauseMaxSeconds: '5' }), /0 or more/);
-  assert.throws(() => settingsPayload({ reserveMb: '0', pauseMinSeconds: '1.5', pauseMaxSeconds: '5' }), /whole number/);
+  assert.throws(() => settingsPayload({ reserveMb: '0', pauseMinSeconds: '-0.5', pauseMaxSeconds: '5' }), /zero or more/);
   assert.throws(() => settingsPayload({ reserveMb: '0', pauseMinSeconds: '', pauseMaxSeconds: '5' }), /required/);
+});
+
+test('saving memory preferences preserves finite fractional pacing overrides', () => {
+  const fields = { memoryBudgetMb: '4096', reserveMb: '512', maxActive: '', pauseMinSeconds: '1.5', pauseMaxSeconds: '2.75' };
+  const payload = settingsPayload(fields);
+  assert.equal(payload.memoryBudgetMb, 4096);
+  assert.equal(payload.pauseMinSeconds, 1.5);
+  assert.equal(payload.pauseMaxSeconds, 2.75);
+  for (const invalid of ['Infinity', 'NaN', '-0.1']) {
+    assert.throws(() => settingsPayload({ ...fields, pauseMinSeconds: invalid }), /zero or more/);
+    assert.throws(() => settingsPayload({ ...fields, pauseMaxSeconds: invalid }), /zero or more/);
+  }
 });
 
 test('memory readout keeps deficits negative and never turns missing measurements into zero', () => {

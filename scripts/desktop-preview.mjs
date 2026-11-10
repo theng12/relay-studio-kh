@@ -54,6 +54,11 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
       p.process_id=p.process_state==='open'?10000+p.number:null;
       p.memory_mb=p.process_state==='open'?manager.memory.per_profile_mb:null;
     }
+  } else if (name === 'manager_show_profiles') {
+    for (const id of args.profileIds) {
+      const p=manager.profiles.find(p=>p.id===id);
+      if(!p||p.process_state!=='open'||!p.process_id) throw Error('Fixture: no verified resident profile to show.');
+    }
   } else if (name === 'manager_close_profiles') {
     for (const p of manager.profiles.filter(p=>args.profileIds.includes(p.id))) {
       p.desired_open=false;

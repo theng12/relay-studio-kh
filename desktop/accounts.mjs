@@ -194,10 +194,10 @@ export function rowAction(profile = {}) {
   return { kind: 'open', label: 'Open', disabled: false };
 }
 
-// Attention always gets a direct action that opens or focuses the exact native-owned profile.
+// Show only targets resident profiles; queued accounts still obey memory admission.
 export function showAction(profile = {}) {
   const state = value(profile.process_state);
-  const visible = needsAttention(profile) && (profile.desired_open === true || LIVE_STATES.has(state));
+  const visible = needsAttention(profile) && ['open', 'opening'].includes(state);
   return { visible, disabled: Boolean(profile.close_pending) || state === 'closing', label: 'Show profile' };
 }
 
@@ -223,12 +223,20 @@ function optionalWholeNumber(raw, name, minimum) {
   return wholeNumber(raw, name, minimum);
 }
 
+function pauseSeconds(raw, name) {
+  const text = String(raw ?? '').trim();
+  if (!text) throw new Error(`${name} is required.`);
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${name} must be zero or more seconds.`);
+  return parsed;
+}
+
 export function settingsPayload(fields = {}) {
   const memoryBudgetMb = optionalWholeNumber(fields.memoryBudgetMb, 'Memory budget', 1);
   const reserveMb = wholeNumber(fields.reserveMb, 'Memory reserve', 0);
   const maxActive = optionalWholeNumber(fields.maxActive, 'Maximum open accounts', 1);
-  const pauseMinSeconds = wholeNumber(fields.pauseMinSeconds, 'Pause minimum', 0);
-  const pauseMaxSeconds = wholeNumber(fields.pauseMaxSeconds, 'Pause maximum', 0);
+  const pauseMinSeconds = pauseSeconds(fields.pauseMinSeconds, 'Pause minimum');
+  const pauseMaxSeconds = pauseSeconds(fields.pauseMaxSeconds, 'Pause maximum');
   if (pauseMaxSeconds < pauseMinSeconds) throw new Error('Pause maximum must be the same as or greater than the pause minimum.');
   return { memoryBudgetMb, reserveMb, maxActive, pauseMinSeconds, pauseMaxSeconds };
 }
@@ -259,6 +267,10 @@ export function mountAccounts(invoke) {
   let busy = false;
   let refreshing = false;
   const busyIds = new Set();
+  const dirtyForms = new WeakSet();
+  const markDirty = (event) => { if (event.target.form) dirtyForms.add(event.target.form); };
+  list.addEventListener('input', markDirty);
+  $('manager-settings').addEventListener('input', markDirty);
 
   const setError = (message) => {
     $('accounts-error').textContent = message ? String(message) : '';
@@ -271,7 +283,7 @@ export function mountAccounts(invoke) {
   };
   const fmt = formatAmount;
   const setInput = (input, next) => {
-    if (document.activeElement !== input) input.value = next === null || next === undefined ? '' : String(next);
+    if (document.activeElement !== input && !dirtyForms.has(input.form)) input.value = next === null || next === undefined ? '' : String(next);
   };
 
   function setControls() {
@@ -342,7 +354,7 @@ export function mountAccounts(invoke) {
     const show = document.createElement('button');
     show.type = 'button';
     show.textContent = 'Show profile';
-    show.addEventListener('click', () => runCommand('manager_open_profiles', { profileIds: [id] }, [id]));
+    show.addEventListener('click', () => runCommand('manager_show_profiles', { profileIds: [id] }, [id]));
     const actionCell = document.createElement('div');
     actionCell.className = 'account-actions';
     actionCell.append(action, show);
@@ -378,7 +390,7 @@ export function mountAccounts(invoke) {
         enabled: enabledInput.checked,
         imageWorkerId: imageInput.value,
         videoWorkerId: videoInput.value,
-      }));
+      }), form);
     });
     const grid = document.createElement('div');
     grid.className = 'edit-grid';
@@ -457,7 +469,7 @@ export function mountAccounts(invoke) {
     setInput(refs.labelInput, value(profile.label) || '');
     setInput(refs.imageInput, value(gateway.image_worker_id) || '');
     setInput(refs.videoInput, value(gateway.video_worker_id) || '');
-    if (document.activeElement !== refs.enabledInput) refs.enabledInput.checked = Boolean(profile.enabled);
+    if (document.activeElement !== refs.enabledInput && !dirtyForms.has(refs.enabledInput.form)) refs.enabledInput.checked = Boolean(profile.enabled);
     refs.fields.desired.textContent = profile.enabled ? 'Enabled locally; Chrome profile only.' : 'Disabled locally. The saved entry stays.';
     refs.fields.process.textContent = `${process.label}${process.detail ? ` — ${process.detail}` : ''}`;
     refs.fields.processId.textContent = value(profile.process_id) || 'Not running';
@@ -573,7 +585,6 @@ export function mountAccounts(invoke) {
       return;
     }
     snapshot = next;
-    setError(null);
     renderSummary();
     renderMemory();
     renderPairing();
@@ -619,15 +630,19 @@ export function mountAccounts(invoke) {
     }
   }
 
-  async function updateProfile(id, fields) {
+  async function updateProfile(id, fields, form) {
     if (busy) return;
     busy = true; busyIds.add(id); setError(null); renderList();
-    try { render(await invoke('manager_update_profile', { profileId: id, ...fields })); }
+    try {
+      const next = await invoke('manager_update_profile', { profileId: id, ...fields });
+      dirtyForms.delete(form);
+      render(next);
+    }
     catch (error) { await reload(); setError(error); }
     finally { busy = false; busyIds.delete(id); renderList(); setControls(); }
   }
 
-  $('refresh-accounts').addEventListener('click', refresh);
+  $('refresh-accounts').addEventListener('click', () => { setError(null); refresh(); });
   $('add-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const labels = parseLabels($('add-labels').value);
@@ -664,7 +679,9 @@ export function mountAccounts(invoke) {
     catch (error) { setError(error); return; }
     busy = true; setControls(); setError(null);
     try {
-      render(await invoke('manager_save_settings', payload));
+      const next = await invoke('manager_save_settings', payload);
+      dirtyForms.delete($('manager-settings'));
+      render(next);
       $('settings-state').textContent = 'Saved. Values shown here came back from the native manager.';
     } catch (error) { setError(error); await reload(); }
     finally { busy = false; setControls(); }
