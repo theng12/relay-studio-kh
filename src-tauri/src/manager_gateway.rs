@@ -1477,10 +1477,11 @@ mod tests {
         assert_eq!(view.workers.len(), 2);
         assert_eq!(view.workers[1].kind, None);
         assert!(
-            !close_safety_for_bindings_at(&view, &["profile-b-video".into()], NOW).safe_to_close
+            !close_safety_for_bindings_at(&view, &bindings(&["profile-b-video"]), NOW)
+                .safe_to_close
         );
         assert!(
-            close_safety_for_bindings_at(&view, &["profile-a-video".into()], NOW).safe_to_close
+            close_safety_for_bindings_at(&view, &bindings(&["profile-a-video"]), NOW).safe_to_close
         );
     }
 }
