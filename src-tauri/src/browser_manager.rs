@@ -40,6 +40,10 @@ pub(crate) struct GatewayProfile {
     pub id: String,
     pub image_worker_id: Option<String>,
     pub video_worker_id: Option<String>,
+    /// Exact normalized Gateway origin the worker generations were captured under.
+    pub binding_origin: Option<String>,
+    pub image_worker_generation: Option<String>,
+    pub video_worker_generation: Option<String>,
 }
 
 /// Authenticated per-profile readback. Missing fields stay unknown in the snapshot.
@@ -99,10 +103,12 @@ pub(crate) trait ManagerGateway: Send + Sync {
     /// refreshes asynchronously and leaves fields unknown while a read is outstanding.
     fn read(&self, profiles: &[GatewayProfile]) -> HashMap<String, GatewayReading>;
     fn support(&self) -> GatewaySupport;
-    /// Called while moving a profile to close: the adapter issues control for both paired worker
-    /// ids with `dispatchEnabled: false` and `closeRequested: true`, then returns `Safe` only
-    /// after a fresh paused acknowledgement plus `safeToClose`. Missing worker bindings must
-    /// return `NotAcknowledged`; no local flag may override that. Must return promptly.
+    /// Called while moving a profile to close: issues ONE control for the profile's explicit
+    /// image and video workers with `dispatchEnabled: false` and `closeRequested: true`, binds
+    /// that attempt to the exact saved origin, kinds and credential generations, and returns
+    /// `Safe` only after a fresh paused acknowledgement carrying THIS attempt's revision plus
+    /// `safeToClose`. Missing bindings must return `NotAcknowledged`; a cached pre-attempt
+    /// acknowledgement is never enough. Must return promptly.
     fn close_authorization(&self, profile: &GatewayProfile) -> CloseAuthorization;
 }
 
@@ -149,12 +155,26 @@ struct GatewayCache {
     refreshing: bool,
     last_view: Option<Instant>,
     closes: HashMap<String, CloseState>,
+    next_attempt: u64,
 }
 
 #[derive(Default)]
 struct CloseState {
     in_flight: bool,
     last_attempt: Option<Instant>,
+    /// Only an attempt's own response may authorize this profile's close. A cached view from
+    /// before the attempt is never enough.
+    attempt: Option<CloseAttempt>,
+    failure: Option<String>,
+}
+
+/// One close control sent for the exact origin and worker bindings saved at that moment.
+struct CloseAttempt {
+    id: u64,
+    origin: String,
+    bindings: Vec<manager_gateway::ExpectedWorkerBinding>,
+    /// Revision each worker was issued in THIS control response.
+    revisions: HashMap<String, String>,
 }
 
 impl GatewayCache {
@@ -240,6 +260,14 @@ impl LiveGateway {
         cache.last_view = None;
         cache.closes.clear();
     }
+
+    /// Cached authenticated readback with the origin it belongs to, for deliberate Save.
+    fn current_view(&self) -> Option<(String, manager_gateway::ManagerView)> {
+        let origin = gateway_origin(&self.app)?;
+        let mut cache = self.cache();
+        let view = cache.view_for(Some(origin.as_str()))?;
+        Some((origin, view))
+    }
 }
 
 impl ManagerGateway for LiveGateway {
@@ -306,38 +334,80 @@ impl ManagerGateway for LiveGateway {
     }
 
     fn close_authorization(&self, profile: &GatewayProfile) -> CloseAuthorization {
-        let ids = worker_ids(profile);
-        if ids.is_empty() {
-            return CloseAuthorization::NotAcknowledged(
-                "No image or video worker is bound to this profile; close waits.".into(),
-            );
-        }
-        let origin = gateway_origin(&self.app);
+        let Some(origin) = gateway_origin(&self.app) else {
+            return CloseAuthorization::NotAcknowledged("Save a Gateway address first.".into());
+        };
+        let expected = match expected_bindings(profile, &origin) {
+            Ok(bindings) => bindings,
+            Err(reason) => return CloseAuthorization::NotAcknowledged(reason),
+        };
         let mut cache = self.cache();
         // A view from another origin can never authorize stopping this profile's Chrome.
-        let view = cache.view_for(origin.as_deref());
-        let mut waiting = None;
-        if let Some(view) = view.as_ref() {
-            let safety = manager_gateway::close_safety(view, &ids);
-            if safety.safe_to_close {
-                return CloseAuthorization::Safe;
-            }
-            waiting = Some(close_reason(&safety));
-        }
+        let view = cache.view_for(Some(origin.as_str()));
+        // Reserve this attempt's identity before the per-profile entry borrow exists.
+        cache.next_attempt = cache.next_attempt.saturating_add(1);
+        let attempt_id = cache.next_attempt;
         let state = cache.closes.entry(profile.id.clone()).or_default();
+        // An origin or binding change makes an earlier attempt unusable, including one still in
+        // flight: its response must not publish a view or mark a later attempt complete.
+        if state
+            .attempt
+            .as_ref()
+            .is_some_and(|attempt| !attempt_is_current(attempt, &origin, &expected))
+        {
+            state.attempt = None;
+            state.failure = None;
+        }
+        if let Some(attempt) = state.attempt.take() {
+            if attempt.revisions.is_empty() {
+                state.attempt = Some(attempt);
+                return CloseAuthorization::NotAcknowledged(
+                    "Waiting for this close attempt's authenticated control response.".into(),
+                );
+            }
+            let Some(view) = view.as_ref() else {
+                state.attempt = Some(attempt);
+                return CloseAuthorization::NotAcknowledged(
+                    "Waiting for this close attempt's fresh authenticated readback.".into(),
+                );
+            };
+            if let Some(reason) = attempt_revision_mismatch(view, &attempt) {
+                // A fresh view without this attempt's revision means a later authorized
+                // control replaced it. Drop the attempt; the rate limit spaces the next one.
+                state.failure = Some(reason);
+            } else {
+                let safety = manager_gateway::close_safety_for_bindings(view, &expected);
+                if safety.safe_to_close {
+                    // Keep the completed attempt until reconcile observes the close finish.
+                    state.attempt = Some(attempt);
+                    return CloseAuthorization::Safe;
+                }
+                let reason = close_reason(&safety);
+                state.attempt = Some(attempt);
+                return CloseAuthorization::NotAcknowledged(reason);
+            }
+        }
+        let waiting = state.failure.clone().unwrap_or_else(|| {
+            "Waiting for a generation-bound close attempt for this profile.".into()
+        });
         if state.in_flight
             || state
                 .last_attempt
                 .is_some_and(|at| at.elapsed() < Duration::from_secs(5))
         {
-            return CloseAuthorization::NotAcknowledged(
-                waiting
-                    .unwrap_or_else(|| "Waiting for Gateway's fresh pause acknowledgement.".into()),
-            );
+            return CloseAuthorization::NotAcknowledged(waiting);
         }
-        let Some(origin) = origin else {
-            return CloseAuthorization::NotAcknowledged("Save a Gateway address first.".into());
-        };
+        let ids: Vec<String> = expected
+            .iter()
+            .map(|binding| binding.worker_id.clone())
+            .collect();
+        state.attempt = Some(CloseAttempt {
+            id: attempt_id,
+            origin: origin.clone(),
+            bindings: expected.clone(),
+            revisions: HashMap::new(),
+        });
+        state.failure = None;
         state.in_flight = true;
         state.last_attempt = Some(Instant::now());
         drop(cache);
@@ -348,24 +418,62 @@ impl ManagerGateway for LiveGateway {
             let mut cache = shared_cache
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            // Only the origin that sent this control may receive its result.
-            if cache.origin.as_deref() == Some(origin.as_str()) {
-                match result {
-                    Ok(view) => {
-                        cache.view = Some(view);
-                        cache.error = None;
-                        cache.last_view = Some(Instant::now());
+            let cache = &mut *cache;
+            // Only this attempt's origin and identity may publish a result.
+            if cache.origin.as_deref() != Some(origin.as_str()) {
+                return;
+            }
+            let current_id = cache
+                .closes
+                .get(&profile_id)
+                .and_then(|state| state.attempt.as_ref())
+                .map(|attempt| attempt.id);
+            if current_id != Some(attempt_id) {
+                return;
+            }
+            match result {
+                Ok(view) => {
+                    let bindings = cache
+                        .closes
+                        .get(&profile_id)
+                        .and_then(|state| state.attempt.as_ref())
+                        .map(|attempt| attempt.bindings.clone())
+                        .unwrap_or_default();
+                    let revisions = response_revisions(&view, &bindings);
+                    cache.view = Some(view);
+                    cache.error = None;
+                    cache.last_view = Some(Instant::now());
+                    if let Some(state) = cache.closes.get_mut(&profile_id) {
+                        state.in_flight = false;
+                        match revisions {
+                            Ok(revisions) => {
+                                if let Some(attempt) = state.attempt.as_mut() {
+                                    attempt.revisions = revisions;
+                                }
+                                state.failure = None;
+                            }
+                            Err(reason) => {
+                                state.attempt = None;
+                                state.failure = Some(reason);
+                            }
+                        }
                     }
-                    Err(error) => cache.error = Some(error.to_string()),
+                }
+                Err(error) => {
+                    if let Some(state) = cache.closes.get_mut(&profile_id) {
+                        state.in_flight = false;
+                        state.attempt = None;
+                        state.failure = Some(format!(
+                            "Gateway did not accept the close control; close waits. {error}"
+                        ));
+                    }
                 }
             }
-            if let Some(state) = cache.closes.get_mut(&profile_id) {
-                state.in_flight = false;
-            }
         });
-        CloseAuthorization::NotAcknowledged(waiting.unwrap_or_else(|| {
-            "Waiting for Gateway's fresh pause acknowledgement and safe-to-close readback.".into()
-        }))
+        CloseAuthorization::NotAcknowledged(
+            "Requested one generation-bound pause for this close; waiting for this attempt's fresh paused acknowledgement and safe-to-close readback."
+                .into(),
+        )
     }
 }
 
@@ -415,6 +523,258 @@ fn close_reason(safety: &manager_gateway::CloseSafety) -> String {
             safety.waiting_on.join(", ")
         )
     }
+}
+
+/// Both physical siblings must be explicitly bound with the exact generation captured for this
+/// origin. One worker, one reused id for both kinds, or an unknown generation all hold close.
+fn expected_bindings(
+    profile: &GatewayProfile,
+    origin: &str,
+) -> Result<Vec<manager_gateway::ExpectedWorkerBinding>, String> {
+    let image = profile
+        .image_worker_id
+        .as_deref()
+        .filter(|id| !id.is_empty());
+    let video = profile
+        .video_worker_id
+        .as_deref()
+        .filter(|id| !id.is_empty());
+    let (Some(image), Some(video)) = (image, video) else {
+        return Err(
+            "Both an image and a video worker must be bound before this profile can close.".into(),
+        );
+    };
+    if image == video {
+        return Err(
+            "The image and video bindings must be two different workers; close waits.".into(),
+        );
+    }
+    let Some(binding_origin) = profile.binding_origin.as_deref() else {
+        return Err(
+            "This profile has no saved Gateway worker binding; save the account binding while Gateway is connected."
+                .into(),
+        );
+    };
+    if binding_origin != origin {
+        return Err(
+            "This profile's worker binding belongs to a different Gateway address; save the account binding again."
+                .into(),
+        );
+    }
+    let (Some(image_generation), Some(video_generation)) = (
+        profile.image_worker_generation.as_deref(),
+        profile.video_worker_generation.as_deref(),
+    ) else {
+        return Err(
+            "The saved credential generation for an image or video worker is unknown; save the account binding while Gateway is connected."
+                .into(),
+        );
+    };
+    Ok(vec![
+        manager_gateway::ExpectedWorkerBinding {
+            worker_id: image.to_string(),
+            kind: "image".into(),
+            credential_generation: image_generation.to_string(),
+        },
+        manager_gateway::ExpectedWorkerBinding {
+            worker_id: video.to_string(),
+            kind: "video".into(),
+            credential_generation: video_generation.to_string(),
+        },
+    ])
+}
+
+fn same_bindings(
+    left: &[manager_gateway::ExpectedWorkerBinding],
+    right: &[manager_gateway::ExpectedWorkerBinding],
+) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left.worker_id == right.worker_id
+                && left.kind == right.kind
+                && left.credential_generation == right.credential_generation
+        })
+}
+
+fn attempt_is_current(
+    attempt: &CloseAttempt,
+    origin: &str,
+    expected: &[manager_gateway::ExpectedWorkerBinding],
+) -> bool {
+    attempt.origin == origin && same_bindings(&attempt.bindings, expected)
+}
+
+/// The revision a worker currently reports must be the one issued to it by THIS close attempt's
+/// response. A later control's revision is not inherited.
+fn attempt_revision_mismatch(
+    view: &manager_gateway::ManagerView,
+    attempt: &CloseAttempt,
+) -> Option<String> {
+    for binding in &attempt.bindings {
+        let Some(expected) = attempt.revisions.get(&binding.worker_id) else {
+            return Some("Waiting for this close attempt's authenticated revision.".into());
+        };
+        let Some(worker) = view
+            .workers
+            .iter()
+            .find(|worker| worker.worker_id == binding.worker_id)
+        else {
+            return Some(format!(
+                "Worker {} is absent from the fresh readback; close waits.",
+                binding.worker_id
+            ));
+        };
+        if worker.control.revision.as_deref() != Some(expected.as_str()) {
+            return Some(format!(
+                "Worker {} reports a different control revision than this close attempt issued; close waits.",
+                binding.worker_id
+            ));
+        }
+    }
+    None
+}
+
+/// A control response is usable only when every bound worker is present, live, still the expected
+/// kind and generation, has close applied, and carries the revision this attempt issued.
+fn response_revisions(
+    view: &manager_gateway::ManagerView,
+    bindings: &[manager_gateway::ExpectedWorkerBinding],
+) -> Result<HashMap<String, String>, String> {
+    let mut revisions = HashMap::new();
+    for binding in bindings {
+        let Some(worker) = view
+            .workers
+            .iter()
+            .find(|worker| worker.worker_id == binding.worker_id)
+        else {
+            return Err(format!(
+                "Gateway's close response omitted worker {}; close waits.",
+                binding.worker_id
+            ));
+        };
+        if !worker.has_live_token {
+            return Err(format!(
+                "Worker {} has no live credential; close waits.",
+                binding.worker_id
+            ));
+        }
+        if worker.kind.as_deref() != Some(binding.kind.as_str()) {
+            return Err(format!(
+                "Worker {} no longer matches its saved kind; close waits.",
+                binding.worker_id
+            ));
+        }
+        if worker.control.credential_generation.as_deref()
+            != Some(binding.credential_generation.as_str())
+        {
+            return Err(format!(
+                "Worker {} credential generation changed; reconcile the account binding.",
+                binding.worker_id
+            ));
+        }
+        if worker.control.dispatch_enabled || worker.control.close_requested != Some(true) {
+            return Err(format!(
+                "Gateway did not apply dispatch off and close for worker {}; close waits.",
+                binding.worker_id
+            ));
+        }
+        let revision = worker
+            .control
+            .revision
+            .as_deref()
+            .filter(|revision| !revision.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "Gateway's close response has no revision for worker {}; close waits.",
+                    binding.worker_id
+                )
+            })?;
+        revisions.insert(binding.worker_id.clone(), revision.to_string());
+    }
+    Ok(revisions)
+}
+
+/// Deliberate pairing or Save captures generations only from a fresh authenticated response that
+/// shows both physical siblings live, of the matching kind, with a nonempty generation.
+fn verified_generations(
+    view: &manager_gateway::ManagerView,
+    image_worker_id: Option<&str>,
+    video_worker_id: Option<&str>,
+    now: f64,
+) -> Option<(String, String)> {
+    if !view.is_fresh(now) {
+        return None;
+    }
+    let image = image_worker_id.filter(|id| !id.is_empty())?;
+    let video = video_worker_id.filter(|id| !id.is_empty())?;
+    if image == video {
+        return None;
+    }
+    let generation = |id: &str, kind: &str| {
+        let worker = view.workers.iter().find(|worker| worker.worker_id == id)?;
+        if !worker.has_live_token || worker.kind.as_deref() != Some(kind) {
+            return None;
+        }
+        let received_at = worker.received_at?;
+        if !worker.fresh
+            || !received_at.is_finite()
+            || received_at <= 0.0
+            || received_at > now + 5.0
+            || now - received_at > view.max_age_seconds
+        {
+            return None;
+        }
+        worker
+            .control
+            .credential_generation
+            .as_deref()
+            .filter(|generation| !generation.is_empty())
+            .map(ToString::to_string)
+    };
+    Some((generation(image, "image")?, generation(video, "video")?))
+}
+
+fn complete_binding(profile: &StoredProfile) -> bool {
+    profile.binding_origin.is_some()
+        && profile.image_worker_generation.is_some()
+        && profile.video_worker_generation.is_some()
+}
+
+/// Pairing is a reconciliation point only for a missing initial binding. A recorded binding,
+/// including a generation a newer response disagrees with, is left for an explicit account Save.
+fn fill_initial_bindings(
+    stored: &mut Stored,
+    origin: &str,
+    view: &manager_gateway::ManagerView,
+    now: f64,
+) {
+    for profile in &mut stored.profiles {
+        if complete_binding(profile) {
+            continue;
+        }
+        let Some((image, video)) = verified_generations(
+            view,
+            profile.image_worker_id.as_deref(),
+            profile.video_worker_id.as_deref(),
+            now,
+        ) else {
+            continue;
+        };
+        profile.image_worker_generation = Some(image);
+        profile.video_worker_generation = Some(video);
+        profile.binding_origin = Some(origin.to_string());
+    }
+}
+
+fn bind_after_pair(
+    shared: &Shared,
+    origin: &str,
+    view: &manager_gateway::ManagerView,
+) -> Result<(), String> {
+    mutate(shared, |stored| {
+        fill_initial_bindings(stored, origin, view, epoch_now());
+        Ok(())
+    })
 }
 
 /// Worker state is current only while its telemetry is fresh and inside the view's age limit.
@@ -533,6 +893,14 @@ struct StoredProfile {
     desired_open: bool,
     image_worker_id: Option<String>,
     video_worker_id: Option<String>,
+    /// Exact normalized Gateway origin and per-worker credential generations captured by a
+    /// deliberate pairing or explicit account Save. Label-only saves never change them.
+    #[serde(default)]
+    binding_origin: Option<String>,
+    #[serde(default)]
+    image_worker_generation: Option<String>,
+    #[serde(default)]
+    video_worker_generation: Option<String>,
     #[serde(default)]
     pid: Option<u32>,
     #[serde(default)]
@@ -860,7 +1228,10 @@ pub(crate) async fn manager_pair_gateway(
     let view = manager_gateway::pair(&origin, &token)
         .await
         .map_err(|error| error.to_string())?;
-    shared.gateway.remember(origin, view);
+    shared.gateway.remember(origin.clone(), view.clone());
+    // Deliberate pairing may fill a missing initial generation binding. It never replaces a
+    // recorded one, and never clears work or state that is already held.
+    bind_after_pair(&shared, &origin, &view)?;
     build_snapshot(&shared)
 }
 
@@ -906,6 +1277,14 @@ pub(crate) fn manager_update_profile(
     video_worker_id: Option<String>,
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
+    // A label-only update passes no worker fields and never rebinds. Passing a worker field is
+    // the explicit account Save that reconciles both generations from a fresh authenticated view.
+    let rebind = image_worker_id.is_some() || video_worker_id.is_some();
+    let binding_view = if rebind {
+        manager.shared.gateway.current_view()
+    } else {
+        None
+    };
     mutate(&manager.shared, |stored| {
         let profile = stored
             .profiles
@@ -936,8 +1315,37 @@ pub(crate) fn manager_update_profile(
             let next = normalize_worker(worker)?;
             profile.video_worker_id = updated_binding(&profile.video_worker_id, next, frozen)?;
         }
+        if rebind {
+            // The mapping is written as one atom: either both exact generations for this saved
+            // origin, or nothing, which leaves close unknown/held until a successful Save.
+            let captured = binding_view.as_ref().and_then(|(origin, view)| {
+                verified_generations(
+                    view,
+                    profile.image_worker_id.as_deref(),
+                    profile.video_worker_id.as_deref(),
+                    epoch_now(),
+                )
+                .map(|generations| (origin.clone(), generations))
+            });
+            match captured {
+                Some((origin, (image, video))) => {
+                    profile.image_worker_generation = Some(image);
+                    profile.video_worker_generation = Some(video);
+                    profile.binding_origin = Some(origin);
+                }
+                None => {
+                    profile.image_worker_generation = None;
+                    profile.video_worker_generation = None;
+                    profile.binding_origin = None;
+                }
+            }
+        }
         Ok(())
     })?;
+    if rebind {
+        // A deliberate rebind invalidates any earlier attempt, including one still in flight.
+        manager.shared.gateway.cache().closes.remove(&profile_id);
+    }
     finish(&manager.shared)
 }
 
@@ -978,6 +1386,9 @@ pub(crate) fn manager_open_profiles(
                     id: profile.id.clone(),
                     image_worker_id: profile.image_worker_id.clone(),
                     video_worker_id: profile.video_worker_id.clone(),
+                    binding_origin: profile.binding_origin.clone(),
+                    image_worker_generation: profile.image_worker_generation.clone(),
+                    video_worker_generation: profile.video_worker_generation.clone(),
                 },
                 resident,
             ));
@@ -989,6 +1400,13 @@ pub(crate) fn manager_open_profiles(
         for (id, reason) in rejected {
             inner.errors.insert(id.clone(), reason);
             inner.attention.remove(&id);
+        }
+    }
+    {
+        // A new open intent drops any earlier close attempt so a later close cannot inherit it.
+        let mut cache = manager.shared.gateway.cache();
+        for (profile, _) in &opened {
+            cache.closes.remove(&profile.id);
         }
     }
     let snapshot = finish(&manager.shared)?;
@@ -1153,6 +1571,9 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
             id: profile.id.clone(),
             image_worker_id: profile.image_worker_id.clone(),
             video_worker_id: profile.video_worker_id.clone(),
+            binding_origin: profile.binding_origin.clone(),
+            image_worker_generation: profile.image_worker_generation.clone(),
+            video_worker_generation: profile.video_worker_generation.clone(),
         })
         .collect();
     let (readings, support) = match authority() {
@@ -1356,6 +1777,8 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                     }
                 } else {
                     profile.close_pending = false;
+                    // The close finished or was abandoned here; its attempt must not be inherited.
+                    shared.gateway.cache().closes.remove(&profile.id);
                     errors.remove(&profile.id);
                     attention.remove(&profile.id);
                 }
@@ -1366,12 +1789,16 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
             if profile.pid.is_none() {
                 profile.close_pending = false;
                 changed = true;
+                shared.gateway.cache().closes.remove(&profile.id);
                 errors.remove(&profile.id);
             } else if owned {
                 let input = GatewayProfile {
                     id: profile.id.clone(),
                     image_worker_id: profile.image_worker_id.clone(),
                     video_worker_id: profile.video_worker_id.clone(),
+                    binding_origin: profile.binding_origin.clone(),
+                    image_worker_generation: profile.image_worker_generation.clone(),
+                    video_worker_generation: profile.video_worker_generation.clone(),
                 };
                 match close_action(true, close_authorization(&input)) {
                     CloseAction::Terminate => match terminate(profile.pid.unwrap_or_default()) {
@@ -1934,6 +2361,9 @@ fn append_profile(stored: &mut Stored, raw_label: &str) -> Result<String, String
         desired_open: false,
         image_worker_id: None,
         video_worker_id: None,
+        binding_origin: None,
+        image_worker_generation: None,
+        video_worker_generation: None,
         pid: None,
         pid_started: None,
         binary: None,
@@ -2010,6 +2440,39 @@ fn validate_worker(value: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_generation(value: Option<&str>) -> Result<(), String> {
+    let Some(value) = value else { return Ok(()) };
+    if value.is_empty() || value.chars().count() > WORKER_ID_LIMIT {
+        return Err(
+            "Saved worker credential generations are invalid; the file was not changed.".into(),
+        );
+    }
+    if value.chars().any(char::is_control) {
+        return Err(
+            "Saved worker credential generations cannot contain control characters.".into(),
+        );
+    }
+    Ok(())
+}
+
+/// The binding origin is the already-normalized saved Gateway origin: scheme, host, optional
+/// port, and no path, credentials, query or fragment.
+fn validate_binding_origin(value: &str) -> Result<(), String> {
+    let rest = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"));
+    let valid = rest.is_some_and(|rest| {
+        !rest.is_empty()
+            && !rest
+                .chars()
+                .any(|c| matches!(c, '/' | '?' | '#' | '@') || c.is_control() || c.is_whitespace())
+    });
+    if !valid || value != value.trim() {
+        return Err("A saved worker binding origin is invalid; the file was not changed.".into());
+    }
+    Ok(())
+}
+
 fn validate_state(stored: &Stored) -> Result<(), String> {
     if stored.schema != STATE_SCHEMA {
         return Err(
@@ -2037,6 +2500,38 @@ fn validate_state(stored: &Stored) -> Result<(), String> {
         validate_label(&profile.label)?;
         validate_worker(profile.image_worker_id.as_deref())?;
         validate_worker(profile.video_worker_id.as_deref())?;
+        validate_generation(profile.image_worker_generation.as_deref())?;
+        validate_generation(profile.video_worker_generation.as_deref())?;
+        match (
+            &profile.binding_origin,
+            &profile.image_worker_generation,
+            &profile.video_worker_generation,
+        ) {
+            (None, None, None) => {}
+            (Some(origin), Some(_), Some(_)) => {
+                validate_binding_origin(origin)?;
+                let image = profile
+                    .image_worker_id
+                    .as_deref()
+                    .filter(|id| !id.is_empty());
+                let video = profile
+                    .video_worker_id
+                    .as_deref()
+                    .filter(|id| !id.is_empty());
+                if image.is_none() || video.is_none() || image == video {
+                    return Err(
+                        "A saved worker binding needs distinct image and video workers; the file was not changed."
+                            .into(),
+                    );
+                }
+            }
+            _ => {
+                return Err(
+                    "A saved worker credential-generation mapping is incomplete; the file was not changed."
+                        .into(),
+                );
+            }
+        }
         if profile.pid == Some(0) {
             return Err(
                 "A saved browser process identifier is invalid; the file was not changed.".into(),
@@ -2113,6 +2608,9 @@ mod tests {
             desired_open: false,
             image_worker_id: Some("image-worker-1".into()),
             video_worker_id: None,
+            binding_origin: None,
+            image_worker_generation: None,
+            video_worker_generation: None,
             pid: None,
             pid_started: None,
             binary: None,
@@ -2431,6 +2929,20 @@ mod tests {
             id: "profile-1".into(),
             image_worker_id: image.map(ToString::to_string),
             video_worker_id: video.map(ToString::to_string),
+            binding_origin: None,
+            image_worker_generation: None,
+            video_worker_generation: None,
+        }
+    }
+
+    fn bound_profile() -> GatewayProfile {
+        GatewayProfile {
+            id: "profile-1".into(),
+            image_worker_id: Some("image-1".into()),
+            video_worker_id: Some("video-1".into()),
+            binding_origin: Some("https://gateway.example".into()),
+            image_worker_generation: Some("gen-image".into()),
+            video_worker_generation: Some("gen-video".into()),
         }
     }
 
@@ -2630,6 +3142,9 @@ mod tests {
             id: "profile-1".into(),
             image_worker_id: Some("same".into()),
             video_worker_id: Some("same".into()),
+            binding_origin: None,
+            image_worker_generation: None,
+            video_worker_generation: None,
         };
         assert_eq!(worker_ids(&same), vec!["same".to_string()]);
         let different = profile(Some("image-1"), Some("video-1"));
@@ -2637,5 +3152,277 @@ mod tests {
             worker_ids(&different),
             vec!["image-1".to_string(), "video-1".to_string()]
         );
+    }
+
+    fn bound_worker(id: &str, kind: &str, generation: &str, revision: &str) -> serde_json::Value {
+        serde_json::json!({
+            "worker_id": id,
+            "kind": kind,
+            "has_live_token": true,
+            "control": {
+                "dispatchEnabled": false,
+                "closeRequested": true,
+                "credentialGeneration": generation,
+                "revision": revision
+            },
+            "state": {
+                "activity": "idle",
+                "paused": true,
+                "observed_at": NOW - 5.0,
+                "control_revision": revision
+            },
+            "receivedAt": NOW - 2.0,
+            "fresh": true,
+            "current_job": null,
+            "held_jobs": [],
+            "durableBusy": false,
+            "safeToClose": true
+        })
+    }
+
+    fn pair_view() -> manager_gateway::ManagerView {
+        manager_view(
+            vec![
+                bound_worker("image-1", "image", "gen-image", "rev-1"),
+                bound_worker("video-1", "video", "gen-video", "rev-1"),
+            ],
+            vec![account("flow", "account-1", &["image-1", "video-1"])],
+        )
+    }
+
+    #[test]
+    fn worker_generation_mapping_roundtrips_and_rejects_partial_or_invalid_data() {
+        let mut stored = Stored::default();
+        append_profile(&mut stored, "Bound").expect("profile");
+        let profile = &mut stored.profiles[0];
+        profile.image_worker_id = Some("image-1".into());
+        profile.video_worker_id = Some("video-1".into());
+        profile.binding_origin = Some("https://gateway.example:8787".into());
+        profile.image_worker_generation = Some("gen-image".into());
+        profile.video_worker_generation = Some("gen-video".into());
+        assert!(validate_state(&stored).is_ok());
+
+        let saved = serde_json::to_vec(&stored).expect("state encodes");
+        let loaded = parse_state(&saved).expect("state reloads");
+        assert_eq!(
+            loaded.profiles[0].binding_origin.as_deref(),
+            Some("https://gateway.example:8787")
+        );
+        assert_eq!(
+            loaded.profiles[0].video_worker_generation.as_deref(),
+            Some("gen-video")
+        );
+        // Older state without the new optional fields still loads as unknown/held.
+        assert!(
+            parse_state(br#"{"schema":1,"next_number":1,"profiles":[],"settings":{}}"#).is_ok()
+        );
+
+        let mut partial = stored.clone();
+        partial.profiles[0].image_worker_generation = None;
+        assert!(validate_state(&partial).is_err());
+
+        let mut same_worker = stored.clone();
+        same_worker.profiles[0].image_worker_id = Some("video-1".into());
+        assert!(validate_state(&same_worker).is_err());
+
+        let mut bad_origin = stored.clone();
+        bad_origin.profiles[0].binding_origin = Some("https://gateway.example/path".into());
+        assert!(validate_state(&bad_origin).is_err());
+    }
+
+    #[test]
+    fn only_a_complete_matching_live_pair_captures_generations() {
+        let view = pair_view();
+        assert_eq!(
+            verified_generations(&view, Some("image-1"), Some("video-1"), NOW),
+            Some(("gen-image".into(), "gen-video".into()))
+        );
+        assert!(
+            verified_generations(&view, Some("image-1"), Some("image-1"), NOW).is_none(),
+            "one worker cannot fill both kinds"
+        );
+        assert!(
+            verified_generations(&view, Some("image-1"), None, NOW).is_none(),
+            "a missing sibling stays unknown"
+        );
+
+        let wrong_kind = manager_view(
+            vec![
+                bound_worker("image-1", "video", "gen-image", "rev-1"),
+                bound_worker("video-1", "video", "gen-video", "rev-1"),
+            ],
+            vec![],
+        );
+        assert!(verified_generations(&wrong_kind, Some("image-1"), Some("video-1"), NOW).is_none());
+
+        let without_generation = manager_view(
+            vec![
+                worker("image-1"),
+                bound_worker("video-1", "video", "gen-video", "rev-1"),
+            ],
+            vec![],
+        );
+        assert!(
+            verified_generations(&without_generation, Some("image-1"), Some("video-1"), NOW)
+                .is_none(),
+            "a missing generation is never invented"
+        );
+
+        let mut stale = pair_view();
+        stale.received_at = NOW - 1000.0;
+        assert!(verified_generations(&stale, Some("image-1"), Some("video-1"), NOW).is_none());
+    }
+
+    #[test]
+    fn expected_bindings_require_two_kinds_generations_and_the_saved_origin() {
+        let profile = bound_profile();
+        let bindings = expected_bindings(&profile, "https://gateway.example").expect("bindings");
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].worker_id, "image-1");
+        assert_eq!(bindings[0].kind, "image");
+        assert_eq!(bindings[0].credential_generation, "gen-image");
+        assert_eq!(bindings[1].worker_id, "video-1");
+        assert_eq!(bindings[1].kind, "video");
+        assert_eq!(bindings[1].credential_generation, "gen-video");
+
+        let mut same_worker = profile.clone();
+        same_worker.video_worker_id = same_worker.image_worker_id.clone();
+        assert!(expected_bindings(&same_worker, "https://gateway.example").is_err());
+
+        let mut only_image = profile.clone();
+        only_image.video_worker_id = None;
+        assert!(
+            expected_bindings(&only_image, "https://gateway.example").is_err(),
+            "one physical sibling keeps close pending"
+        );
+
+        let mut unknown_generation = profile.clone();
+        unknown_generation.video_worker_generation = None;
+        assert!(expected_bindings(&unknown_generation, "https://gateway.example").is_err());
+
+        assert!(
+            expected_bindings(&profile, "https://other.example").is_err(),
+            "another origin invalidates the binding"
+        );
+    }
+
+    #[test]
+    fn pairing_fills_only_a_missing_initial_binding() {
+        let mut stored = Stored::default();
+        append_profile(&mut stored, "Pair").expect("profile");
+        stored.profiles[0].image_worker_id = Some("image-1".into());
+        stored.profiles[0].video_worker_id = Some("video-1".into());
+
+        fill_initial_bindings(&mut stored, "https://gateway.example", &pair_view(), NOW);
+        assert_eq!(
+            stored.profiles[0].image_worker_generation.as_deref(),
+            Some("gen-image")
+        );
+        assert_eq!(
+            stored.profiles[0].binding_origin.as_deref(),
+            Some("https://gateway.example")
+        );
+
+        // A recorded binding is never silently replaced, including when the view disagrees.
+        stored.profiles[0].image_worker_generation = Some("gen-old".into());
+        stored.profiles[0].video_worker_generation = Some("gen-old-video".into());
+        fill_initial_bindings(&mut stored, "https://gateway.example", &pair_view(), NOW);
+        assert_eq!(
+            stored.profiles[0].image_worker_generation.as_deref(),
+            Some("gen-old")
+        );
+        assert_eq!(
+            stored.profiles[0].video_worker_generation.as_deref(),
+            Some("gen-old-video")
+        );
+    }
+
+    #[test]
+    fn control_response_must_cover_both_live_workers_with_this_attempt_revision() {
+        let bindings =
+            expected_bindings(&bound_profile(), "https://gateway.example").expect("bindings");
+        let view = pair_view();
+        let revisions = response_revisions(&view, &bindings).expect("both workers acknowledged");
+        assert_eq!(revisions.get("image-1").map(String::as_str), Some("rev-1"));
+        assert_eq!(revisions.get("video-1").map(String::as_str), Some("rev-1"));
+
+        let partial = manager_view(
+            vec![bound_worker("image-1", "image", "gen-image", "rev-1")],
+            vec![],
+        );
+        assert!(
+            response_revisions(&partial, &bindings).is_err(),
+            "a partial response holds close"
+        );
+
+        let wrong_generation = manager_view(
+            vec![
+                bound_worker("image-1", "image", "gen-new", "rev-1"),
+                bound_worker("video-1", "video", "gen-video", "rev-1"),
+            ],
+            vec![],
+        );
+        assert!(response_revisions(&wrong_generation, &bindings).is_err());
+
+        let missing_revision = manager_view(
+            vec![
+                bound_worker("image-1", "image", "gen-image", ""),
+                bound_worker("video-1", "video", "gen-video", ""),
+            ],
+            vec![],
+        );
+        assert!(response_revisions(&missing_revision, &bindings).is_err());
+    }
+
+    #[test]
+    fn attempt_never_inherits_a_later_control_revision_or_another_binding() {
+        let profile = bound_profile();
+        let bindings = expected_bindings(&profile, "https://gateway.example").expect("bindings");
+        let attempt = CloseAttempt {
+            id: 1,
+            origin: "https://gateway.example".into(),
+            bindings: bindings.clone(),
+            revisions: HashMap::from([
+                ("image-1".to_string(), "rev-7".to_string()),
+                ("video-1".to_string(), "rev-7".to_string()),
+            ]),
+        };
+        let issued = manager_view(
+            vec![
+                bound_worker("image-1", "image", "gen-image", "rev-7"),
+                bound_worker("video-1", "video", "gen-video", "rev-7"),
+            ],
+            vec![],
+        );
+        assert!(attempt_revision_mismatch(&issued, &attempt).is_none());
+        assert!(attempt_is_current(
+            &attempt,
+            "https://gateway.example",
+            &bindings
+        ));
+        assert!(
+            !attempt_is_current(&attempt, "https://other.example", &bindings),
+            "origin change invalidates the attempt"
+        );
+        let mut rebound = bindings.clone();
+        rebound[1].credential_generation = "gen-new".into();
+        assert!(
+            !attempt_is_current(&attempt, "https://gateway.example", &rebound),
+            "binding change invalidates the attempt"
+        );
+
+        let later = manager_view(
+            vec![
+                bound_worker("image-1", "image", "gen-image", "rev-8"),
+                bound_worker("video-1", "video", "gen-video", "rev-8"),
+            ],
+            vec![],
+        );
+        // The typed safety helper alone would accept the later self-consistent revision; the
+        // attempt anchor rejects it because it is not the revision THIS close requested.
+        assert!(
+            manager_gateway::close_safety_for_bindings_at(&later, &bindings, NOW).safe_to_close
+        );
+        assert!(attempt_revision_mismatch(&later, &attempt).is_some());
     }
 }
