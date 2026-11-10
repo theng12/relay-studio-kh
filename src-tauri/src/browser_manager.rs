@@ -16,7 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
     sync::{Arc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -28,6 +28,8 @@ const RECONCILE_SECONDS: u64 = 15;
 const MAX_OPEN_ATTEMPTS: u32 = 3;
 const PROFILE_LABEL_LIMIT: usize = 120;
 const WORKER_ID_LIMIT: usize = 128;
+const IDENTITY_HOLD: &str =
+    "Chrome process identity could not be verified; it was not stopped or restarted.";
 
 // ---------------------------------------------------------------------------
 // Gateway authority seam (implemented and installed by the parent-owned adapter)
@@ -97,10 +99,6 @@ pub(crate) trait ManagerGateway: Send + Sync {
     /// refreshes asynchronously and leaves fields unknown while a read is outstanding.
     fn read(&self, profiles: &[GatewayProfile]) -> HashMap<String, GatewayReading>;
     fn support(&self) -> GatewaySupport;
-    /// Called after pacing settings are saved. The adapter may send the saved pacing only to
-    /// workers whose current dispatch value is known, passing that exact value back so a paused
-    /// worker is never resumed by saving settings. The default does nothing.
-    fn pacing_requested(&self, _profile: &GatewayProfile, _pacing: manager_gateway::Pacing) {}
     /// Called while moving a profile to close: the adapter issues control for both paired worker
     /// ids with `dispatchEnabled: false` and `closeRequested: true`, then returns `Safe` only
     /// after a fresh paused acknowledgement plus `safeToClose`. Missing worker bindings must
@@ -300,57 +298,10 @@ impl ManagerGateway for LiveGateway {
             telemetry_error,
             manager_paired,
             pacing_applied,
-            pacing_error: (!pacing_applied)
-                .then(|| "Waiting for a managed worker to report matching pacing.".to_string()),
-        }
-    }
-
-    fn pacing_requested(&self, profile: &GatewayProfile, pacing: manager_gateway::Pacing) {
-        let Some(origin) = gateway_origin(&self.app) else {
-            return;
-        };
-        let targets = {
-            let mut cache = self.cache();
-            let Some(view) = cache.view_for(Some(origin.as_str())) else {
-                return;
-            };
-            worker_ids(profile)
-                .into_iter()
-                .filter_map(|id| {
-                    let worker = view.workers.iter().find(|worker| worker.worker_id == id)?;
-                    // Preserve the exact recorded dispatch value; never guess one for a stale or
-                    // closing worker, so saving settings can never resume paused work.
-                    (worker.fresh && worker.control.close_requested != Some(true))
-                        .then_some((id, worker.control.dispatch_enabled))
-                })
-                .collect::<Vec<_>>()
-        };
-        if targets.is_empty() {
-            return;
-        }
-        let shared_cache = self.cache.clone();
-        for (id, dispatch_enabled) in targets {
-            let origin = origin.clone();
-            let pacing = pacing.clone();
-            let shared_cache = shared_cache.clone();
-            let _ = tauri::async_runtime::spawn(async move {
-                let ids = vec![id];
-                let Ok(view) =
-                    manager_gateway::control(&origin, &ids, dispatch_enabled, None, Some(pacing))
-                        .await
-                else {
-                    return;
-                };
-                let mut cache = shared_cache
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                if cache.origin.as_deref() != Some(origin.as_str()) {
-                    return;
-                }
-                cache.view = Some(view);
-                cache.error = None;
-                cache.last_view = Some(Instant::now());
-            });
+            pacing_error: (!pacing_applied).then(|| {
+                "Pacing is saved as a local preference. Gateway has no atomic pacing-only update yet, so no dispatch control was sent."
+                    .to_string()
+            }),
         }
     }
 
@@ -752,6 +703,9 @@ struct Shared {
     chrome: Option<PathBuf>,
     gateway: Arc<LiveGateway>,
     inner: Mutex<Inner>,
+    // Retained spawn leases: a live Child proves this exact pid is still our process, so its
+    // start time may be captured safely and a reused pid is never adopted.
+    children: Mutex<HashMap<u32, Child>>,
 }
 
 struct Inner {
@@ -803,6 +757,7 @@ pub(crate) fn init(app: &tauri::AppHandle) -> Result<BrowserManager, String> {
         profiles_dir,
         chrome,
         gateway,
+        children: Mutex::new(HashMap::new()),
         inner: Mutex::new(Inner {
             stored,
             load_error,
@@ -832,6 +787,29 @@ fn stored_or_error(inner: &Inner) -> Result<&Stored, String> {
         (Some(stored), _) => Ok(stored),
         (None, Some(error)) => Err(error.clone()),
         (None, None) => Err("Saved browser profiles are unavailable.".into()),
+    }
+}
+
+/// Show stops launching processes, so its errors are transient. A verified process or a
+/// successful activation resolves them; ownership and close holds are left untouched.
+fn is_show_error(message: &str) -> bool {
+    message.starts_with("Chrome is no longer running for this profile")
+        || message.starts_with("macOS did not activate")
+        || message.starts_with("Showing a managed Chrome profile is available only on macOS")
+        || message.starts_with("This profile's Chrome process is not verified open")
+}
+
+fn clear_resolved_errors(
+    errors: &mut HashMap<String, String>,
+    attention: &mut HashSet<String>,
+    id: &str,
+) {
+    let resolved = errors
+        .get(id)
+        .is_some_and(|message| message == IDENTITY_HOLD || is_show_error(message));
+    if resolved {
+        errors.remove(id);
+        attention.remove(id);
     }
 }
 
@@ -1014,19 +992,39 @@ pub(crate) fn manager_open_profiles(
         }
     }
     let snapshot = finish(&manager.shared)?;
-    // Opening never authorizes jobs. A profile that was already resident is shown, which only
-    // brings its own window forward and cannot resume paused or held work.
-    let alive = locked(&manager.shared)?.measurement.alive.clone();
+    // Opening never authorizes jobs. A profile that was already resident is activated by pid,
+    // which brings its own windows forward and cannot resume paused or held work.
+    let targets = {
+        let inner = locked(&manager.shared)?;
+        let stored = stored_or_error(&inner)?;
+        opened
+            .iter()
+            .filter(|(profile, resident)| {
+                *resident && inner.measurement.alive.contains(&profile.id)
+            })
+            .filter_map(|(profile, _)| {
+                stored
+                    .profiles
+                    .iter()
+                    .find(|entry| entry.id == profile.id)
+                    .and_then(|entry| entry.pid)
+                    .map(|pid| (profile.id.clone(), pid))
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut shown = Vec::new();
     let mut failures: Vec<(String, String)> = Vec::new();
-    for (profile, resident) in &opened {
-        if *resident && alive.contains(&profile.id) {
-            if let Err(reason) = show(&manager.shared, &profile.id) {
-                failures.push((profile.id.clone(), reason));
-            }
+    for (id, pid) in targets {
+        match show(pid) {
+            Ok(()) => shown.push(id),
+            Err(reason) => failures.push((id, reason)),
         }
     }
-    if !failures.is_empty() {
+    {
         let mut inner = locked(&manager.shared)?;
+        for id in &shown {
+            clear_resolved_errors(&mut inner.errors, &mut inner.attention, id);
+        }
         for (id, reason) in failures {
             inner.errors.insert(id, reason);
         }
@@ -1034,8 +1032,8 @@ pub(crate) fn manager_open_profiles(
     Ok(snapshot)
 }
 
-/// Show brings the exact managed profile forward by asking that profile's own Chrome instance to
-/// come up again. It creates no managed process, submits no job and never touches dispatch.
+/// Show activates the exact managed profile's own running process. It cannot launch Chrome,
+/// creates no managed process, submits no job and never touches dispatch.
 #[tauri::command]
 pub(crate) fn manager_show_profiles(
     window: WebviewWindow,
@@ -1044,33 +1042,37 @@ pub(crate) fn manager_show_profiles(
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
     reconcile(&manager.shared)?;
-    let mut shows: Vec<String> = Vec::new();
+    let mut shows: Vec<(String, u32)> = Vec::new();
     let mut failures: Vec<(String, String)> = Vec::new();
     {
         let inner = locked(&manager.shared)?;
         let stored = stored_or_error(&inner)?;
         for id in &profile_ids {
-            if !stored.profiles.iter().any(|profile| &profile.id == id) {
+            let Some(profile) = stored.profiles.iter().find(|profile| &profile.id == id) else {
                 return Err("Unknown browser profile.".into());
-            }
-            if inner.measurement.alive.contains(id) {
-                shows.push(id.clone());
-            } else {
-                failures.push((
+            };
+            match profile.pid.filter(|_| inner.measurement.alive.contains(id)) {
+                Some(pid) => shows.push((id.clone(), pid)),
+                None => failures.push((
                     id.clone(),
-                    "This profile's Chrome process is not verified open, so nothing was shown."
+                    "This profile's Chrome process is not verified open, so nothing was activated."
                         .into(),
-                ));
+                )),
             }
         }
     }
-    for id in &shows {
-        if let Err(reason) = show(&manager.shared, id) {
-            failures.push((id.clone(), reason));
+    let mut shown = Vec::new();
+    for (id, pid) in shows {
+        match show(pid) {
+            Ok(()) => shown.push(id),
+            Err(reason) => failures.push((id, reason)),
         }
     }
-    if !failures.is_empty() {
+    {
         let mut inner = locked(&manager.shared)?;
+        for id in &shown {
+            clear_resolved_errors(&mut inner.errors, &mut inner.attention, id);
+        }
         for (id, reason) in failures {
             inner.errors.insert(id, reason);
         }
@@ -1122,28 +1124,9 @@ pub(crate) fn manager_save_settings(
         };
         Ok(())
     })?;
-    let snapshot = finish(&manager.shared)?;
-    if let Some(authority) = authority() {
-        let pacing = manager_gateway::Pacing {
-            min_seconds: snapshot.settings.pause_min_seconds as f64,
-            max_seconds: snapshot.settings.pause_max_seconds as f64,
-        };
-        for profile in &snapshot.profiles {
-            // Workers already closing are left alone; dispatch stays exactly as Gateway recorded it.
-            if profile.close_pending {
-                continue;
-            }
-            authority.pacing_requested(
-                &GatewayProfile {
-                    id: profile.id.clone(),
-                    image_worker_id: profile.gateway.image_worker_id.clone(),
-                    video_worker_id: profile.gateway.video_worker_id.clone(),
-                },
-                pacing.clone(),
-            );
-        }
-    }
-    Ok(snapshot)
+    // Pacing stays a saved local preference: no control is sent until Gateway offers an
+    // atomic pacing-only or revision-conditioned update, so no dispatch flag is guessed.
+    finish(&manager.shared)
 }
 
 // ---------------------------------------------------------------------------
@@ -1301,20 +1284,52 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
         return Err(load_error.unwrap_or_else(|| "Saved browser profiles are unavailable.".into()));
     };
     let chrome = shared.chrome.clone();
+    let mut changed = false;
+    // Reap exited spawn leases, then retry identity for launches whose first ps lookup missed.
+    // The retained Child proves this exact pid is still ours, so no persisted pid is ever adopted.
+    {
+        let mut children = shared
+            .children
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        children.retain(|_, child| child.try_wait().is_ok_and(|status| status.is_none()));
+    }
+    for profile in stored.profiles.iter_mut() {
+        if profile.pid_started.is_some() {
+            continue;
+        }
+        if let (Some(pid), Some(binary)) = (profile.pid, profile.binary.as_deref()) {
+            if let Some(started) = leased_identity(shared, pid, binary) {
+                profile.pid_started = Some(started);
+                changed = true;
+            }
+        }
+    }
     let mut measurement = measure(&stored, chrome.as_deref());
     let mut errors = std::mem::take(&mut guard.errors);
     let mut attention = std::mem::take(&mut guard.attention);
-    let mut changed = false;
 
     for profile in stored.profiles.iter_mut() {
-        let ownership = profile
-            .pid
-            .and_then(|pid| measurement.rows.get(&pid))
-            .map(|row| ownership(row, profile, chrome.as_deref()));
+        let ownership = profile.pid.map(|pid| {
+            let recorded = measurement
+                .rows
+                .get(&pid)
+                .map(|row| ownership(row, profile, chrome.as_deref()));
+            if recorded == Some(Ownership::Verified) {
+                Ownership::Verified
+            } else if leased_running(shared, pid) {
+                // The retained child proves this exact process is ours but ps has not confirmed
+                // it yet: hold, never clear the pid or relaunch while Chrome may be live.
+                Ownership::Unverified
+            } else {
+                recorded.unwrap_or(Ownership::Reused)
+            }
+        });
         let mut owned = false;
         match ownership {
             Some(Ownership::Verified) => {
                 owned = true;
+                clear_resolved_errors(&mut errors, &mut attention, &profile.id);
                 if profile.open_failures != 0 {
                     profile.open_failures = 0;
                     changed = true;
@@ -1324,11 +1339,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
             }
             Some(Ownership::Unverified) => {
                 // Our binary but no recorded launch time: hold, never adopt, stop or restart it.
-                errors.insert(
-                    profile.id.clone(),
-                    "Chrome process identity could not be verified; it was not stopped or restarted."
-                        .into(),
-                );
+                errors.insert(profile.id.clone(), IDENTITY_HOLD.into());
                 attention.insert(profile.id.clone());
             }
             Some(Ownership::Reused) | None if profile.pid.is_some() => {
@@ -1763,56 +1774,95 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
         .arg(user_data_arg(&directory))
         .spawn()
         .map_err(|_| "Could not start Google Chrome for this profile.".to_string())?;
+    let pid = child.id();
     let binary = chrome.to_string_lossy().into_owned();
-    profile.pid = Some(child.id());
+    profile.pid = Some(pid);
     profile.binary = Some(binary.clone());
-    // Record the exact start time now. Waiting until a later tick could adopt a reused pid.
-    profile.pid_started = process_identity(child.id(), &binary);
-    // Reap the child so an exited Chrome does not linger as a zombie; state comes from the table.
-    thread::spawn(move || {
-        let mut child = child;
-        let _ = child.wait();
-    });
+    {
+        // Retain the spawn lease before any lookup. While this Child is alive, the pid cannot be
+        // reused, so its start time is provably the process we just started.
+        let mut children = shared
+            .children
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        children.insert(pid, child);
+    }
+    profile.pid_started = capture_identity(shared, pid, &binary);
     Ok(())
 }
 
-/// Identity of the process just spawned: its own start time, confirmed against our binary.
-fn process_identity(pid: u32, binary: &str) -> Option<String> {
+/// Exact start time of the retained spawn, confirmed by the live Child and our binary. A failed
+/// capture is retried on each reconcile while the lease is alive, so a ps miss cannot strand it.
+fn leased_identity(shared: &Shared, pid: u32, binary: &str) -> Option<String> {
+    let mut children = shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let alive = match children.get_mut(&pid) {
+        Some(child) => child.try_wait().is_ok_and(|status| status.is_none()),
+        None => return None,
+    };
+    if !alive {
+        // Reap the exited child and drop the lease; no start time can be adopted afterwards.
+        children.remove(&pid);
+        return None;
+    }
+    let table = process_table().ok()?;
+    let row = table.rows.get(&pid)?;
+    (row.comm == binary).then(|| row.started.clone())
+}
+
+fn capture_identity(shared: &Shared, pid: u32, binary: &str) -> Option<String> {
     for _ in 0..10 {
-        if let Ok(table) = process_table() {
-            if let Some(row) = table.rows.get(&pid) {
-                if row.comm == binary {
-                    return Some(row.started.clone());
-                }
-            }
+        if let Some(started) = leased_identity(shared, pid, binary) {
+            return Some(started);
         }
         thread::sleep(Duration::from_millis(50));
     }
     None
 }
 
+/// True only while the retained spawn lease for this exact pid is still running.
+fn leased_running(shared: &Shared, pid: u32) -> bool {
+    let mut children = shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let alive = match children.get_mut(&pid) {
+        Some(child) => child.try_wait().is_ok_and(|status| status.is_none()),
+        None => return false,
+    };
+    if !alive {
+        children.remove(&pid);
+    }
+    alive
+}
+
 /// Args are exactly Chrome's own user-data-dir selection; no credential or security flag is ever
-/// added. Re-invoking it asks that profile's running instance to come forward.
+/// added.
 fn user_data_arg(directory: &Path) -> String {
     format!("--user-data-dir={}", directory.display())
 }
 
-fn show(shared: &Shared, id: &str) -> Result<(), String> {
-    let chrome = shared
-        .chrome
-        .as_deref()
-        .ok_or("Google Chrome was not found in Applications; nothing was shown.")?;
-    let directory = profile_dir(shared, id)?;
-    let child = Command::new(chrome)
-        .arg(user_data_arg(&directory))
-        .spawn()
-        .map_err(|_| "Could not show this Chrome profile.".to_string())?;
-    // The forwarding invocation exits once the running profile takes focus.
-    thread::spawn(move || {
-        let mut child = child;
-        let _ = child.wait();
-    });
-    Ok(())
+/// Focus the exact running profile by activating its own process through AppKit. This cannot
+/// launch Chrome: a gone process returns None. No Apple Events or privacy prompt is involved.
+#[cfg(target_os = "macos")]
+fn show(pid: u32) -> Result<(), String> {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+    let application = NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32)
+        .ok_or(
+            "Chrome is no longer running for this profile; nothing was activated.".to_string(),
+        )?;
+    if application.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows) {
+        Ok(())
+    } else {
+        Err("macOS did not activate this Chrome profile; open it from Chrome.".into())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show(_pid: u32) -> Result<(), String> {
+    Err("Showing a managed Chrome profile is available only on macOS.".into())
 }
 
 fn profile_dir(shared: &Shared, id: &str) -> Result<PathBuf, String> {
@@ -2466,7 +2516,7 @@ mod tests {
     }
 
     #[test]
-    fn show_targets_the_profiles_own_user_data_directory_without_extra_flags() {
+    fn launch_targets_the_profiles_own_user_data_directory_without_extra_flags() {
         let directory = Path::new(
             "/Users/x/Library/Application Support/relay/browser-profiles/0123456789abcdef01234567",
         );
@@ -2477,6 +2527,33 @@ mod tests {
         );
         assert!(!arg.contains("disable"));
         assert!(!arg.contains("original"));
+    }
+
+    #[test]
+    fn resolved_holds_clear_without_clearing_ownership_or_safety_errors() {
+        let mut errors = HashMap::new();
+        let mut attention = HashSet::new();
+        errors.insert("p".to_string(), IDENTITY_HOLD.to_string());
+        attention.insert("p".to_string());
+        clear_resolved_errors(&mut errors, &mut attention, "p");
+        assert!(
+            errors.is_empty() && attention.is_empty(),
+            "verified opens the hold"
+        );
+
+        errors.insert(
+            "p".to_string(),
+            "This profile's Chrome process is not verified open, so nothing was activated.".into(),
+        );
+        clear_resolved_errors(&mut errors, &mut attention, "p");
+        assert!(errors.is_empty(), "a successful show clears its own error");
+
+        errors.insert("p".to_string(), "Waiting for Gateway safety: video.".into());
+        clear_resolved_errors(&mut errors, &mut attention, "p");
+        assert!(
+            errors.contains_key("p"),
+            "a close-safety hold is not a transient show error"
+        );
     }
 
     #[test]
