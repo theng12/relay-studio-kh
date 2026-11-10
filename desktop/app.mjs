@@ -1,9 +1,11 @@
 import info from './app-info.mjs';
 import { createRecovery } from './recovery.mjs';
+import { setupExtensions } from './setup.mjs';
 
 const $ = (id) => document.getElementById(id);
 const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
+setupExtensions(invoke, showError);
 let loginChanged = false;
 $('start-at-login').addEventListener('change', () => { loginChanged = true; });
 const tick = createRecovery({

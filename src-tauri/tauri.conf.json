@@ -5,7 +5,7 @@
   "identifier": "kh.relay.desktop",
   "build": {
     "beforeDevCommand": "npm run desktop:assets",
-    "beforeBuildCommand": "npm run desktop:assets",
+    "beforeBuildCommand": "npm run desktop:release-assets",
     "frontendDist": "../desktop-dist"
   },
   "app": {
@@ -19,6 +19,7 @@
   "bundle": {
     "active": false,
     "icon": [],
+    "resources": { "../desktop-resources/": "relay/" },
     "macOS": { "signingIdentity": "KH Studio Local Signing" }
   }
 }

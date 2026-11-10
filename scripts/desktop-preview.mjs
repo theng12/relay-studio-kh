@@ -22,11 +22,16 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
     return null;
   }
   if (name === 'gateway_health') return { configured: !!snapshot.settings.gateway_url, reachable: false, origin: snapshot.settings.gateway_url };
-  if (name === 'open_gateway' || name === 'quit_app') return null;
+  if (name === 'get_extension_setup') {
+    const index = await (await fetch('./extension-info.mjs')).text();
+    const extensions = JSON.parse(index.slice('export default '.length).trim().replace(/;$/, '')).extensions;
+    return { browsers: [{id:'chrome',name:'Google Chrome (fixture)',detected:true,instructions:'Chrome fixture: turn on Developer mode yourself, choose Load unpacked and select each prepared folder.'}, {id:'edge',name:'Microsoft Edge (fixture, unverified)',detected:true,instructions:'Edge is unverified. In Edge extension settings turn on Developer mode yourself and choose Load unpacked.'}], extensions };
+  }
+  if (name === 'open_gateway' || name === 'quit_app' || name === 'open_extension_settings') return null;
   throw Error('Unknown fixture command');
 } } };
 `;
-const files = new Map([['/', ['index.html', 'text/html']], ['/app.mjs', ['app.mjs', 'text/javascript']], ['/app-info.mjs', ['app-info.mjs', 'text/javascript']], ['/recovery.mjs', ['recovery.mjs', 'text/javascript']], ['/desktop.css', ['desktop.css', 'text/css']]]);
+const files = new Map([['/', ['index.html', 'text/html']], ['/app.mjs', ['app.mjs', 'text/javascript']], ['/app-info.mjs', ['app-info.mjs', 'text/javascript']], ['/recovery.mjs', ['recovery.mjs', 'text/javascript']], ['/setup.mjs', ['setup.mjs', 'text/javascript']], ['/extension-info.mjs', ['extension-info.mjs', 'text/javascript']], ['/desktop.css', ['desktop.css', 'text/css']]]);
 createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.url === '/fixture-bridge.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(bridge); return; }

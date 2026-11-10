@@ -28,6 +28,36 @@ For source UI inspection, `relay-desktop-source-preview` serves these assets on 
 
 The native qualification window additionally needs the Tauri 2 CLI, Rust toolchain and Apple build tools. Cargo dependency resolution/lock, compilation, WKWebView rendering/session persistence, login registration and opt-out/restart/single-instance/Quit behavior have NOT been verified. Native bundling stays disabled until the normal coordinated packaging step; it must use the existing KH Studio Local Signing identity, approved app assets and normal release/update discipline. Do not infer a working native app or Windows compatibility from static checks or mocked recovery tests. No native build/package/install is permitted in the current source-preparation window.
 
+## Distribution and browser setup
+
+Owner2026-11-10 requests the normal signed `Relay Studio KH.app` through Studio Launcher KH and the existing Updater feed. No end-user Node/Python or custom updater/server is added. Stack coordinates shared registration with original Developer; that registration and delivered-app acceptance are pending. The shell's bundle identifier is `kh.relay.desktop`, product name `Relay Studio KH`, executable `relay-studio-kh`, and signing identity remains `KH Studio Local Signing`. Feed metadata and What's New follow the existing shared release contract; do not invent a second distribution mechanism.
+
+`desktop/extensions.json` is the reviewed release-input lock, initially all unavailable. It records candidate versions/commits without claiming their integration acceptance. After original-writer handover and integration review, accepted inputs additionally pin `manifest_sha256` and every `{path,sha256}` in a reviewed build payload. `RELAY_EXTENSION_PAYLOADS` points to those exported build directories (`video/`, `image/`, `audio/`), never a dirty original checkout. The helper refuses extra/missing/tampered files, unsafe paths, links, wrong MV3/version metadata and existing output. No extension source is vendored into this repository. Runtime payload resources are generated under ignored `desktop-resources/extensions/` and mapped to the signed app's `relay/extensions/` resources.
+
+Source assets can honestly show unavailable rows. Release asset preparation refuses any unavailable extension:
+
+```bash
+npm run desktop:release-assets
+```
+
+Tauri's normal before-build command uses that strict preparation. Bundling remains disabled until coordinated release qualification. Missing/unreviewed payloads block a complete three-extension release, even when the local settings UI can be previewed. Payload preparation is a release input step, not browser installation.
+
+The setup screen lists three extensions and their bundled version, or the missing-payload reason/candidate version. Native detection checks standard Mac application folders and Spotlight; not detected does not mean uninstalled. Chrome comes first. Edge and Brave are separately named, unverified candidates. The browser definitions are source data in `desktop/browsers.json`, not inferred compatibility.
+
+The user opens that browser's extension settings, turns on Developer mode themselves, chooses Load unpacked and selects each prepared folder. Relay never changes browser profiles, policies, permissions or security settings; no silent installation, Web Store publishing or enterprise policy is authorized. Firefox needs background-script/sidebar adaptation, and Safari needs a separate extension/container conversion. Neither port is implemented.
+
+Preparing a folder copies only verified resources to a stable app-support path `extensions/<kind>/<version>-<payload-sha256>/` outside the signed app. Its path never changes when Relay updates. A different extension build gets a separate folder and preserves the previous one; an existing modified folder fails instead of being replaced. No browser reload, worker change or installation happens automatically. Stop or resolve active/unknown jobs in Gateway before manually switching browser versions; staging cannot acknowledge or bypass those holds. Installation, handshake and provider readiness remain unknown until actual browser proof. Custom or independently installed extensions are untouched.
+
+Packaging tests use synthetic reviewed MV3 inputs, not the real extensions:
+
+```bash
+node --test test/extension-resources.test.mjs
+```
+
+Native resource lookup, hash-verified export, browser discovery/opening, clipboard access, actual path persistence across app updates and Chrome/Edge/Brave behavior remain unverified until their native qualification windows. No browser or OS action is run in source preparation.
+
+Official guidance: [Chrome Load unpacked](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked), [Edge porting and sideload testing](https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/port-chrome-extension), [Firefox background support](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background).
+
 ## Build and Gateway integration
 
 Building requires Node with built-in fetch, FormData and `node:test`, Python 3 supporting `-I -X utf8`, and the existing `kh-shared-ui` checkout. There are no frontend packages to install. End users do not need Node or Python to use the connector served by Gateway.

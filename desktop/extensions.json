@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "extensions": [
+    { "id": "video", "name": "Video generator", "version": null, "source_commit": null, "accepted": false, "reason": "Reviewed video extension is not available in this app yet." },
+    { "id": "image", "name": "Image generator", "version": "0.50.10", "source_commit": "5d96965e1331bcf07c609c339e6a2e285a223400", "accepted": false, "reason": "Reviewed extension is not available in this app yet." },
+    { "id": "audio", "name": "Audio generator", "version": "0.7.27", "source_commit": "25028954b87086ff6a12b8685cf327b10b546356", "accepted": false, "reason": "Reviewed extension is not available in this app yet." }
+  ]
+}

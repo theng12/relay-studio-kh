@@ -45,6 +45,10 @@ test('local-only native capability and release metadata stay explicit', async ()
   assert.deepEqual(capability.windows, ['main']);
   assert.equal(capability.remote, undefined);
   assert.equal(config.bundle.active, false);
+  assert.equal(config.build.beforeBuildCommand, 'npm run desktop:release-assets');
+  assert.deepEqual(config.bundle.resources, { '../desktop-resources/': 'relay/' });
+  const browserDefinitions = JSON.parse(await load('../desktop/browsers.json'));
+  assert.deepEqual(browserDefinitions.map(browser => browser.id), ['chrome', 'edge', 'brave']);
   assert.equal(config.bundle.macOS.signingIdentity, 'KH Studio Local Signing');
   assert.ok(!capability.permissions.some(value => /http|shell|fs|process|opener/.test(value)));
 });

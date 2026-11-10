@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --experimental-vm-modules --test test/*.test.mjs",
     "build": "node scripts/build.mjs",
-    "desktop:assets": "node scripts/build-desktop.mjs"
+    "desktop:assets": "node scripts/build-desktop.mjs",
+    "desktop:release-assets": "node scripts/build-desktop.mjs --require-complete"
   }
 }

@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Delegated by the owner through Developer on 2026-11-09: routine architecture and implementation choices. The shared surface uses plain HTML, CSS and browser JavaScript, hosted by existing Gateway. The owner additionally requested a persistent Mac app through Stack: Tauri 2/Rust source prepares local settings and the same Gateway page with normal browser sign-in. No separate queue, production server or extension runtime. Native Windows support may wait.
+Delegated by the owner through Developer on 2026-11-09: routine architecture and implementation choices. The shared surface uses plain HTML, CSS and browser JavaScript, hosted by existing Gateway. Owner2026-11-10 additionally requested a persistent Mac app through Stack: Tauri 2/Rust source prepares local settings and the same Gateway page with normal browser sign-in. No separate queue, production server or extension runtime. Native Windows support may wait.
 
 ## Users
 
@@ -25,6 +25,8 @@ Gateway owns worker tokens, registry, queue, availability and artifacts. Extensi
 ## Capabilities and Constraints
 
 Mac source candidate: Start at Login defaults on with retained opt-out, saved Gateway origin, one instance, Dock reopening, reconnect without job replay, independent Gateway window and explicit Quit. Native compilation, packaging, login/restart/session behavior and installed-Mac acceptance remain unverified. The current window allows source/static work only. Initial connector surface: one extension list, connection details, worker pairing/revocation, accurate capabilities and credit readback, errors with recovery, version and What's New. Management routes must be agreed with Gateway lead; fixture data is explicitly labeled until integrated. No balance, price, readiness or model key is guessed. Tokens are shown once, never persisted in browser storage or written to logs.
+
+The Mac app uses the existing Launcher/Updater distribution contract, owned by original Developer through Stack; no new updater or end-user Node/Python. The same Owner2026-11-10 request covers reviewed/versioned/hashed extension resources and manual setup: detected Chrome first, Edge/Brave separately unverified, three honest availability/version rows, Open extension settings and stable version/hash folders. Payloads are unavailable until writer handover/integration acceptance; a strict release-assets check blocks incomplete packages. No browser profile/policy/security changes, silent installs or automatic replacement/reload of existing workers. Previous/custom folders remain intact; active/uncertain job holds still apply. Firefox/Safari ports are not in scope.
 
 Original video checkout remains read-only pending verified writer handover. Relay owns unapplied recovery/credit patches and isolated compatibility proof. Existing image/audio provider boundaries remain intact.
 

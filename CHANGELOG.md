@@ -4,6 +4,8 @@
 - Keep Relay available as a Mac desktop app with a saved Gateway connection.
 - Choose whether Relay starts when you sign in.
 - Reconnect to Gateway without resubmitting work.
+- Follow browser-specific steps to set up your three extensions.
+- Keep earlier extension folders when preparing an update.
 
 ## 0.1.1 — 2026-11-10
 - Prepare the shared connector from a checkout outside the original Mac folder.
