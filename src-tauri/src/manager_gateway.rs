@@ -138,8 +138,8 @@ pub(crate) struct Balance {
     pub value: f64,
     pub unit: String,
     pub source: String,
-    #[serde(rename = "observedAt")]
-    pub observed_at: String,
+    // Gateway manager responses use normalized snake_case epoch seconds.
+    pub observed_at: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -148,10 +148,8 @@ pub(crate) struct CreditBucket {
     pub value: f64,
     pub unit: String,
     pub source: String,
-    #[serde(rename = "observedAt")]
-    pub observed_at: String,
-    #[serde(rename = "resetAt")]
-    pub reset_at: Option<String>,
+    pub observed_at: f64,
+    pub reset_at: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -164,8 +162,8 @@ pub(crate) struct WorkerState {
     pub enabled: Option<bool>,
     pub paused: Option<bool>,
     pub source: Option<String>,
-    pub observed_at: Option<String>,
-    pub next_eligible_at: Option<String>,
+    pub observed_at: Option<f64>,
+    pub next_eligible_at: Option<f64>,
     pub control_revision: Option<String>,
     pub pacing: Option<Pacing>,
 }
@@ -176,7 +174,7 @@ pub(crate) struct WorkerControl {
     pub dispatch_enabled: bool,
     #[serde(rename = "closeRequested")]
     pub close_requested: Option<bool>,
-    pub revision: String,
+    pub revision: Option<String>,
     #[serde(rename = "requestedAt")]
     pub requested_at: Option<f64>,
     pub pacing: Option<Pacing>,
@@ -185,7 +183,7 @@ pub(crate) struct WorkerControl {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ManagerWorker {
     pub worker_id: String,
-    pub kind: String,
+    pub kind: Option<String>,
     pub has_live_token: bool,
     pub control: WorkerControl,
     pub state: Option<WorkerState>,
@@ -207,15 +205,15 @@ pub(crate) struct ManagerAccount {
     pub provider: String,
     pub account_id: String,
     pub balance: Option<Balance>,
-    pub reset_at: Option<String>,
+    pub reset_at: Option<f64>,
     pub plan: Option<Value>,
     pub credit_buckets: Option<Vec<CreditBucket>>,
     pub source: Option<String>,
-    pub observed_at: Option<String>,
+    pub observed_at: Option<f64>,
     pub received_at: Option<f64>,
     pub fresh: bool,
     pub gateway_enabled: bool,
-    pub reserved: Option<Value>,
+    pub reserved: Option<f64>,
     pub available: Option<f64>,
     pub reservation_states: Option<Value>,
     pub needs_reconciliation: Option<bool>,
@@ -246,22 +244,20 @@ impl ManagerView {
         }
         let mut worker_ids = HashSet::new();
         for worker in &self.workers {
-            if !valid_id(&worker.worker_id)
-                || worker.kind.is_empty()
-                || worker.control.revision.is_empty()
-                || !worker_ids.insert(worker.worker_id.as_str())
-            {
+            if !valid_id(&worker.worker_id) || !worker_ids.insert(worker.worker_id.as_str()) {
                 return Err(ManagerError::InvalidView);
             }
+            validate_optional_epoch(worker.received_at)?;
+            validate_optional_epoch(worker.control.requested_at)?;
             if let Some(pacing) = &worker.control.pacing {
                 pacing.validate()?;
             }
-            if let Some(pacing) = worker
-                .state
-                .as_ref()
-                .and_then(|state| state.pacing.as_ref())
-            {
-                pacing.validate()?;
+            if let Some(state) = &worker.state {
+                validate_optional_epoch(state.observed_at)?;
+                validate_optional_epoch(state.next_eligible_at)?;
+                if let Some(pacing) = &state.pacing {
+                    pacing.validate()?;
+                }
             }
         }
         let mut accounts = HashSet::new();
@@ -272,18 +268,28 @@ impl ManagerView {
             {
                 return Err(ManagerError::InvalidView);
             }
+            validate_optional_epoch(account.observed_at)?;
+            validate_optional_epoch(account.reset_at)?;
+            validate_optional_epoch(account.received_at)?;
             if let Some(balance) = &account.balance {
                 validate_balance(
                     balance.value,
                     &balance.unit,
                     &balance.source,
-                    &balance.observed_at,
+                    balance.observed_at,
                 )?;
             }
-            if let Some(available) = account.available {
-                if !available.is_finite() || available < 0.0 {
+            if let Some(reserved) = account.reserved {
+                if !reserved.is_finite() || reserved < 0.0 {
                     return Err(ManagerError::InvalidView);
                 }
+            }
+            // Negative available is an honest reserve deficit; preserve it, never clamp.
+            if account
+                .available
+                .is_some_and(|available| !available.is_finite())
+            {
+                return Err(ManagerError::InvalidView);
             }
             if let Some(buckets) = &account.credit_buckets {
                 for bucket in buckets {
@@ -294,8 +300,9 @@ impl ManagerView {
                         bucket.value,
                         &bucket.unit,
                         &bucket.source,
-                        &bucket.observed_at,
+                        bucket.observed_at,
                     )?;
+                    validate_optional_epoch(bucket.reset_at)?;
                 }
             }
         }
@@ -363,17 +370,25 @@ fn view_time_ok(view: &ManagerView, now_epoch: f64) -> bool {
         && now_epoch - view.received_at <= view.max_age_seconds + CLOCK_SKEW_SECONDS
 }
 
+fn validate_optional_epoch(value: Option<f64>) -> Result<(), ManagerError> {
+    match value {
+        Some(value) if !value.is_finite() || value <= 0.0 => Err(ManagerError::InvalidView),
+        _ => Ok(()),
+    }
+}
+
 fn validate_balance(
     value: f64,
     unit: &str,
     source: &str,
-    observed_at: &str,
+    observed_at: f64,
 ) -> Result<(), ManagerError> {
     if value.is_finite()
         && value >= 0.0
         && !unit.is_empty()
         && !source.is_empty()
-        && !observed_at.is_empty()
+        && observed_at.is_finite()
+        && observed_at > 0.0
     {
         Ok(())
     } else {
@@ -464,8 +479,12 @@ pub(crate) fn close_safety_at(
                 if state.paused != Some(true) {
                     problems.push("worker has not acknowledged pause");
                 }
-                if state.control_revision.as_deref() != Some(worker.control.revision.as_str()) {
-                    problems.push("pause acknowledgement revision does not match");
+                match worker.control.revision.as_deref() {
+                    None => problems.push("control revision has not been issued"),
+                    Some(revision) if state.control_revision.as_deref() != Some(revision) => {
+                        problems.push("pause acknowledgement revision does not match")
+                    }
+                    Some(_) => {}
                 }
                 match state.activity.as_deref() {
                     Some("idle" | "cooling" | "resting" | "waiting") => {}
@@ -894,10 +913,18 @@ mod tests {
                 "pacing": {"minSeconds": 5, "maxSeconds": 15}
             },
             "state": {
-                "paused": true,
-                "control_revision": "revision-1",
+                "connection": "connected",
+                "sign_in": "signed_in",
+                "readiness": "ready",
                 "activity": "idle",
-                "observed_at": "2026-11-11T01:00:00Z"
+                "attention": false,
+                "enabled": true,
+                "paused": true,
+                "source": "flow.account",
+                "observed_at": 1794350000.0,
+                "next_eligible_at": null,
+                "control_revision": "revision-1",
+                "pacing": {"minSeconds": 5, "maxSeconds": 15}
             },
             "receivedAt": 1794350000.0,
             "fresh": true,
@@ -1170,74 +1197,139 @@ mod tests {
         assert!(!valid_id(""));
     }
 
+    fn account() -> Value {
+        json!({
+            "provider": "flow",
+            "account_id": "opaque-account",
+            "connection": "connected",
+            "sign_in": "signed_in",
+            "readiness": "ready",
+            "activity": "idle",
+            "attention": false,
+            "enabled": true,
+            "paused": false,
+            "next_eligible_at": null,
+            "balance": {
+                "value": 0.0,
+                "unit": "credits",
+                "source": "flow.account",
+                "observed_at": 1794350000.0,
+                "received_at": 1794350000.0,
+                "fresh": true
+            },
+            "reset_at": 1794353600.0,
+            "plan": null,
+            "credit_buckets": [{
+                "id": "daily",
+                "value": 0.0,
+                "unit": "credits",
+                "source": "flow.account",
+                "observed_at": 1794350000.0,
+                "reset_at": 1794353600.0
+            }],
+            "source": "flow.account",
+            "observed_at": 1794350000.0,
+            "received_at": 1794350000.0,
+            "fresh": true,
+            "gateway_enabled": false,
+            "reserved": 0.0,
+            "available": 0.0,
+            "reservation_states": {"reserved": 0, "held": 0, "debited": 0, "reconciled": 0},
+            "needs_reconciliation": false,
+            "workers": []
+        })
+    }
+
+    fn parse_account(account: Value) -> Result<ManagerView, ManagerError> {
+        parse_view(json!({
+            "schema": 1,
+            "receivedAt": 1794350000.0,
+            "maxAgeSeconds": 90,
+            "workers": [],
+            "accounts": [account]
+        }))
+    }
+
+    fn account_view(account: Value) -> ManagerView {
+        parse_account(account).unwrap()
+    }
+
     #[test]
     fn account_validation_keeps_zero_distinct_from_unknown() {
-        let document = json!({
-            "schema": 1,
-            "receivedAt": 1.0,
-            "maxAgeSeconds": 90,
-            "workers": [],
-            "accounts": [{
-                "provider": "flow",
-                "account_id": "opaque",
-                "balance": {
-                    "value": 0.0,
-                    "unit": "credits",
-                    "source": "flow.account",
-                    "observedAt": "2026-11-11T01:00:00Z"
-                },
-                "reset_at": null,
-                "plan": null,
-                "credit_buckets": null,
-                "source": "flow.account",
-                "observed_at": "2026-11-11T01:00:00Z",
-                "received_at": 1.0,
-                "fresh": true,
-                "gateway_enabled": false,
-                "reserved": null,
-                "available": 0.0,
-                "reservation_states": null,
-                "needs_reconciliation": false,
-                "workers": []
-            }]
-        });
-        assert_eq!(
-            parse_view(document).unwrap().accounts[0]
-                .balance
-                .unwrap()
-                .value,
-            0.0
-        );
+        let view = account_view(account());
+        assert_eq!(view.accounts[0].balance.as_ref().unwrap().value, 0.0);
+        assert_eq!(view.accounts[0].available, Some(0.0));
+        let mut bad = account();
+        bad["balance"]["value"] = json!(-1.0);
+        assert_eq!(parse_account(bad).err(), Some(ManagerError::InvalidView));
+    }
 
-        let bad = json!({
-            "schema": 1,
-            "receivedAt": 1.0,
-            "maxAgeSeconds": 90,
-            "workers": [],
-            "accounts": [{
-                "provider": "flow",
-                "account_id": "opaque",
-                "balance": {
-                    "value": -1.0,
-                    "unit": "credits",
-                    "source": "flow.account",
-                    "observedAt": "2026-11-11T01:00:00Z"
-                },
-                "reset_at": null,
-                "plan": null,
-                "credit_buckets": null,
-                "source": null,
-                "observed_at": null,
-                "received_at": null,
-                "fresh": false,
-                "gateway_enabled": false,
-                "reserved": null,
-                "available": null,
-                "reservation_states": null,
-                "needs_reconciliation": null,
-                "workers": []
-            }]
-        });
-        assert_eq!(parse_view(bad).err(), Some(ManagerError::InvalidView));
+    #[test]
+    fn observed_credits_decode_snake_case_epochs() {
+        let view = account_view(account());
+        let account = &view.accounts[0];
+        assert_eq!(account.observed_at, Some(1794350000.0));
+        assert_eq!(account.reset_at, Some(1794353600.0));
+        assert_eq!(account.balance.as_ref().unwrap().observed_at, 1794350000.0);
+        let bucket = &account.credit_buckets.as_ref().unwrap()[0];
+        assert_eq!(bucket.observed_at, 1794350000.0);
+        assert_eq!(bucket.reset_at, Some(1794353600.0));
+        assert_eq!(account.reserved, Some(0.0));
+        assert_eq!(account.available, Some(0.0));
+    }
+
+    #[test]
+    fn negative_available_deficit_is_preserved() {
+        let mut account = account();
+        account["balance"]["value"] = json!(5.0);
+        account["reserved"] = json!(10.0);
+        account["available"] = json!(-5.0);
+        let view = account_view(account);
+        assert_eq!(view.accounts[0].reserved, Some(10.0));
+        assert_eq!(view.accounts[0].available, Some(-5.0));
+    }
+
+    #[test]
+    fn unknown_incomparable_units_keep_available_null() {
+        let mut account = account();
+        account["reserved"] = json!(null);
+        account["available"] = json!(null);
+        let view = account_view(account);
+        assert_eq!(view.accounts[0].reserved, None);
+        assert_eq!(view.accounts[0].available, None);
+    }
+
+    #[test]
+    fn first_pairing_with_null_revision_is_valid_but_never_close_safe() {
+        let ids = vec!["profile-a-video".to_string()];
+        let mut first = worker("profile-a-video");
+        first["control"]["revision"] = json!(null);
+        first["control"]["requestedAt"] = json!(null);
+        first["control"]["closeRequested"] = json!(false);
+        first["state"] = json!(null);
+        first["receivedAt"] = json!(null);
+        first["fresh"] = json!(false);
+        first["safeToClose"] = json!(false);
+        let view = view(vec![first]);
+        assert_eq!(view.workers[0].control.revision, None);
+        assert!(!close_safety_at(&view, &ids, NOW).safe_to_close);
+    }
+
+    #[test]
+    fn revoked_worker_null_kind_does_not_invalidate_other_workers() {
+        let mut revoked = worker("profile-b-video");
+        revoked["kind"] = json!(null);
+        revoked["has_live_token"] = json!(false);
+        revoked["control"]["revision"] = json!(null);
+        revoked["control"]["closeRequested"] = json!(false);
+        revoked["state"] = json!(null);
+        revoked["receivedAt"] = json!(null);
+        revoked["fresh"] = json!(false);
+        revoked["safeToClose"] = json!(false);
+        let view = view(vec![worker("profile-a-video"), revoked]);
+        assert_eq!(view.workers.len(), 2);
+        assert_eq!(view.workers[1].kind, None);
+        assert!(!close_safety_at(&view, &["profile-b-video".into()], NOW).safe_to_close);
+        assert!(close_safety_at(&view, &["profile-a-video".into()], NOW).safe_to_close);
     }
 }
