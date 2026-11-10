@@ -27,6 +27,8 @@ const MAX_TOKEN_BYTES: usize = 4 * 1024;
 const MAX_ID_BYTES: usize = 256;
 const MAX_WORKERS: usize = 256;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
+// Small allowance for Gateway/Relay clock skew; larger gaps fail closed.
+const CLOCK_SKEW_SECONDS: f64 = 5.0;
 #[cfg(target_os = "macos")]
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
@@ -38,6 +40,8 @@ pub(crate) enum ManagerError {
     InvalidPacing,
     InvalidControl,
     InvalidView,
+    FutureView,
+    StaleView,
     NotPaired,
     Keychain(i32),
     StoredCredential,
@@ -68,6 +72,8 @@ impl std::fmt::Display for ManagerError {
                 "The requested manager control change is invalid or could not be encoded."
             }
             Self::InvalidView => "Gateway's manager view did not match schema 1.",
+            Self::FutureView => "Gateway's manager view is dated in the future.",
+            Self::StaleView => "Gateway's manager view is older than its freshness limit.",
             Self::NotPaired => "No Relay manager credential is stored for this Gateway.",
             Self::Keychain(code) => {
                 return write!(
@@ -303,6 +309,58 @@ impl ManagerView {
             && now_epoch >= self.received_at
             && now_epoch - self.received_at <= self.max_age_seconds
     }
+
+    /// Reject future-dated or stale response timestamps before trusting a view.
+    pub(crate) fn validate_times(&self, now_epoch: f64) -> Result<(), ManagerError> {
+        if !now_epoch.is_finite() {
+            return Err(ManagerError::InvalidView);
+        }
+        check_epoch_fresh(self.received_at, now_epoch, self.max_age_seconds)?;
+        for worker in &self.workers {
+            if let Some(received_at) = worker.received_at {
+                // A stale worker is valid data with fresh:false; close safety rejects it.
+                check_epoch_not_future(received_at, now_epoch)?;
+            }
+        }
+        for account in &self.accounts {
+            if let Some(received_at) = account.received_at {
+                // Stale accounts remain displayable; only impossible future times fail.
+                check_epoch_not_future(received_at, now_epoch)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn check_epoch_not_future(value: f64, now_epoch: f64) -> Result<(), ManagerError> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(ManagerError::InvalidView);
+    }
+    if value > now_epoch + CLOCK_SKEW_SECONDS {
+        return Err(ManagerError::FutureView);
+    }
+    Ok(())
+}
+
+fn check_epoch_fresh(value: f64, now_epoch: f64, max_age_seconds: f64) -> Result<(), ManagerError> {
+    check_epoch_not_future(value, now_epoch)?;
+    if now_epoch - value > max_age_seconds + CLOCK_SKEW_SECONDS {
+        return Err(ManagerError::StaleView);
+    }
+    Ok(())
+}
+
+fn now_epoch() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+fn view_time_ok(view: &ManagerView, now_epoch: f64) -> bool {
+    now_epoch.is_finite()
+        && view.received_at <= now_epoch + CLOCK_SKEW_SECONDS
+        && now_epoch - view.received_at <= view.max_age_seconds + CLOCK_SKEW_SECONDS
 }
 
 fn validate_balance(
@@ -333,6 +391,21 @@ pub(crate) struct CloseSafety {
 /// Caller must pass every worker id sharing the profile. A pause-only control
 /// call is never close permission, and a stale/missing acknowledgement waits.
 pub(crate) fn close_safety(view: &ManagerView, worker_ids: &[String]) -> CloseSafety {
+    close_safety_at(view, worker_ids, now_epoch())
+}
+
+pub(crate) fn close_safety_at(
+    view: &ManagerView,
+    worker_ids: &[String],
+    now_epoch: f64,
+) -> CloseSafety {
+    if !view_time_ok(view, now_epoch) {
+        return CloseSafety {
+            safe_to_close: false,
+            waiting_on: worker_ids.to_vec(),
+            reason: Some("Manager view is stale or dated in the future.".into()),
+        };
+    }
     let mut waiting_on = Vec::new();
     let mut reasons = Vec::new();
     if worker_ids.is_empty() {
@@ -349,6 +422,21 @@ pub(crate) fn close_safety(view: &ManagerView, worker_ids: &[String]) -> CloseSa
             continue;
         };
         let mut problems = Vec::new();
+        match worker.received_at {
+            None => problems.push("worker receive time is not reported"),
+            Some(received_at) if !received_at.is_finite() || received_at <= 0.0 => {
+                problems.push("worker receive time is invalid")
+            }
+            Some(received_at) if received_at > now_epoch + CLOCK_SKEW_SECONDS => {
+                problems.push("worker receive time is in the future")
+            }
+            Some(received_at)
+                if now_epoch - received_at > view.max_age_seconds + CLOCK_SKEW_SECONDS =>
+            {
+                problems.push("worker telemetry is stale")
+            }
+            Some(_) => {}
+        }
         if !worker.fresh {
             problems.push("telemetry is not fresh");
         }
@@ -378,6 +466,11 @@ pub(crate) fn close_safety(view: &ManagerView, worker_ids: &[String]) -> CloseSa
                 }
                 if state.control_revision.as_deref() != Some(worker.control.revision.as_str()) {
                     problems.push("pause acknowledgement revision does not match");
+                }
+                match state.activity.as_deref() {
+                    Some("idle" | "cooling" | "resting" | "waiting") => {}
+                    Some(_) => problems.push("worker activity is not a known safe state"),
+                    None => problems.push("worker activity has not been observed"),
                 }
             }
         }
@@ -683,6 +776,7 @@ struct ControlRequest<'a> {
 pub(crate) async fn pair(origin: &str, token: &str) -> Result<ManagerView, ManagerError> {
     let client = ManagerClient::new(origin, token)?;
     let view = client.read().await?;
+    view.validate_times(now_epoch())?;
     store_token(&client.origin, &client.token)?;
     Ok(view)
 }
@@ -716,11 +810,10 @@ pub(crate) async fn control(
         .await
 }
 
-fn stored_token(origin: &str) -> Result<String, String> {
-    let origin = normalize_origin(origin).map_err(|error| error.to_string())?;
-    load_token(&origin)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| ManagerError::NotPaired.to_string())
+/// Local Keychain presence only; live auth still requires a successful read.
+pub(crate) fn paired(origin: &str) -> Result<bool, ManagerError> {
+    let origin = normalize_origin(origin)?;
+    Ok(load_token(&origin)?.is_some())
 }
 
 #[tauri::command]
@@ -766,6 +859,15 @@ pub(crate) async fn manager_control_gateway(
 }
 
 #[tauri::command]
+pub(crate) fn manager_paired_gateway(
+    window: WebviewWindow,
+    origin: String,
+) -> Result<bool, String> {
+    super::local_only(&window)?;
+    paired(&origin).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn manager_clear_gateway(window: WebviewWindow, origin: String) -> Result<(), String> {
     super::local_only(&window)?;
     let origin = normalize_origin(&origin).map_err(|error| error.to_string())?;
@@ -776,6 +878,8 @@ pub(crate) fn manager_clear_gateway(window: WebviewWindow, origin: String) -> Re
 mod tests {
     use super::*;
     use serde_json::json;
+
+    const NOW: f64 = 1794350001.0;
 
     fn worker(id: &str) -> Value {
         json!({
@@ -792,6 +896,7 @@ mod tests {
             "state": {
                 "paused": true,
                 "control_revision": "revision-1",
+                "activity": "idle",
                 "observed_at": "2026-11-11T01:00:00Z"
             },
             "receivedAt": 1794350000.0,
@@ -881,41 +986,121 @@ mod tests {
     #[test]
     fn close_is_safe_only_with_fresh_pause_ack_revision_and_no_work() {
         let ids = vec!["profile-a-video".to_string()];
-        let safe = close_safety(&view(vec![worker("profile-a-video")]), &ids);
+        let safe = close_safety_at(&view(vec![worker("profile-a-video")]), &ids, NOW);
         assert!(safe.safe_to_close);
         assert!(safe.waiting_on.is_empty());
 
         let mut stale = worker("profile-a-video");
         stale["fresh"] = json!(false);
-        assert!(!close_safety(&view(vec![stale]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![stale]), &ids, NOW).safe_to_close);
 
         let mut running = worker("profile-a-video");
         running["current_job"] = json!({"jobId": "job-1"});
-        assert!(!close_safety(&view(vec![running]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![running]), &ids, NOW).safe_to_close);
 
         let mut held = worker("profile-a-video");
         held["held_jobs"] = json!([{"jobId": "job-2"}]);
-        assert!(!close_safety(&view(vec![held]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![held]), &ids, NOW).safe_to_close);
 
         let mut durable = worker("profile-a-video");
         durable["durableBusy"] = json!(true);
-        assert!(!close_safety(&view(vec![durable]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![durable]), &ids, NOW).safe_to_close);
 
         let mut not_paused = worker("profile-a-video");
         not_paused["state"]["paused"] = json!(false);
-        assert!(!close_safety(&view(vec![not_paused]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![not_paused]), &ids, NOW).safe_to_close);
 
         let mut wrong_revision = worker("profile-a-video");
         wrong_revision["state"]["control_revision"] = json!("revision-0");
-        assert!(!close_safety(&view(vec![wrong_revision]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![wrong_revision]), &ids, NOW).safe_to_close);
 
         let mut pause_only = worker("profile-a-video");
         pause_only["control"]["closeRequested"] = json!(false);
-        assert!(!close_safety(&view(vec![pause_only]), &ids).safe_to_close);
+        assert!(!close_safety_at(&view(vec![pause_only]), &ids, NOW).safe_to_close);
 
         assert!(
-            !close_safety(&view(vec![worker("profile-a-video")]), &["missing".into()])
-                .safe_to_close
+            !close_safety_at(
+                &view(vec![worker("profile-a-video")]),
+                &["missing".into()],
+                NOW
+            )
+            .safe_to_close
+        );
+    }
+
+    #[test]
+    fn close_requires_observed_safe_activity() {
+        let ids = vec!["profile-a-video".to_string()];
+        for activity in ["idle", "cooling", "resting", "waiting"] {
+            let mut observed = worker("profile-a-video");
+            observed["state"]["activity"] = json!(activity);
+            assert!(
+                close_safety_at(&view(vec![observed]), &ids, NOW).safe_to_close,
+                "activity {activity}"
+            );
+        }
+        for activity in [
+            json!("generating"),
+            json!("recovering"),
+            json!("unknown"),
+            json!(null),
+        ] {
+            let mut observed = worker("profile-a-video");
+            observed["state"]["activity"] = activity;
+            assert!(!close_safety_at(&view(vec![observed]), &ids, NOW).safe_to_close);
+        }
+        let mut missing = worker("profile-a-video");
+        if let Some(state) = missing["state"].as_object_mut() {
+            state.remove("activity");
+        }
+        assert!(!close_safety_at(&view(vec![missing]), &ids, NOW).safe_to_close);
+    }
+
+    #[test]
+    fn close_rejects_future_or_stale_times() {
+        let ids = vec!["profile-a-video".to_string()];
+        let mut future_worker = worker("profile-a-video");
+        future_worker["receivedAt"] = json!(NOW + 100.0);
+        assert!(!close_safety_at(&view(vec![future_worker]), &ids, NOW).safe_to_close);
+
+        let mut stale_worker = worker("profile-a-video");
+        stale_worker["receivedAt"] = json!(NOW - 1000.0);
+        assert!(!close_safety_at(&view(vec![stale_worker]), &ids, NOW).safe_to_close);
+
+        let mut missing_time = worker("profile-a-video");
+        missing_time["receivedAt"] = json!(null);
+        assert!(!close_safety_at(&view(vec![missing_time]), &ids, NOW).safe_to_close);
+
+        let mut future_view = view(vec![worker("profile-a-video")]);
+        future_view.received_at = NOW + 100.0;
+        assert!(!close_safety_at(&future_view, &ids, NOW).safe_to_close);
+
+        let mut stale_view = view(vec![worker("profile-a-video")]);
+        stale_view.received_at = NOW - 1000.0;
+        assert!(!close_safety_at(&stale_view, &ids, NOW).safe_to_close);
+
+        assert!(view(vec![worker("profile-a-video")])
+            .validate_times(NOW)
+            .is_ok());
+        let mut future = view(vec![worker("profile-a-video")]);
+        future.received_at = NOW + 100.0;
+        assert_eq!(future.validate_times(NOW), Err(ManagerError::FutureView));
+        let mut stale = view(vec![worker("profile-a-video")]);
+        stale.received_at = NOW - 1000.0;
+        assert_eq!(stale.validate_times(NOW), Err(ManagerError::StaleView));
+        let mut stale_worker_time = view(vec![worker("profile-a-video")]);
+        stale_worker_time.workers[0].received_at = Some(NOW - 1000.0);
+        // Stale worker rows are valid data; close safety rejects them separately.
+        assert!(stale_worker_time.validate_times(NOW).is_ok());
+        let mut future_worker_time = view(vec![worker("profile-a-video")]);
+        future_worker_time.workers[0].received_at = Some(NOW + 100.0);
+        assert_eq!(
+            future_worker_time.validate_times(NOW),
+            Err(ManagerError::FutureView)
+        );
+        assert_eq!(
+            view(vec![worker("profile-a-video")]).validate_times(f64::NAN),
+            Err(ManagerError::InvalidView)
         );
     }
 
