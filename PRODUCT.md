@@ -8,43 +8,45 @@ web
 
 ## Stack
 
-Delegated by the owner through Developer on 2026-11-09: routine architecture and implementation choices. The shared surface uses plain HTML, CSS and browser JavaScript, hosted by existing Gateway. Owner2026-11-10 additionally requested a persistent Mac app through Stack: Tauri 2/Rust source prepares local settings and the same Gateway page with normal browser sign-in. No separate queue, production server or extension runtime. Native Windows support may wait.
+The owner approved extending Relay's existing Tauri 2/Rust Mac shell into a persistent real-Chrome account manager, relayed by Developer - YouTube Studio Stack on 2026-11-11. Its local operator interface uses plain HTML, CSS and JavaScript. Gateway remains the only job/auth/model/capability/credit/registry/artifact authority. No second production server, replacement app or embedded simulated browser. Existing Gateway connector fragments remain available.
 
 ## Users
 
-The owner connects their three existing browser-session generator extensions to This Mac's Gateway and checks whether each is connected and ready.
+The owner keeps one, five or one hundred saved browser accounts and opens only the profiles needed for image and video work. Saved accounts are distinct from resident Chrome processes. Browser TTS is explicitly skipped, optional and off; preserved source and failed paused attempt do not block this deliverable. Lightpanda is optional and off, with no implemented execution claim.
 
 ## Product Purpose
 
-Provide a usable connector app for video, image and audio extensions, each adding Gateway Studio KH beside its existing Story Studio and standalone modes. Story keeps one Gateway endpoint.
+One scalable account list supports stable-number selection, bulk open/close and attention actions that open the exact managed Chrome profile needing sign-in or repair. Profiles retain their own Chrome-owned cookies and storage. Sign-in uses normal visible Chrome; Relay never copies credentials or bypasses verification.
 
 ## Operating Context
 
-Gateway owns worker tokens, registry, queue, availability and artifacts. Extensions poll outbound and drive their signed-in browser sessions. Relay manages pairing and reads reported worker state. Live access through This Mac's existing LAN/Tailscale is authorized; 1301 activation, paid captures/generation, public publishing and unrelated OS/security changes remain excluded.
+Gateway authenticates workers and owns claims, reservations, observed account credits and artifacts. Image and video workers share an observed provider/account identity to avoid double-counting credits. Local profile IDs alone do not prove provider account identity. The local profile enable choice cannot override Gateway's independent account spend switch, which starts off. Scoped manager access can read/control only its bound workers, never claim work or enable spending.
 
 ## Capabilities and Constraints
 
-Mac source candidate: Start at Login defaults on with retained opt-out, saved Gateway origin, one instance, Dock reopening, reconnect without job replay, independent Gateway window and explicit Quit. Native compilation, packaging, login/restart/session behavior and installed-Mac acceptance remain unverified. The current window allows source/static work only. Initial connector surface: one extension list, connection details, worker pairing/revocation, accurate capabilities and credit readback, errors with recovery, version and What's New. Management routes must be agreed with Gateway lead; fixture data is explicitly labeled until integrated. No balance, price, readiness or model key is guessed. Tokens are shown once, never persisted in browser storage or written to logs.
+The 0.3.0 candidate adds real Chrome lifecycle source to the existing native shell: stable managed profile folders, atomic saved enabled/open intent, on-demand measured-RAM admission, configurable memory budget/concurrency and queued reasons, exact-owned process recovery and safe pending close. Previously off stays off. No arbitrary saved-profile count cap. Closing waits for authoritative fresh pause/safety acknowledgement and active or uncertain work to finish or stay safely held; no forced paid-job termination or replay.
 
-The Mac app uses the existing Launcher/Updater distribution contract, owned by original Developer through Stack; no new updater or end-user Node/Python. The same Owner2026-11-10 request covers reviewed/versioned/hashed extension resources and manual setup: detected Chrome first, Edge/Brave separately unverified, three honest availability/version rows, Open extension settings and stable version/hash folders. Payloads are unavailable until writer handover/integration acceptance; a strict release-assets check blocks incomplete packages. No browser profile/policy/security changes, silent installs or automatic replacement/reload of existing workers. Previous/custom folders remain intact; active/uncertain job holds still apply. Firefox/Safari ports are not in scope.
+The interface separates Gateway connection/provider sign-in/readiness/paused/offline/error from generating/cooling/resting/waiting/recovering. Balance and reset show source and last observation. Missing or stale data is unknown, never zero. Free daily and paid/subscription buckets appear separately only when observed; the owner's reported Flow fifty-credit allowance is not a universal rule or a midnight/timezone assumption. A newly discovered model can be listed before verified control/schema/generation support; unsupported admission stays refused. Story/Gateway controls must retain scene duration at minimum.
 
-Original video checkout remains read-only pending verified writer handover. Relay owns unapplied recovery/credit patches and isolated compatibility proof. Existing image/audio provider boundaries remain intact.
+Default inter-generation pause is random five to fifteen seconds, editable. Explicit custom overrides, including zero, and provider cooldowns are preserved. It must reach the actual scheduler/extension and persist across worker restarts; a saved preference or decorative countdown is not application proof. Source and actual affected checks are required before integration. Native build, Keychain access, browser lifecycle, wake/restart and installed-Mac acceptance remain unverified until the normal admitted checks; preview fixture success does not qualify them.
+
+Existing saved Gateway origin, retained Start at Login opt-out, single instance, Dock reopening, close/hide, reconnect and explicit Quit remain. App login preferences must not change macOS automatic-login/security/privacy settings. Native management commands remain local-window-only; the remote Gateway webview has no native management authority. A one-time worker-scoped manager token is paired through Gateway's normal local-app management route and retained only in Relay's own secure storage, bound to the exact Gateway origin. No browser cookie/key extraction, plaintext fallback or token logging.
+
+Normal signed app/DMG and Launcher/Updater distribution, version and What's New remain required. End users need no Node or Python. Reviewed pinned/hash-locked image/video resources and explicit manual Chrome Load unpacked guidance remain; missing required payloads block release, while skipped TTS is optional/off/nonblocking. Previous managed/custom folders, active workers, dirty originals, frozen candidates and historical evidence remain preserved. No silent extension install/reload, browser policy changes, Firefox/Safari port claim or unqualified Edge/Brave claim.
 
 ## Brand Commitments
 
-Name: Relay Studio KH. Shared KH UI conventions, plain words, fewer controls and one list. No existing icon is replaced. No marketing claims or invented production success.
-
-## Evidence on Hand
-
-Relay main96ac2c5 has portable build and isolated connector proof. Separate image0.50.10/audio0.7.27 source candidates remain unmerged. Stack verified Gateway0.2.241 installed-bundle prerequisite; normal runtime/isolation/adapters and original-writer handover remain pending. Mac0.2.0 is a source-only native candidate, not a compiled/installed app. Captures contain sensitive remnants and are not app assets or fixtures.
+Relay Studio KH retains shared KH system type, restrained blue/slate light and dark surfaces, plain words, fewer controls and one flat list with inline details. The existing connection-register identity is extended, not replaced. Version and What's New remain together in the footer. No invented readiness, balance, provider success or installed acceptance.
 
 ## Product Principles
 
-- Show unknown and not checked honestly.
-- Make pairing deliberate and recoverable through revocation.
-- Keep one Gateway transport/store.
-- Preserve existing extension modes and paid unknown-outcome holds.
+- Show unknown, stale, failed and not checked states honestly.
+- Keep saved intent separate from observed process and worker state.
+- Use genuine account authority and one Gateway queue/store.
+- Preserve explicit off choices, custom pacing and uncertain paid-job holds.
+- Keep optional browser audio off and nonblocking.
+- Verify actual lifecycle and installed behavior through the normal admitted route.
 
 ## Open Implementation Facts
 
-Gateway's existing Providers pane hosts the connector fragment. Its management contract uses GET/POST/DELETE /admin/api/extension-workers, snake_case readback and null for unknown credit data. Mint/revoke retain local-app-only authorization; signed-in browsers can read. Relay delivers a pinned fragment/bundle, and the Gateway lead owns integration, normal release and This Mac deployment. The fixture preview is not an installed native package.
+Gateway's existing Providers pane uses GET/POST/DELETE /admin/api/extension-workers. Its lead is adding exact-worker-scoped manager pairing, authenticated manager read/control, shared observed account telemetry and atomic quote/reservation safeguards in its existing worker/store path. Proposed contracts are implementation inputs, not installed proof; final source-bound field/auth/safety documentation must be integrated and checked. Native compilation, source-locked HTTP proof, real Chrome/Keychain/login/wake/restart, signing, publication, installation and intended-machine behavior still need matching evidence. No new paid generation, 1301 activation/target mutation, force-install, security/privacy change or Production disturbance is authorized here.

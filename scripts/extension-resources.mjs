@@ -100,21 +100,25 @@ export function prepareExtensionResources({ catalogPath, outputRoot, payloadRoot
     for (const field of ['name']) {
       if (typeof entry[field] !== 'string' || entry[field] === '') fail(`extension ${kind}: ${field} required`);
     }
+    if (entry.required !== undefined && typeof entry.required !== 'boolean') fail(`extension ${kind}: required must be true or false`);
+    const required = entry.required !== false;
     if (entry.accepted === false) {
       if (typeof entry.reason !== 'string' || entry.reason === '') fail(`extension ${kind}: unavailable needs an honest reason`);
       rows.push({
         id: kind, name: entry.name, version: entry.version ?? null, source_commit: entry.source_commit ?? null,
-        available: false, reason: entry.reason, files: [], payload_sha256: null,
+        available: false, required, reason: entry.reason, files: [], payload_sha256: null,
       });
       continue;
     }
     if (entry.accepted !== true) fail(`extension ${kind}: accepted must be true or false`);
     if (typeof entry.version !== 'string' || !/^\d+(\.\d+){0,3}$/.test(entry.version) || entry.version.split('.').some(n => +n > 65535 || (n.length > 1 && n.startsWith('0'))) || entry.version.split('.').every(n => +n === 0)) fail(`extension ${kind}: accepted requires a valid Chrome manifest version`);
     const staged = stageAccepted(entry, payloadRoot, extensionsOut);
-    rows.push({ id: kind, name: entry.name, version: entry.version, source_commit: entry.source_commit, available: true, reason: null, ...staged });
+    rows.push({ id: kind, name: entry.name, version: entry.version, source_commit: entry.source_commit, available: true, required, reason: null, ...staged });
   }
   const available = rows.filter((r) => r.available).length;
-  if (requireComplete && available < rows.length) fail(`require-complete: ${rows.length - available} of ${rows.length} extensions unavailable`);
+  const requiredRows = rows.filter((row) => row.required);
+  const missing = requiredRows.filter((row) => !row.available);
+  if (requireComplete && missing.length) fail(`require-complete: ${missing.length} of ${requiredRows.length} required extensions unavailable: ${missing.map(row => row.id).join(', ')}`);
   fs.writeFileSync(path.join(extensionsOut, 'index.json'), JSON.stringify({ schema: 1, extensions: rows }, null, 2) + '\n');
   return { rows, available, total: rows.length };
 }

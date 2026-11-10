@@ -4,7 +4,7 @@ Mode: Operate. Primary target web/index.html; related web/app.mjs and web/app.cs
 
 ## Direction contract
 
-THESIS: A connection register for the three extensions. Show which browser worker is connected, what it reports and what needs attention, with one deliberate pairing action per empty slot.
+THESIS: A connection register for image/video workers and preserved optional audio. Show which browser worker is connected, what it reports and what needs attention, with one deliberate pairing action per empty slot.
 OWN-WORLD: Shared KH spacing/radii, system UI type, cool white surface with slate text and one restrained blue accent. Literal states and a flat list; no metric cards or diagrams. Desktop working light informs the light default; system dark mode remains supported.
 STORY: Read the Gateway address, scan video/image/audio, connect a worker, copy its one-time token into the extension, refresh to see actual telemetry. Unknown stays unknown.
 FIRST VIEWPORT: Compact app identity and refresh at top; Gateway address beneath; one full-width list with extension identity left, reported state/credits central, connection action right. Details expand in place. Pairing alone uses a protected dialog. Version/What's New sit at the foot.

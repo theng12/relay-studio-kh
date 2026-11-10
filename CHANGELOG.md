@@ -1,5 +1,13 @@
 # What's New
 
+## 0.3.0 — 2026-11-11
+- Keep saved Chrome accounts in one list and open only the ones you need.
+- Select accounts by number, or open the account that needs attention.
+- Limit open browsers to your memory budget and keep your saved on and off choices.
+- See connection and activity separately, with unknown balances shown clearly.
+- Request a safe close without replaying uncertain work.
+- Keep browser audio optional and off while using image and video accounts.
+
 ## 0.2.0 — 2026-11-10
 - Keep Relay available as a Mac desktop app with a saved Gateway connection.
 - Choose whether Relay starts when you sign in.

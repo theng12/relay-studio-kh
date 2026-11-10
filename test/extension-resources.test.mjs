@@ -43,9 +43,9 @@ test('all-unavailable catalog stays honest; require-complete blocks the release'
   const outRoot = f.out();
   const result = prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: outRoot, payloadRoot: f.payloadRoot });
   assert.deepEqual(result, { rows: [
-    { id: 'video', name: 'video connector', version: null, source_commit: null, available: false, reason: 'video extension not reviewed yet', files: [], payload_sha256: null },
-    { id: 'image', name: 'image connector', version: null, source_commit: null, available: false, reason: 'image extension not reviewed yet', files: [], payload_sha256: null },
-    { id: 'audio', name: 'audio connector', version: null, source_commit: null, available: false, reason: 'audio extension not reviewed yet', files: [], payload_sha256: null },
+    { id: 'video', name: 'video connector', version: null, source_commit: null, available: false, required: true, reason: 'video extension not reviewed yet', files: [], payload_sha256: null },
+    { id: 'image', name: 'image connector', version: null, source_commit: null, available: false, required: true, reason: 'image extension not reviewed yet', files: [], payload_sha256: null },
+    { id: 'audio', name: 'audio connector', version: null, source_commit: null, available: false, required: true, reason: 'audio extension not reviewed yet', files: [], payload_sha256: null },
   ], available: 0, total: 3 });
   assert.equal(fs.existsSync(path.join(outRoot, 'extensions', 'video')), false);
   const strictOut = f.out();
@@ -124,6 +124,23 @@ test('strict release accepts all three reviewed payloads and rejects malformed v
   assert.equal(prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: f.out(), payloadRoot: f.payloadRoot, requireComplete: true }).available, 3);
   entries[0].version = '1.70000'; writeCatalog(f, entries);
   assert.throws(() => prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: f.out(), payloadRoot: f.payloadRoot, requireComplete: true }), /valid Chrome manifest version/);
+});
+
+test('owner-skipped optional audio never blocks required image/video or silently becomes available', () => {
+  const f = fixture();
+  const video = acceptedEntry(f, 'video', { 'worker.js': '/* reviewed video fixture */' });
+  const image = acceptedEntry(f, 'image', { 'worker.js': '/* reviewed image fixture */' });
+  const audio = { ...unavailable('audio', 'Owner skipped browser TTS; optional off'), required: false };
+  writeCatalog(f, [video, image, audio]);
+  const out = f.out();
+  const result = prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: out, payloadRoot: f.payloadRoot, requireComplete: true });
+  assert.equal(result.available, 2);
+  assert.deepEqual(result.rows.map(row => [row.id, row.required, row.available]), [['video', true, true], ['image', true, true], ['audio', false, false]]);
+  assert.equal(fs.existsSync(path.join(out, 'extensions', 'audio')), false);
+  writeCatalog(f, [video, unavailable('image'), audio]);
+  assert.throws(() => prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: f.out(), payloadRoot: f.payloadRoot, requireComplete: true }), /required extensions unavailable: image/);
+  writeCatalog(f, [video, image, { ...audio, required: 'false' }]);
+  assert.throws(() => prepareExtensionResources({ catalogPath: f.catalogPath, outputRoot: f.out(), payloadRoot: f.payloadRoot, requireComplete: true }), /required must be true or false/);
 });
 
 test('existing output root is refused, never wiped', () => {

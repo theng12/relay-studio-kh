@@ -24,6 +24,10 @@ struct FileEntry {
     path: String,
     sha256: String,
 }
+fn required_by_default() -> bool {
+    true
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 struct Extension {
     id: String,
@@ -31,6 +35,8 @@ struct Extension {
     version: Option<String>,
     source_commit: Option<String>,
     available: bool,
+    #[serde(default = "required_by_default")]
+    required: bool,
     reason: Option<String>,
     files: Vec<FileEntry>,
     payload_sha256: Option<String>,

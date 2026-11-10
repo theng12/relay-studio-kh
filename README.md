@@ -1,6 +1,20 @@
 # Relay Studio KH
 
-Relay connects the existing video, image and audio browser generators to Gateway Studio KH. The connector app is a pane in Gateway's existing Providers screen. This repository owns that plain HTML/CSS/JavaScript fragment and isolated extension compatibility checks; Gateway owns authentication, the worker registry, queue, availability, artifacts and deployment. No separate production service is required.
+Relay manages saved Chrome accounts for the existing image and video browser generators and connects their workers to Gateway Studio KH. Browser TTS is owner-skipped, optional and off. The existing connector remains a pane in Gateway's Providers screen; the Mac shell adds real on-demand Chrome profile lifecycle and a local account list. Gateway owns authentication, jobs, models/capabilities, shared account credits, reservations, artifacts and deployment. No separate production service is added.
+
+## Browser account manager — 0.3.0 candidate
+
+One account register supports stable numbered profiles, bulk/range selection, open/close and an attention action for the exact profile. Saving one hundred profiles does not open one hundred browsers. Native admission measures memory and applies an adjustable budget/reserve and optional active-process ceiling; saved profiles have no arbitrary count cap. Chrome owns each managed profile's cookies/storage; Relay does not copy credentials or touch the user's existing Chrome profiles.
+
+The native manager persists local enabled/open intent atomically and preserves OFF choices through restart/wake. Exact-owned Chrome processes are reconciled before another launch. Opening a browser never submits a job. Close requests first disable dispatch for both bound image/video workers and wait for fresh Gateway pause/control-revision and safe-close acknowledgement; missing/stale/active/held/uncertain state stays pending rather than forcing termination or replay.
+
+Connection, provider sign-in and readiness are separate from generating/cooling/resting/waiting/recovering. Process liveness never proves readiness. Gateway account balances are deduplicated across image/video and retain source/observed time/reset/buckets only when actually observed. Unknown/stale is not zero; fifty free daily credits and midnight/timezone resets are not universal defaults. Local profile IDs do not identify provider accounts. Gateway's independent account spending flag starts off and cannot be enabled by the manager.
+
+Pairing uses a one-time scoped manager token created through Gateway's normal app-only route for exact worker IDs. Relay retains that token only in its own origin-bound macOS Keychain item. It cannot claim/upload work, mint workers or enable account spending. No Gateway key/cookie extraction or plaintext fallback. Manager read/control uses the existing Gateway service, authenticated Bearer scope, bounded responses, no redirects and no native capabilities granted to remote web content.
+
+Default random inter-generation pause is five to fifteen seconds; explicit zero/custom values and longer provider cooldowns remain. A saved desired range is not proof of application: only fresh worker pacing/next-eligible readback establishes it. Existing image/video worker changes must reach the actual generation boundary. Browser TTS stays optional/off/nonblocking; Lightpanda remains optional/off and has no execution claim.
+
+Source code, fixtures and preview do not prove a compiled or installed manager. Native compilation/lock, real Chrome lifecycle, Keychain, login/wake/restart, authenticated Gateway control, signing, normal distribution and intended-Mac checks still require their admitted evidence. `scripts/desktop-preview.mjs` is an explicitly labeled disposable UI fixture, never a real browser manager and never bundled in the app. Frozen native/payload candidates and original extension work remain preserved.
 
 Each extension keeps Story Studio and standalone modes and gains Gateway Studio KH as its third mode. Video integration comes first. Story keeps one Gateway endpoint. A built pane is not evidence that all three extension modes are installed or live.
 
@@ -8,7 +22,7 @@ Each extension keeps Story Studio and standalone modes and gains Gateway Studio 
 
 The owner now prefers a persistent Mac app; Windows native support can wait. `src-tauri/` prepares a Tauri 2/Rust shell without adding a queue, backend server or extension runtime. This source candidate is not compiled, packaged, installed or qualified. Main portable 0.1.1 remains source/offline qualified only until the candidate is reviewed and integrated.
 
-Relay's local settings window uses the existing system-font styles and shared What's New. Its Gateway window opens the existing `/admin#extension-workers` interface as a same-origin top-level page. Sign in using Gateway's ordinary browser password; the app does not read, inject or persist admin/owner/worker credentials. The webview has its own browser session, not the owner's Chrome profile. Gateway alone decides which management actions are authorized. No extra local-app privileges are claimed for this webview, and remote content receives no native settings capability.
+Relay's local settings window uses the existing system-font styles and shared What's New. Its Gateway window opens the existing `/admin#extension-workers` interface as a same-origin top-level page. Sign in using Gateway's ordinary browser password; the app does not extract or inject admin/owner credentials or Chrome cookies. Its separate, least-privilege manager token is paired explicitly and kept only in Relay's own origin-bound secure storage. The webview has its own browser session, not the owner's Chrome profile. Gateway alone decides which management actions are authorized. No extra local-app privileges are claimed for this webview, and remote content receives no native settings capability.
 
 Start at Login is initially on and can be changed. Saved opt-out is never replaced by the first-launch default. OS registration/readback failures are errors, not success. URL and login preference are stored in Relay's app-config folder using replacement of a temporary file; unreadable settings are held rather than reset. Normal OS cookie persistence and restart/login behavior still require native proof. Closing settings hides that window; the Gateway window closes independently. The Dock and a second launch restore settings. The native menu or Quit Relay exits. A second instance focuses the existing app. Health checks can reopen the existing Gateway page after recovery; they never claim, generate, fail, upload, retry or settle worker jobs. Possibly charged work remains held at Gateway/extensions.
 
@@ -36,13 +50,13 @@ Owner2026-11-10 requests the normal signed `Relay Studio KH.app` through Studio 
 
 `desktop/extensions.json` is the reviewed release-input lock, initially all unavailable. It records candidate versions/commits without claiming their integration acceptance. After original-writer handover and integration review, accepted inputs additionally pin `manifest_sha256` and every `{path,sha256}` in a reviewed build payload. `RELAY_EXTENSION_PAYLOADS` points to those exported build directories (`video/`, `image/`, `audio/`), never a dirty original checkout. The helper refuses extra/missing/tampered files, unsafe paths, links, wrong MV3/version metadata and existing output. No extension source is vendored into this repository. Runtime payload resources are generated under ignored `desktop-resources/extensions/` and mapped to the signed app's `relay/extensions/` resources.
 
-Source assets can honestly show unavailable rows. Release asset preparation refuses any unavailable extension:
+Source assets can honestly show unavailable rows. Release asset preparation refuses every unavailable required extension. Image/video remain required by default; owner-skipped audio is explicitly `required:false`, off and unavailable, so it cannot block their release or silently become available:
 
 ```bash
 npm run desktop:release-assets
 ```
 
-Tauri's normal before-build command uses that strict preparation. Bundling remains disabled until coordinated release qualification. Missing/unreviewed payloads block a complete three-extension release, even when the local settings UI can be previewed. Payload preparation is a release input step, not browser installation.
+Tauri's normal before-build command uses that strict preparation. Bundling remains disabled until coordinated release qualification. Missing/unreviewed required image/video payloads still block release, even when the local account UI can be previewed. Optional/off audio never changes acceptance of the required payloads. Payload preparation is a release input step, not browser installation.
 
 The setup screen lists three extensions and their bundled version, or the missing-payload reason/candidate version. Native detection checks standard Mac application folders and Spotlight; not detected does not mean uninstalled. Chrome comes first. Edge and Brave are separately named, unverified candidates. The browser definitions are source data in `desktop/browsers.json`, not inferred compatibility.
 

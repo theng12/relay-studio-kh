@@ -10,7 +10,9 @@ export async function setupExtensions(invoke, showError) {
       const row = document.createElement('li');
       const title = document.createElement('h3'); title.textContent = extension.name;
       const status = document.createElement('p');
-      status.textContent = extension.available
+      status.textContent = extension.required === false && !extension.available
+        ? `Optional, off. ${extension.reason}`
+        : extension.available
         ? `Bundled v${extension.version}. Browser installation and connection: not checked.`
         : `Not bundled${extension.version ? ` (candidate v${extension.version})` : ''}. ${extension.reason}`;
       row.append(title, status);
