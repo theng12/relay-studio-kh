@@ -535,6 +535,19 @@ pub(crate) fn close_safety_for_bindings_at(
         match &worker.state {
             None => problems.push("worker state has not been reported"),
             Some(state) => {
+                match state.observed_at {
+                    None => problems.push("worker source observation time is not reported"),
+                    Some(observed_at) if !observed_at.is_finite() || observed_at <= 0.0 => {
+                        problems.push("worker source observation time is invalid")
+                    }
+                    Some(observed_at) if observed_at > now_epoch => {
+                        problems.push("worker source observation time is in the future")
+                    }
+                    Some(observed_at) if now_epoch - observed_at > view.max_age_seconds => {
+                        problems.push("worker source observation is stale")
+                    }
+                    Some(_) => {}
+                }
                 if state.paused != Some(true) {
                     problems.push("worker has not acknowledged pause");
                 }
@@ -1276,6 +1289,40 @@ mod tests {
             view(vec![worker("profile-a-video")]).validate_times(f64::NAN),
             Err(ManagerError::InvalidView)
         );
+    }
+
+    #[test]
+    fn close_rechecks_source_freshness_even_when_cached_fresh_is_true() {
+        let expected = bindings(&["profile-a-video"]);
+        let fresh = view(vec![worker("profile-a-video")]);
+        assert!(close_safety_for_bindings_at(&fresh, &expected, NOW).safe_to_close);
+        for observed_at in [
+            None,
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+            Some(0.0),
+            Some(NOW + 0.1),
+            Some(NOW - fresh.max_age_seconds - 0.1),
+        ] {
+            let mut cached = fresh.clone();
+            cached.workers[0].state.as_mut().unwrap().observed_at = observed_at;
+            assert!(cached.workers[0].fresh);
+            assert!(!close_safety_for_bindings_at(&cached, &expected, NOW).safe_to_close);
+        }
+    }
+
+    #[test]
+    fn close_waits_for_each_physical_sibling_binding() {
+        let mut image = worker("profile-a-image");
+        image["kind"] = json!("image");
+        let video = worker("profile-a-video");
+        let mut expected = bindings(&["profile-a-image", "profile-a-video"]);
+        expected[0].kind = "image".into();
+        assert!(
+            close_safety_for_bindings_at(&view(vec![image.clone(), video]), &expected, NOW)
+                .safe_to_close
+        );
+        assert!(!close_safety_for_bindings_at(&view(vec![image]), &expected, NOW).safe_to_close);
     }
 
     #[test]
