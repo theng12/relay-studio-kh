@@ -434,7 +434,9 @@ fn reading_for(view: &manager_gateway::ManagerView, profile: &GatewayProfile) ->
         activity: state.and_then(|state| state.activity.clone()),
         provider: account.map(|account| account.provider.clone()),
         account_id: account.map(|account| account.account_id.clone()),
-        observed_at: state.and_then(|state| state.observed_at.clone()),
+        observed_at: state
+            .and_then(|state| state.observed_at)
+            .map(|value| value.to_string()),
         credits: account
             .filter(|account| account.balance.is_some() || account.credit_buckets.is_some())
             .map(|account| {
@@ -448,7 +450,9 @@ fn reading_for(view: &manager_gateway::ManagerView, profile: &GatewayProfile) ->
                     "available": account.available,
                 })
             }),
-        next_eligible_at: state.and_then(|state| state.next_eligible_at.clone()),
+        next_eligible_at: state
+            .and_then(|state| state.next_eligible_at)
+            .map(|value| value.to_string()),
     }
 }
 
@@ -1993,7 +1997,7 @@ mod tests {
                     "sign_in": "signed_in",
                     "readiness": "ready",
                     "activity": "idle",
-                    "observed_at": "2026-11-11T00:00:00Z",
+                    "observed_at": 1794350000.0,
                     "pacing": {"minSeconds": 5, "maxSeconds": 15}
                 },
                 "fresh": true,
@@ -2008,7 +2012,7 @@ mod tests {
                     "value": 10.0,
                     "unit": "credits",
                     "source": "gateway",
-                    "observedAt": "2026-11-11T00:00:00Z"
+                    "observed_at": 1794350000.0
                 },
                 "fresh": true,
                 "gateway_enabled": false,
