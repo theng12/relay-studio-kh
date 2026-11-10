@@ -1,5 +1,10 @@
 # What's New
 
+## 0.2.0 — 2026-11-10
+- Keep Relay available as a Mac desktop app with a saved Gateway connection.
+- Choose whether Relay starts when you sign in.
+- Reconnect to Gateway without resubmitting work.
+
 ## 0.1.1 — 2026-11-10
 - Prepare the shared connector from a checkout outside the original Mac folder.
 - Keep translated What's New text intact when building the connector.

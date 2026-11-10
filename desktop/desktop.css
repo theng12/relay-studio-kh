@@ -1,0 +1,10 @@
+.relay-connector {
+  section { margin-block: var(--space-l); }
+  form { max-width: 40rem; }
+  .field { display: grid; gap: var(--space-tight); }
+  .login-choice { display: flex; align-items: center; gap: var(--space-s); }
+  .login-choice input { width: auto; }
+  .actions, footer { display: flex; gap: var(--space-s); flex-wrap: wrap; }
+  footer { justify-content: space-between; margin-top: var(--space-xl); }
+  #error { color: var(--bad); }
+}

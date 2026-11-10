@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Delegated by the owner through Developer on 2026-11-09: routine architecture and implementation choices. Initial surface uses plain HTML, CSS and browser JavaScript, hosted by the existing Gateway. No separate queue, daemon or frontend dependency.
+Delegated by the owner through Developer on 2026-11-09: routine architecture and implementation choices. The shared surface uses plain HTML, CSS and browser JavaScript, hosted by existing Gateway. The owner additionally requested a persistent Mac app through Stack: Tauri 2/Rust source prepares local settings and the same Gateway page with normal browser sign-in. No separate queue, production server or extension runtime. Native Windows support may wait.
 
 ## Users
 
@@ -24,7 +24,7 @@ Gateway owns worker tokens, registry, queue, availability and artifacts. Extensi
 
 ## Capabilities and Constraints
 
-Initial connector surface: one extension list, connection details, worker pairing/revocation, accurate capabilities and credit readback, errors with recovery, version and What's New. Management routes must be agreed with Gateway lead; fixture data is explicitly labeled until integrated. No balance, price, readiness or model key is guessed. Tokens are shown once, never persisted in browser storage or written to logs.
+Mac source candidate: Start at Login defaults on with retained opt-out, saved Gateway origin, one instance, Dock reopening, reconnect without job replay, independent Gateway window and explicit Quit. Native compilation, packaging, login/restart/session behavior and installed-Mac acceptance remain unverified. The current window allows source/static work only. Initial connector surface: one extension list, connection details, worker pairing/revocation, accurate capabilities and credit readback, errors with recovery, version and What's New. Management routes must be agreed with Gateway lead; fixture data is explicitly labeled until integrated. No balance, price, readiness or model key is guessed. Tokens are shown once, never persisted in browser storage or written to logs.
 
 Original video checkout remains read-only pending verified writer handover. Relay owns unapplied recovery/credit patches and isolated compatibility proof. Existing image/audio provider boundaries remain intact.
 
@@ -34,7 +34,7 @@ Name: Relay Studio KH. Shared KH UI conventions, plain words, fewer controls and
 
 ## Evidence on Hand
 
-Owned main62d7191 has isolated patch proof. Existing video1.3.1, image0.50.9 and audio0.7.26 inventories checked. Production app and new worker routes are not yet deployed. Captures contain sensitive remnants and are not app assets or fixtures.
+Relay main96ac2c5 has portable build and isolated connector proof. Separate image0.50.10/audio0.7.27 source candidates remain unmerged. Stack verified Gateway0.2.241 installed-bundle prerequisite; normal runtime/isolation/adapters and original-writer handover remain pending. Mac0.2.0 is a source-only native candidate, not a compiled/installed app. Captures contain sensitive remnants and are not app assets or fixtures.
 
 ## Product Principles
 

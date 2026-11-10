@@ -4,6 +4,30 @@ Relay connects the existing video, image and audio browser generators to Gateway
 
 Each extension keeps Story Studio and standalone modes and gains Gateway Studio KH as its third mode. Video integration comes first. Story keeps one Gateway endpoint. A built pane is not evidence that all three extension modes are installed or live.
 
+## Mac desktop source candidate
+
+The owner now prefers a persistent Mac app; Windows native support can wait. `src-tauri/` prepares a Tauri 2/Rust shell without adding a queue, backend server or extension runtime. This source candidate is not compiled, packaged, installed or qualified. Main portable 0.1.1 remains source/offline qualified only until the candidate is reviewed and integrated.
+
+Relay's local settings window uses the existing system-font styles and shared What's New. Its Gateway window opens the existing `/admin#extension-workers` interface as a same-origin top-level page. Sign in using Gateway's ordinary browser password; the app does not read, inject or persist admin/owner/worker credentials. The webview has its own browser session, not the owner's Chrome profile. Gateway alone decides which management actions are authorized. No extra local-app privileges are claimed for this webview, and remote content receives no native settings capability.
+
+Start at Login is initially on and can be changed. Saved opt-out is never replaced by the first-launch default. OS registration/readback failures are errors, not success. URL and login preference are stored in Relay's app-config folder using replacement of a temporary file; unreadable settings are held rather than reset. Normal OS cookie persistence and restart/login behavior still require native proof. Closing settings hides that window; the Gateway window closes independently. The Dock and a second launch restore settings. The native menu or Quit Relay exits. A second instance focuses the existing app. Health checks can reopen the existing Gateway page after recovery; they never claim, generate, fail, upload, retry or settle worker jobs. Possibly charged work remains held at Gateway/extensions.
+
+Chrome MV3 extensions continue running externally in Chrome. A Tauri webview cannot run them. Browser/provider switches are never enabled by this shell. The Gateway address is an explicit saved HTTP(S) origin without a path, embedded credentials, query or fragment; no production port/address is guessed.
+
+Cheap web assets/static checks (no Rust/native build):
+
+```bash
+npm run desktop:assets
+```
+
+```bash
+node --test test/desktop.test.mjs
+```
+
+For source UI inspection, `relay-desktop-source-preview` serves these assets on loopback 7920 with a visibly labeled, in-memory fake native bridge. It tests browser rendering and UI wiring only, never OS login settings, file persistence, real Gateway connectivity, Tauri permissions or WKWebView behavior. Never deploy `scripts/desktop-preview.mjs` or include its bridge in the native assets.
+
+The native qualification window additionally needs the Tauri 2 CLI, Rust toolchain and Apple build tools. Cargo dependency resolution/lock, compilation, WKWebView rendering/session persistence, login registration and opt-out/restart/single-instance/Quit behavior have NOT been verified. Native bundling stays disabled until the normal coordinated packaging step; it must use the existing KH Studio Local Signing identity, approved app assets and normal release/update discipline. Do not infer a working native app or Windows compatibility from static checks or mocked recovery tests. No native build/package/install is permitted in the current source-preparation window.
+
 ## Build and Gateway integration
 
 Building requires Node with built-in fetch, FormData and `node:test`, Python 3 supporting `-I -X utf8`, and the existing `kh-shared-ui` checkout. There are no frontend packages to install. End users do not need Node or Python to use the connector served by Gateway.

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relay Studio KH</title>
+  <!-- RELAY_STYLE -->
+  <link rel="stylesheet" href="./desktop.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <main class="relay-connector">
+    <header class="page-header"><div><h1>Relay Studio KH</h1><p>Keep your Gateway connection available on this Mac.</p></div></header>
+    <section aria-labelledby="connection-title">
+      <h2 id="connection-title">Gateway connection</h2>
+      <form id="settings">
+        <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" aria-describedby="address-help"></label>
+        <p id="address-help">Use your existing Gateway address. Sign in through Gateway’s own interface; do not put a password or token here.</p>
+        <label class="login-choice"><input id="start-at-login" type="checkbox" disabled> Start at Login</label>
+        <p id="login-state" role="status">Checking the saved login preference…</p>
+        <div class="actions"><button id="save" type="submit">Save settings</button><button id="reconnect" type="button">Reconnect</button></div>
+      </form>
+      <p id="connection-state" role="status" aria-live="polite">Reading saved settings…</p>
+      <p id="error" role="alert" hidden></p>
+      <p>Closing Relay’s settings keeps it available. You can close the Gateway window separately. Choose Quit Relay to stop it. Your Chrome extensions run in Chrome, not inside this app.</p>
+    </section>
+    <footer><button id="version" type="button">Version unavailable</button><button id="quit" type="button">Quit Relay</button></footer>
+    <dialog id="whats-new" aria-labelledby="notes-title"><h2 id="notes-title">What’s New</h2><div id="notes"></div><button id="close-notes" type="button">Done</button></dialog>
+  </main>
+</body>
+</html>
