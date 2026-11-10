@@ -7,4 +7,5 @@ desktop-resources/
 .desktop-resources-*/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/icons/
 .impeccable/review/
