@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   activityTier, closableIds, connectionTier, creditsView, gatewaySpend, needsAttention, openableIds,
-  pairingStatus, parseLabels, parseRange, processTier, rowAction,
+  pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
 
@@ -17,12 +17,19 @@ test('range input resolves immutable ordinals to stable ids in number order', ()
   assert.deepEqual(profiles.map((entry) => entry.number), [3, 1, 5, 2]);
 });
 
-test('range input rejects reversed, malformed and absent numbers without guessing', () => {
+test('range input rejects reversed, malformed, absent and unsafe numbers without guessing', () => {
   assert.throws(() => parseRange('5-2', profiles), /lower number first/);
   assert.throws(() => parseRange('2 x', profiles), /whole account numbers/);
   assert.throws(() => parseRange('', profiles), /Enter an account number/);
   assert.throws(() => parseRange('9-12', profiles), /No saved account matches/);
-  assert.throws(() => parseRange('1-20000', profiles), /smaller range/);
+  assert.throws(() => parseRange('1-9007199254740993', profiles), /safe positive/);
+  assert.throws(() => parseRange('9007199254740992', profiles), /safe positive/);
+  assert.throws(() => parseRange('0', profiles), /safe positive/);
+});
+
+test('range input resolves against existing profiles without enumerating the interval', () => {
+  const sparse = [profile(1), profile(5), profile(9007199254740000, { id: 'far' })];
+  assert.deepEqual(parseRange('1-9007199254740000', sparse), ['id-1', 'id-5', 'far']);
 });
 
 test('profile order is by immutable number', () => {
@@ -57,6 +64,20 @@ test('open and close actions follow desired intent and never replay a pending cl
   assert.deepEqual(rowAction(profile(1, { desired_open: true })), { kind: 'close', label: 'Close', disabled: false });
   assert.equal(rowAction(profile(1, { close_pending: true })).disabled, true);
   assert.equal(rowAction(profile(1, { process_state: 'closing' })).disabled, true);
+});
+
+test('attention keeps a direct show action even while the profile is already open', () => {
+  assert.equal(showAction(profile(1, { attention: true, process_state: 'open' })).visible, true);
+  assert.equal(showAction(profile(1, { attention: true, desired_open: true })).visible, true);
+  assert.equal(showAction(profile(1, { attention: true })).visible, false);
+  assert.equal(showAction(profile(1, { process_state: 'open' })).visible, false);
+  assert.equal(showAction(profile(1, { attention: true, process_state: 'open', close_pending: true })).disabled, true);
+});
+
+test('worker bindings clear with an empty string while absent arguments stay unchanged', () => {
+  assert.deepEqual(profileUpdatePayload({ label: '  Studio ', enabled: true, imageWorkerId: '', videoWorkerId: ' video-1 ' }), {
+    label: 'Studio', enabled: true, imageWorkerId: '', videoWorkerId: 'video-1',
+  });
 });
 
 test('connection, sign-in, readiness and activity stay independent tiers', () => {
@@ -103,11 +124,19 @@ test('credits follow the Gateway balance/credit_buckets shape without summing wo
   assert.equal(stale.stale, true);
   assert.equal(stale.balance, null);
   assert.equal(creditsView({ credits: { observed_at: 'not-a-time' } }, now).stale, null);
-  const epoch = creditsView({ credits: { balance: { value: 5, unit: 'credits', observedAt: 1794350000 } } }, 1794350060000);
+  const epoch = creditsView({ credits: { balance: { value: 5, unit: 'credits', observedAt: 1794350000 }, fresh: true } }, 1794350060000);
   assert.equal(epoch.stale, false);
   assert.equal(creditsView({ credits: null }, now).text, 'Not reported');
   assert.match(gatewaySpend({ gateway_enabled: false }), /disabled by Gateway/);
   assert.match(gatewaySpend({}), /Not authorized/);
+});
+
+test('freshness never falls back to a local age guess or accepts a future observation', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  assert.equal(creditsView({ credits: { balance: { value: 1, unit: 'credits', observedAt: '2026-11-11T11:59:00Z' } } }, now).stale, null);
+  assert.equal(creditsView({ credits: { balance: { value: 1, unit: 'credits', observedAt: '2026-11-11T13:00:00Z' }, fresh: true } }, now).stale, null);
+  assert.equal(creditsView({ credits: { balance: { value: 1, unit: 'credits', observedAt: 'bad-time' }, fresh: true } }, now).stale, null);
+  assert.equal(creditsView({ credits: { balance: { value: 1, unit: 'credits', observedAt: '2026-11-11T13:00:00Z' }, fresh: false } }, now).stale, true);
 });
 
 test('Gateway pairing is not claimed until an authoritative snapshot says so', () => {

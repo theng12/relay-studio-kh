@@ -32,7 +32,7 @@
   .pick { grid-area: pick; display: flex; justify-content: center; }
   .account-identity { grid-area: identity; min-width: 0; }
   .account-status { grid-area: status; display: grid; gap: var(--space-xs); min-width: 0; }
-  .account-row > button { grid-area: action; }
+  .account-actions { grid-area: action; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-s); flex-wrap: wrap; }
   .account-title { display: flex; gap: var(--space-tight); align-items: baseline; min-width: 0; font-weight: 600; font-size: var(--type-section); }
   .account-title span:last-child { overflow-wrap: anywhere; }
   .ordinal { color: var(--muted); font-size: var(--type-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -1,5 +1,4 @@
 // Saved Chrome account manager. Every action calls the native Relay contract; nothing is simulated here.
-export const CREDITS_STALE_MS = 15 * 60 * 1000;
 const ACTIVITIES = new Set(['idle', 'generating', 'cooling', 'resting', 'waiting', 'recovering']);
 const LIVE_STATES = new Set(['opening', 'open', 'queued', 'closing']);
 
@@ -34,7 +33,7 @@ export function parseLabels(text) {
 export function parseRange(text, profiles = []) {
   const raw = String(text ?? '').trim();
   if (!raw) throw new Error('Enter an account number or range, like 3 or 2-5.');
-  const wanted = new Set();
+  const ranges = [];
   for (const token of raw.split(',')) {
     const part = token.trim();
     if (!part) continue;
@@ -42,12 +41,15 @@ export function parseRange(text, profiles = []) {
     if (!match) throw new Error('Use whole account numbers or ranges, like 3 or 2-5.');
     const first = Number(match[1]);
     const last = match[2] === undefined ? first : Number(match[2]);
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1) throw new Error('Account numbers must be safe positive whole numbers.');
     if (last < first) throw new Error('Put the lower number first, like 2-5.');
-    if (last - first > 9999) throw new Error('Use a smaller range.');
-    for (let current = first; current <= last; current++) wanted.add(current);
+    ranges.push({ first, last });
   }
-  if (!wanted.size) throw new Error('Enter an account number or range, like 3 or 2-5.');
-  const matched = sortProfiles(profiles).filter((profile) => wanted.has(number(profile.number)));
+  if (!ranges.length) throw new Error('Enter an account number or range, like 3 or 2-5.');
+  const matched = sortProfiles(profiles).filter((profile) => {
+    const ordinal = Number(profile.number);
+    return Number.isSafeInteger(ordinal) && ranges.some((range) => ordinal >= range.first && ordinal <= range.last);
+  });
   if (!matched.length) throw new Error(`No saved account matches ${raw}.`);
   return matched.map((profile) => profile.id);
 }
@@ -128,7 +130,9 @@ export function creditsView(gateway = {}, now = Date.now()) {
   }
   const fresh = typeof credits.fresh === 'boolean' ? credits.fresh : null;
   const observedMs = toMillis(observedAt);
-  const stale = fresh === false ? true : fresh === true ? false : observedMs === null ? null : now - observedMs > CREDITS_STALE_MS;
+  // Gateway is the freshness authority. No local age window; a future or invalid observation is never recent.
+  const timeUsable = observedMs !== null && observedMs <= now;
+  const stale = fresh === false ? true : fresh === true && timeUsable ? false : null;
   const balanceView = balance && value(balance.value) !== null
     ? { value: String(balance.value), unit: value(balance.unit) || '', source: value(balance.source), observedAt: value(balance.observedAt) }
     : null;
@@ -178,6 +182,23 @@ export function rowAction(profile = {}) {
   if (value(profile.process_state) === 'closing') return { kind: 'close', label: 'Closing', disabled: true };
   if (profile.desired_open || LIVE_STATES.has(value(profile.process_state))) return { kind: 'close', label: 'Close', disabled: false };
   return { kind: 'open', label: 'Open', disabled: false };
+}
+
+// Attention always gets a direct action that opens or focuses the exact native-owned profile.
+export function showAction(profile = {}) {
+  const state = value(profile.process_state);
+  const visible = needsAttention(profile) && (profile.desired_open === true || LIVE_STATES.has(state));
+  return { visible, disabled: Boolean(profile.close_pending) || state === 'closing', label: 'Show profile' };
+}
+
+export function profileUpdatePayload({ label, enabled, imageWorkerId, videoWorkerId } = {}) {
+  return {
+    label: String(label ?? '').trim(),
+    enabled: Boolean(enabled),
+    // Empty strings intentionally clear a manual binding; native treats absent arguments as unchanged.
+    imageWorkerId: String(imageWorkerId ?? '').trim(),
+    videoWorkerId: String(videoWorkerId ?? '').trim(),
+  };
 }
 
 function wholeNumber(raw, name, minimum) {
@@ -290,7 +311,14 @@ export function mountAccounts(invoke) {
       if (next.disabled) return;
       runCommand(next.kind === 'open' ? 'manager_open_profiles' : 'manager_close_profiles', { profileIds: [id] }, [id]);
     });
-    row.append(pick, identity, status, action);
+    const show = document.createElement('button');
+    show.type = 'button';
+    show.textContent = 'Show profile';
+    show.addEventListener('click', () => runCommand('manager_open_profiles', { profileIds: [id] }, [id]));
+    const actionCell = document.createElement('div');
+    actionCell.className = 'account-actions';
+    actionCell.append(action, show);
+    row.append(pick, identity, status, actionCell);
 
     const details = document.createElement('details');
     details.className = 'account-details';
@@ -317,12 +345,12 @@ export function mountAccounts(invoke) {
       const nextLabel = labelInput.value.trim();
       if (!nextLabel) { setError('Account label cannot be empty.'); return; }
       setError(null);
-      updateProfile(id, {
-        label: nextLabel,
+      updateProfile(id, profileUpdatePayload({
+        label: labelInput.value,
         enabled: enabledInput.checked,
-        imageWorkerId: imageInput.value.trim() || null,
-        videoWorkerId: videoInput.value.trim() || null,
-      });
+        imageWorkerId: imageInput.value,
+        videoWorkerId: videoInput.value,
+      }));
     });
     const grid = document.createElement('div');
     grid.className = 'edit-grid';
@@ -366,7 +394,7 @@ export function mountAccounts(invoke) {
     details.append(summary, dl, form);
 
     li.append(row, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, action, fields, labelInput, imageInput, videoInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, action, show, fields, labelInput, imageInput, videoInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -388,6 +416,9 @@ export function mountAccounts(invoke) {
     const action = rowAction(profile);
     refs.action.textContent = action.label;
     refs.action.disabled = action.disabled || busyIds.has(profile.id) || busy;
+    const show = showAction(profile);
+    refs.show.hidden = !show.visible;
+    refs.show.disabled = show.disabled || busyIds.has(profile.id) || busy;
     refs.li.hidden = attentionOnly && !needsAttention(profile);
 
     const gateway = profile.gateway || {};
@@ -557,7 +588,7 @@ export function mountAccounts(invoke) {
     setError(null);
     renderList();
     try { render(await invoke(name, args)); }
-    catch (error) { setError(error); await reload(); }
+    catch (error) { await reload(); setError(error); }
     finally {
       busy = false;
       for (const id of ids) busyIds.delete(id);
@@ -570,7 +601,7 @@ export function mountAccounts(invoke) {
     if (busy) return;
     busy = true; busyIds.add(id); setError(null); renderList();
     try { render(await invoke('manager_update_profile', { profileId: id, ...fields })); }
-    catch (error) { setError(error); await reload(); }
+    catch (error) { await reload(); setError(error); }
     finally { busy = false; busyIds.delete(id); renderList(); setControls(); }
   }
 
@@ -628,7 +659,7 @@ export function mountAccounts(invoke) {
     try {
       render(await invoke('manager_pair_gateway', { token }));
       $('manager-pairing-note').textContent = 'Token saved in this Mac’s Keychain. Gateway account enablement stays off until Gateway authorizes these workers. The token is never shown again.';
-    } catch (error) { setPairError(error, token); $('manager-pairing-note').textContent = 'Token was not saved. Nothing was stored in browser storage.'; }
+    } catch (error) { renderPairing(); setPairError(error, token); $('manager-pairing-note').textContent = 'Token was not saved. Nothing was stored in browser storage.'; }
     finally { input.value = ''; busy = false; $('manager-pair').disabled = false; setControls(); }
   });
   $('manager-open').addEventListener('click', () => invoke('open_gateway').catch((error) => setPairError(error)));
