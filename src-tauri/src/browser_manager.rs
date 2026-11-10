@@ -554,19 +554,19 @@ struct StoredSettings {
     #[serde(default)]
     max_active: Option<u32>,
     #[serde(default = "default_pause_min_seconds")]
-    pause_min_seconds: u64,
+    pause_min_seconds: f64,
     #[serde(default = "default_pause_max_seconds")]
-    pause_max_seconds: u64,
+    pause_max_seconds: f64,
 }
 
 fn default_reserve_mb() -> u64 {
     2048
 }
-fn default_pause_min_seconds() -> u64 {
-    5
+fn default_pause_min_seconds() -> f64 {
+    5.0
 }
-fn default_pause_max_seconds() -> u64 {
-    15
+fn default_pause_max_seconds() -> f64 {
+    15.0
 }
 
 impl Default for StoredSettings {
@@ -674,8 +674,8 @@ struct SettingsSnapshot {
     memory_budget_mb: Option<u64>,
     reserve_mb: u64,
     max_active: Option<u32>,
-    pause_min_seconds: u64,
-    pause_max_seconds: u64,
+    pause_min_seconds: f64,
+    pause_max_seconds: f64,
 }
 
 #[derive(Serialize)]
@@ -1022,6 +1022,7 @@ pub(crate) fn manager_open_profiles(
     }
     {
         let mut inner = locked(&manager.shared)?;
+        let inner = &mut *inner;
         for id in &shown {
             clear_resolved_errors(&mut inner.errors, &mut inner.attention, id);
         }
@@ -1070,6 +1071,7 @@ pub(crate) fn manager_show_profiles(
     }
     {
         let mut inner = locked(&manager.shared)?;
+        let inner = &mut *inner;
         for id in &shown {
             clear_resolved_errors(&mut inner.errors, &mut inner.attention, id);
         }
@@ -1110,8 +1112,8 @@ pub(crate) fn manager_save_settings(
     memory_budget_mb: Option<u64>,
     reserve_mb: u64,
     max_active: Option<u32>,
-    pause_min_seconds: u64,
-    pause_max_seconds: u64,
+    pause_min_seconds: f64,
+    pause_max_seconds: f64,
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
     mutate(&manager.shared, |stored| {
@@ -2044,7 +2046,13 @@ fn validate_state(stored: &Stored) -> Result<(), String> {
     if stored.next_number == 0 || stored.next_number <= highest {
         return Err("Saved browser profile numbering is invalid; the file was not changed.".into());
     }
-    if stored.settings.pause_min_seconds > stored.settings.pause_max_seconds {
+    let pause = &stored.settings;
+    if !pause.pause_min_seconds.is_finite()
+        || !pause.pause_max_seconds.is_finite()
+        || pause.pause_min_seconds < 0.0
+        || pause.pause_max_seconds < 0.0
+        || pause.pause_min_seconds > pause.pause_max_seconds
+    {
         return Err("Saved pause range is invalid; the file was not changed.".into());
     }
     Ok(())
@@ -2304,9 +2312,60 @@ mod tests {
         assert!(parse_state(b"{not json").is_err());
 
         let mut stored = Stored::default();
-        stored.settings.pause_min_seconds = 20;
-        stored.settings.pause_max_seconds = 5;
+        stored.settings.pause_min_seconds = 20.0;
+        stored.settings.pause_max_seconds = 5.0;
         assert!(validate_state(&stored).is_err());
+    }
+
+    #[test]
+    fn fractional_pause_range_roundtrips_and_keeps_integer_json_readable() {
+        let state = r#"{"schema":1,"next_number":1,"profiles":[],"settings":{"pause_min_seconds":1.5,"pause_max_seconds":2.75}}"#;
+        let stored = parse_state(state.as_bytes()).expect("fractional state loads");
+        assert_eq!(stored.settings.pause_min_seconds, 1.5);
+        let saved = serde_json::to_vec(&stored).expect("state encodes");
+        let reloaded = parse_state(&saved).expect("state reloads");
+        assert_eq!(reloaded.settings.pause_min_seconds, 1.5);
+        assert_eq!(reloaded.settings.pause_max_seconds, 2.75);
+
+        let integer = r#"{"schema":1,"next_number":1,"profiles":[],"settings":{"pause_min_seconds":5,"pause_max_seconds":15}}"#;
+        let stored = parse_state(integer.as_bytes()).expect("integer state loads");
+        assert_eq!(stored.settings.pause_min_seconds, 5.0);
+        assert_eq!(stored.settings.pause_max_seconds, 15.0);
+
+        let snapshot = SettingsSnapshot {
+            memory_budget_mb: None,
+            reserve_mb: 2048,
+            max_active: None,
+            pause_min_seconds: 1.5,
+            pause_max_seconds: 2.75,
+        };
+        let json = serde_json::to_value(&snapshot).expect("snapshot encodes");
+        assert_eq!(json["pause_min_seconds"], 1.5);
+        assert_eq!(json["pause_max_seconds"], 2.75);
+    }
+
+    #[test]
+    fn pause_range_rejects_negative_non_finite_and_inverted_values_but_keeps_zero() {
+        let mut stored = Stored::default();
+        stored.settings.pause_min_seconds = -0.5;
+        stored.settings.pause_max_seconds = 2.0;
+        assert!(validate_state(&stored).is_err());
+
+        stored.settings.pause_min_seconds = f64::NAN;
+        assert!(validate_state(&stored).is_err());
+
+        stored.settings.pause_min_seconds = 1.5;
+        stored.settings.pause_max_seconds = 1.25;
+        assert!(validate_state(&stored).is_err());
+
+        stored.settings.pause_max_seconds = 2.75;
+        assert!(validate_state(&stored).is_ok());
+        stored.settings.pause_min_seconds = 0.0;
+        stored.settings.pause_max_seconds = 0.0;
+        assert!(
+            validate_state(&stored).is_ok(),
+            "explicit zero is preserved"
+        );
     }
 
     #[test]
