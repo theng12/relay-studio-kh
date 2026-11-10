@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "extensions": [
-    { "id": "video", "name": "Video generator", "version": "1.3.2", "source_commit": "43f971c21eff604c2404958f810169f0ae3592b5", "accepted": false, "reason": "Source checks passed; browser and Gateway qualification are pending. No payload is bundled yet." },
+    { "id": "video", "name": "Video generator", "version": "1.3.2", "source_commit": "eeb06f8a8d2cf76c2104892f254af79976c31b93", "accepted": false, "reason": "Source checks passed; browser and Gateway qualification are pending. No payload is bundled yet." },
     { "id": "image", "name": "Image generator", "version": "0.50.11", "source_commit": "ba28396931dab5d48c546cfb0f0801678b72fbcf", "accepted": false, "reason": "Source checks passed; browser and Gateway qualification are pending. No payload is bundled yet." },
     { "id": "audio", "name": "Audio generator", "version": "0.7.27", "source_commit": "eddeb1b83b0ee22b54f8f698513d62b2fe4f91ef", "accepted": false, "reason": "Discovery source reviewed; Gateway audio admission and browser qualification are pending. No payload is bundled yet." }
   ]
