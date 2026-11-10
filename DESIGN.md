@@ -165,6 +165,13 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 - **Row:** Four-column grid with generous padding (24px). Identity column carries title (semibold 15px) and subtitle (muted 12px). State column shows a colored dot (6px circle via ::before pseudo-element) plus label. Credits column stacks caption label above tabular-nums value. Action column holds the context-appropriate button.
 - **Expandable Details:** Native `<details>` element. Summary styled as accent-colored semibold text. Definition list uses a two-column grid (144px label column) capped at 720px. Model list uses standard ul with left padding.
 
+### Native Browser Accounts
+- **Register:** Extend the connection list into stable numbered saved profiles. Selection and range tools sit above the list; saved entries and resident browsers remain distinct.
+- **Readouts:** Keep measured memory, budget and queue reason visible above the register. Each row shows local process/intent, independent connection/readiness and activity, and reported credits or an explicit unknown/stale label.
+- **Details:** Provider identity, credit source/time/reset/buckets and image/video worker bindings expand inline. Memory/pacing preferences, Gateway pairing and extension setup disclose progressively.
+- **Actions:** Open/Close use exact saved IDs; attention exposes Show profile for the same managed Chrome profile. Pending close remains visible until authoritative safe-stop readback. Pairing uses a concealed one-time input cleared after either outcome.
+- **Identity:** Reuse the existing palette, system type, spacing and flat hierarchy. The desktop account grid adds a selection column and collapses at the existing 680px breakpoint. Fixture screenshots prove rendering only, never native lifecycle or account readiness.
+
 ### State Indicators
 - **Style:** Inline-flex row with 6px colored dot and semibold 12px label. Connection labels use ok (green), warn (amber), and off/info (muted). Error text and danger controls use bad (red).
 - **Behavior:** Dot and label share the same color. No background pill, no border, no icon.

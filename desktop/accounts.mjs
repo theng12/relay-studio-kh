@@ -444,8 +444,10 @@ export function mountAccounts(invoke) {
     refs.creditsRow.textContent = creditsLine(profile.gateway);
     const action = rowAction(profile);
     refs.action.textContent = action.label;
+    refs.action.setAttribute('aria-label', `${action.label} account #${profile.number} ${profile.label}`);
     refs.action.disabled = action.disabled || busyIds.has(profile.id) || busy;
     const show = showAction(profile);
+    refs.show.setAttribute('aria-label', `Show profile for account #${profile.number} ${profile.label}`);
     refs.show.hidden = !show.visible;
     refs.show.disabled = show.disabled || busyIds.has(profile.id) || busy;
     refs.li.hidden = attentionOnly && !needsAttention(profile);
