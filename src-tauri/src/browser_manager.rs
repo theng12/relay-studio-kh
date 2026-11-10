@@ -175,6 +175,7 @@ struct CloseAttempt {
     bindings: Vec<manager_gateway::ExpectedWorkerBinding>,
     /// Revision each worker was issued in THIS control response.
     revisions: HashMap<String, String>,
+    response_received_at: Option<f64>,
 }
 
 impl GatewayCache {
@@ -190,6 +191,23 @@ impl GatewayCache {
             return None;
         }
         self.view.clone()
+    }
+
+    /// Delayed or equally dated replies cannot replace a newer control snapshot.
+    fn publish_view(&mut self, view: manager_gateway::ManagerView) -> bool {
+        if !view.received_at.is_finite()
+            || view.received_at <= 0.0
+            || self
+                .view
+                .as_ref()
+                .is_some_and(|current| view.received_at <= current.received_at)
+        {
+            return false;
+        }
+        self.view = Some(view);
+        self.error = None;
+        self.last_view = Some(Instant::now());
+        true
     }
 }
 
@@ -234,9 +252,7 @@ impl LiveGateway {
             }
             match result {
                 Ok(view) => {
-                    cache.view = Some(view);
-                    cache.error = None;
-                    cache.last_view = Some(Instant::now());
+                    cache.publish_view(view);
                 }
                 Err(error) => cache.error = Some(error.to_string()),
             }
@@ -245,10 +261,8 @@ impl LiveGateway {
 
     fn remember(&self, origin: String, view: manager_gateway::ManagerView) {
         let mut cache = self.cache();
-        cache.origin = Some(origin);
-        cache.view = Some(view);
-        cache.error = None;
-        cache.last_view = Some(Instant::now());
+        cache.view_for(Some(origin.as_str()));
+        cache.publish_view(view);
         cache.closes.clear();
     }
 
@@ -406,6 +420,7 @@ impl ManagerGateway for LiveGateway {
             origin: origin.clone(),
             bindings: expected.clone(),
             revisions: HashMap::new(),
+            response_received_at: None,
         });
         state.failure = None;
         state.in_flight = true;
@@ -440,15 +455,24 @@ impl ManagerGateway for LiveGateway {
                         .map(|attempt| attempt.bindings.clone())
                         .unwrap_or_default();
                     let revisions = response_revisions(&view, &bindings);
-                    cache.view = Some(view);
-                    cache.error = None;
-                    cache.last_view = Some(Instant::now());
+                    let response_received_at = view.received_at;
+                    if !cache.publish_view(view) {
+                        if let Some(state) = cache.closes.get_mut(&profile_id) {
+                            state.in_flight = false;
+                            state.attempt = None;
+                            state.failure = Some(
+                                "A newer or equally dated Gateway view is already cached; this delayed close response cannot authorize close.".into(),
+                            );
+                        }
+                        return;
+                    }
                     if let Some(state) = cache.closes.get_mut(&profile_id) {
                         state.in_flight = false;
                         match revisions {
                             Ok(revisions) => {
                                 if let Some(attempt) = state.attempt.as_mut() {
                                     attempt.revisions = revisions;
+                                    attempt.response_received_at = Some(response_received_at);
                                 }
                                 state.failure = None;
                             }
@@ -610,6 +634,14 @@ fn attempt_revision_mismatch(
     view: &manager_gateway::ManagerView,
     attempt: &CloseAttempt,
 ) -> Option<String> {
+    if !attempt.response_received_at.is_some_and(|received_at| {
+        received_at.is_finite()
+            && received_at > 0.0
+            && view.received_at.is_finite()
+            && view.received_at >= received_at
+    }) {
+        return Some("Waiting for readback at or after this close attempt's response.".into());
+    }
     for binding in &attempt.bindings {
         let Some(expected) = attempt.revisions.get(&binding.worker_id) else {
             return Some("Waiting for this close attempt's authenticated revision.".into());
@@ -3068,6 +3100,40 @@ mod tests {
     }
 
     #[test]
+    fn delayed_close_response_cannot_restore_an_earlier_safe_revision() {
+        let bindings = expected_bindings(&bound_profile(), "https://gateway.example").unwrap();
+        let earlier = pair_view();
+        let mut later = earlier.clone();
+        later.received_at += 1.0;
+        for worker in &mut later.workers {
+            worker.control.revision = Some("rev-2".into());
+            worker.state.as_mut().unwrap().control_revision = Some("rev-2".into());
+        }
+        let mut cache = GatewayCache::default();
+        assert!(cache.publish_view(later.clone()));
+        assert!(!cache.publish_view(earlier.clone()));
+        let mut equally_dated = earlier.clone();
+        equally_dated.received_at = later.received_at;
+        assert!(!cache.publish_view(equally_dated));
+        let mut attempt = CloseAttempt {
+            id: 1,
+            origin: "https://gateway.example".into(),
+            bindings: bindings.clone(),
+            revisions: response_revisions(&earlier, &bindings).unwrap(),
+            response_received_at: Some(earlier.received_at),
+        };
+        assert!(
+            manager_gateway::close_safety_for_bindings_at(&earlier, &bindings, NOW).safe_to_close
+        );
+        assert!(attempt_revision_mismatch(cache.view.as_ref().unwrap(), &attempt).is_some());
+        assert!(attempt_revision_mismatch(&earlier, &attempt).is_none());
+        attempt.response_received_at = Some(earlier.received_at + 1.0);
+        assert!(attempt_revision_mismatch(&earlier, &attempt).is_some());
+        attempt.response_received_at = None;
+        assert!(attempt_revision_mismatch(&later, &attempt).is_some());
+    }
+
+    #[test]
     fn cache_view_is_discarded_when_the_saved_origin_changes() {
         let view = manager_view(vec![worker("image-1")], vec![]);
         let mut cache = GatewayCache {
@@ -3386,6 +3452,7 @@ mod tests {
                 ("image-1".to_string(), "rev-7".to_string()),
                 ("video-1".to_string(), "rev-7".to_string()),
             ]),
+            response_received_at: Some(NOW),
         };
         let issued = manager_view(
             vec![
