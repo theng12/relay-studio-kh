@@ -47,7 +47,6 @@ $('reconnect').addEventListener('click', async () => {
   catch (error) { showError(error); }
   finally { $('reconnect').disabled = false; }
 });
-$('quit').addEventListener('click', () => invoke('quit_app').catch(showError));
 $('version').textContent = `v${info.version}`;
 for (const release of info.releases) {
   const heading = document.createElement('h3'); heading.textContent = `v${release.version}`;
@@ -55,8 +54,9 @@ for (const release of info.releases) {
   for (const item of release.items) { const line = document.createElement('li'); line.textContent = item; list.append(line); }
   $('notes').append(heading, list);
 }
-$('nav-whats-new').addEventListener('click', () => $('whats-new').showModal());
-$('version').addEventListener('click', () => $('whats-new').showModal());
+const openNotes = () => { $('whats-new').showModal(); $('whats-new').scrollTop = 0; };
+$('nav-whats-new').addEventListener('click', openNotes);
+$('version').addEventListener('click', openNotes);
 $('close-notes').addEventListener('click', () => $('whats-new').close());
 try {
   await window.__TAURI__.event.listen('relay-error', event => showError(event.payload));

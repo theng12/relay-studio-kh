@@ -1,10 +1,11 @@
 # What's New
 
 ## 0.3.2 — 2026-11-11
-- Move between Accounts, Browsers, Memory & pacing, Gateway and Extensions from a sidebar.
+- Move between Accounts, Browsers, Memory & pacing, Gateway and Extensions from a sidebar with the Relay mark, accented section labels and a clear selected row.
 - Fill the whole window with the page ground, so wide and fullscreen windows show no white side bands.
 - Manage the real Chrome windows Relay opened in a Browsers pane: focus, close or force close each account.
 - See how long a close has been waiting and why; Force close asks first and refuses while Gateway reports active or uncertain work.
+- Read What's New in a roomier dialog; Quit Relay now lives only in the app menu.
 
 ## 0.3.1 — 2026-11-11
 - Read each part of Relay as its own card with a clear heading.

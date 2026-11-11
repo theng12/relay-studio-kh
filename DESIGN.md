@@ -125,7 +125,7 @@ Restrained blue/slate palette with complete light and dark variants. The accent 
 
 ## Layout
 
-A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer with the version and Quit. The selected row is marked with the accent-soft tint and `aria-current="page"`. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
+A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer with the version. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
 
 Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script; `html` and `body` repeat the documented ground hexes so wide and fullscreen windows never show white bands.
 

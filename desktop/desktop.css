@@ -23,9 +23,19 @@ body { margin: 0; overflow: hidden; background: light-dark(#f3f5f8, #151b24); }
   background: var(--ground);
   overflow-y: auto;
 }
-.brand { margin: var(--space-xs) var(--space-s) 0; font-size: var(--type-rowTitle); font-weight: 600; }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+  margin: 0 var(--space-xs) 0;
+  padding: 0 0 var(--space-m);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--type-section);
+  font-weight: 600;
+}
+.brand-mark { width: 22px; height: 22px; border-radius: 5px; flex: none; }
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
-.nav-heading { margin: 0 0 var(--space-xs); padding: 0 var(--space-s); color: var(--muted); font-size: var(--type-caption); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.nav-heading { margin: 0 0 var(--space-xs); padding: 0 var(--space-s); color: var(--accent); font-size: var(--type-captionStrong); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
 .nav-spacer { flex: 1 1 auto; }
 
 .sidebar .nav-row {
@@ -42,9 +52,9 @@ body { margin: 0; overflow: hidden; background: light-dark(#f3f5f8, #151b24); }
   font-weight: 400;
 }
 .sidebar .nav-row:hover { background: var(--surface); border-color: var(--line); }
-.sidebar .nav-row[aria-current="page"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.sidebar .nav-row[aria-current="page"] { border-left: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
-.sidebar-footer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-top: var(--space-s); border-top: 1px solid var(--line); }
+.sidebar-footer { display: flex; align-items: center; padding-top: var(--space-s); border-top: 1px solid var(--line); }
 .sidebar .version-button,
 .sidebar .text-button {
   min-height: 26px;
@@ -190,6 +200,9 @@ textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent);
 .manager-pairing .state { margin: 0; }
 .manager-pairing p { line-height: 1.6; }
 
+#whats-new { width: min(680px, calc(100% - 48px)); }
+#whats-new h2 { font-size: var(--type-figure); }
+#notes { font-size: var(--type-body); line-height: 1.65; }
 #force-blocked { color: var(--warn); margin-top: 0; }
 #notes ul { padding-left: var(--space-xl); line-height: 1.7; }
 #notes h3 { margin: var(--space-m) 0 var(--space-s); }
