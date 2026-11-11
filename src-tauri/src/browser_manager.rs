@@ -102,7 +102,11 @@ pub(crate) trait ManagerGateway: Send + Sync {
     /// Cached authenticated readback for the listed profiles. Must return promptly; the adapter
     /// refreshes asynchronously and leaves fields unknown while a read is outstanding.
     fn read(&self, profiles: &[GatewayProfile]) -> HashMap<String, GatewayReading>;
-    fn support(&self) -> GatewaySupport;
+    fn support(
+        &self,
+        profiles: &[GatewayProfile],
+        pacing: &manager_gateway::Pacing,
+    ) -> GatewaySupport;
     /// Called while moving a profile to close: issues ONE control for the profile's explicit
     /// image and video workers with `dispatchEnabled: false` and `closeRequested: true`, binds
     /// that attempt to the exact saved origin, kinds and credential generations, and returns
@@ -143,6 +147,7 @@ fn close_authorization(profile: &GatewayProfile) -> CloseAuthorization {
 struct LiveGateway {
     app: tauri::AppHandle,
     cache: Arc<Mutex<GatewayCache>>,
+    pacing_update: tauri::async_runtime::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -152,6 +157,7 @@ struct GatewayCache {
     origin: Option<String>,
     view: Option<manager_gateway::ManagerView>,
     error: Option<String>,
+    pacing_error: Option<String>,
     refreshing: bool,
     last_view: Option<Instant>,
     closes: HashMap<String, CloseState>,
@@ -186,6 +192,7 @@ impl GatewayCache {
             self.origin = origin.map(ToString::to_string);
             self.view = None;
             self.error = None;
+            self.pacing_error = None;
             self.last_view = None;
             self.closes.clear();
             return None;
@@ -216,6 +223,7 @@ impl LiveGateway {
         Self {
             app,
             cache: Arc::new(Mutex::new(GatewayCache::default())),
+            pacing_update: tauri::async_runtime::Mutex::new(()),
         }
     }
 
@@ -271,6 +279,7 @@ impl LiveGateway {
         cache.origin = None;
         cache.view = None;
         cache.error = None;
+        cache.pacing_error = None;
         cache.last_view = None;
         cache.closes.clear();
     }
@@ -281,6 +290,43 @@ impl LiveGateway {
         let mut cache = self.cache();
         let view = cache.view_for(Some(origin.as_str()))?;
         Some((origin, view))
+    }
+
+    async fn apply_saved_pacing(&self, shared: &Shared) {
+        // Serialize writes and read the latest persisted preference after taking the lock.
+        let _serial = self.pacing_update.lock().await;
+        let origin = gateway_origin(&self.app);
+        let result: Result<manager_gateway::ManagerView, String> = async {
+            let origin = origin.as_deref().ok_or("Save a Gateway address first.")?;
+            let (profiles, pacing) = {
+                let inner = locked(shared)?;
+                let stored = stored_or_error(&inner)?;
+                (gateway_profiles(stored), saved_pacing(&stored.settings))
+            };
+            let (_, view) = self
+                .current_view()
+                .ok_or("Read Gateway before applying pacing.")?;
+            let ids = pacing_worker_ids(&view, &profiles, origin, epoch_now())?;
+            manager_gateway::set_pacing(origin, &ids, pacing)
+                .await
+                .map_err(|error| error.to_string())
+        }
+        .await;
+        let mut cache = self.cache();
+        if gateway_origin(&self.app) != origin || cache.origin != origin {
+            return;
+        }
+        match result {
+            Ok(view) => {
+                cache.publish_view(view);
+                cache.pacing_error = None;
+            }
+            Err(error) => {
+                cache.pacing_error = Some(format!(
+                    "Pacing preference saved; Gateway update failed: {error}"
+                ))
+            }
+        }
     }
 }
 
@@ -308,7 +354,11 @@ impl ManagerGateway for LiveGateway {
             .collect()
     }
 
-    fn support(&self) -> GatewaySupport {
+    fn support(
+        &self,
+        profiles: &[GatewayProfile],
+        pacing: &manager_gateway::Pacing,
+    ) -> GatewaySupport {
         let origin = gateway_origin(&self.app);
         let manager_paired = origin
             .as_deref()
@@ -324,25 +374,21 @@ impl ManagerGateway for LiveGateway {
         if telemetry_error.is_none() && !authorized {
             telemetry_error = Some("Waiting for the first Gateway manager readback.".into());
         }
-        let pacing_applied = fresh
-            && view.as_ref().is_some_and(|view| {
-                view.workers.iter().any(|worker| {
-                    matches!(
-                        (worker.control.pacing.as_ref(), worker.state.as_ref().and_then(|state| state.pacing.as_ref())),
-                        (Some(requested), Some(observed))
-                            if requested.min_seconds == observed.min_seconds
-                                && requested.max_seconds == observed.max_seconds
-                    )
-                })
-            });
+        let pacing_applied = view.as_ref().is_some_and(|view| {
+            origin.as_deref().is_some_and(|origin| {
+                pacing_is_applied(view, profiles, origin, pacing, epoch_now())
+            })
+        });
         GatewaySupport {
             telemetry_authorized: authorized,
             telemetry_error,
             manager_paired,
             pacing_applied,
             pacing_error: (!pacing_applied).then(|| {
-                "Pacing is saved as a local preference. Gateway has no atomic pacing-only update yet, so no dispatch control was sent."
-                    .to_string()
+                cache.pacing_error.clone().unwrap_or_else(|| {
+                    "Pacing is saved; waiting for every bound worker to acknowledge the current revision and range. Save again to retry a failed update."
+                        .to_string()
+                })
             }),
         }
     }
@@ -547,6 +593,108 @@ fn close_reason(safety: &manager_gateway::CloseSafety) -> String {
             safety.waiting_on.join(", ")
         )
     }
+}
+
+fn saved_pacing(settings: &StoredSettings) -> manager_gateway::Pacing {
+    manager_gateway::Pacing {
+        min_seconds: settings.pause_min_seconds,
+        max_seconds: settings.pause_max_seconds,
+    }
+}
+
+fn gateway_profiles(stored: &Stored) -> Vec<GatewayProfile> {
+    stored
+        .profiles
+        .iter()
+        .map(|profile| GatewayProfile {
+            id: profile.id.clone(),
+            image_worker_id: profile.image_worker_id.clone(),
+            video_worker_id: profile.video_worker_id.clone(),
+            binding_origin: profile.binding_origin.clone(),
+            image_worker_generation: profile.image_worker_generation.clone(),
+            video_worker_generation: profile.video_worker_generation.clone(),
+        })
+        .collect()
+}
+
+fn pacing_worker_ids(
+    view: &manager_gateway::ManagerView,
+    profiles: &[GatewayProfile],
+    origin: &str,
+    now: f64,
+) -> Result<Vec<String>, String> {
+    if !view.is_fresh(now) {
+        return Err("Gateway readback is stale; pacing was not sent.".into());
+    }
+    let mut ids = Vec::new();
+    for profile in profiles
+        .iter()
+        .filter(|profile| !worker_ids(profile).is_empty())
+    {
+        let bindings = expected_bindings(profile, origin)?;
+        for binding in bindings {
+            let worker = view
+                .workers
+                .iter()
+                .find(|worker| worker.worker_id == binding.worker_id)
+                .ok_or("A bound worker is outside the current manager readback.")?;
+            if !worker.has_live_token
+                || worker.kind.as_deref() != Some(binding.kind.as_str())
+                || worker.control.credential_generation.as_deref()
+                    != Some(binding.credential_generation.as_str())
+            {
+                return Err(
+                    "A worker binding changed; save the account binding before applying pacing."
+                        .into(),
+                );
+            }
+            if ids.contains(&binding.worker_id) {
+                return Err("A worker is assigned to more than one saved profile.".into());
+            }
+            ids.push(binding.worker_id);
+        }
+    }
+    if ids.is_empty() {
+        return Err("Bind image and video workers before applying pacing.".into());
+    }
+    Ok(ids)
+}
+
+fn pacing_is_applied(
+    view: &manager_gateway::ManagerView,
+    profiles: &[GatewayProfile],
+    origin: &str,
+    pacing: &manager_gateway::Pacing,
+    now: f64,
+) -> bool {
+    let Ok(ids) = pacing_worker_ids(view, profiles, origin, now) else {
+        return false;
+    };
+    ids.iter().all(|id| {
+        let Some(worker) = view.workers.iter().find(|worker| &worker.worker_id == id) else {
+            return false;
+        };
+        let Some(state) = &worker.state else {
+            return false;
+        };
+        let matches = |actual: Option<&manager_gateway::Pacing>| {
+            actual.is_some_and(|actual| {
+                actual.min_seconds == pacing.min_seconds && actual.max_seconds == pacing.max_seconds
+            })
+        };
+        worker.fresh
+            && worker.received_at.is_some_and(|at| {
+                at.is_finite() && at > 0.0 && at <= now && now - at <= view.max_age_seconds
+            })
+            && state.observed_at.is_some_and(|at| {
+                at.is_finite() && at > 0.0 && at <= now && now - at <= view.max_age_seconds
+            })
+            && worker.control.revision.as_deref().is_some_and(|revision| {
+                !revision.is_empty() && state.control_revision.as_deref() == Some(revision)
+            })
+            && matches(worker.control.pacing.as_ref())
+            && matches(state.pacing.as_ref())
+    })
 }
 
 /// Both physical siblings must be explicitly bound with the exact generation captured for this
@@ -1264,6 +1412,7 @@ pub(crate) async fn manager_pair_gateway(
     // Deliberate pairing may fill a missing initial generation binding. It never replaces a
     // recorded one, and never clears work or state that is already held.
     bind_after_pair(&shared, &origin, &view)?;
+    shared.gateway.apply_saved_pacing(&shared).await;
     build_snapshot(&shared)
 }
 
@@ -1377,6 +1526,10 @@ pub(crate) fn manager_update_profile(
     if rebind {
         // A deliberate rebind invalidates any earlier attempt, including one still in flight.
         manager.shared.gateway.cache().closes.remove(&profile_id);
+        let shared = manager.shared.clone();
+        let _ = tauri::async_runtime::spawn(async move {
+            shared.gateway.apply_saved_pacing(&shared).await;
+        });
     }
     finish(&manager.shared)
 }
@@ -1556,7 +1709,7 @@ pub(crate) fn manager_close_profiles(
 }
 
 #[tauri::command]
-pub(crate) fn manager_save_settings(
+pub(crate) async fn manager_save_settings(
     window: WebviewWindow,
     manager: State<'_, BrowserManager>,
     memory_budget_mb: Option<u64>,
@@ -1576,9 +1729,10 @@ pub(crate) fn manager_save_settings(
         };
         Ok(())
     })?;
-    // Pacing stays a saved local preference: no control is sent until Gateway offers an
-    // atomic pacing-only or revision-conditioned update, so no dispatch flag is guessed.
-    finish(&manager.shared)
+    let shared = manager.shared.clone();
+    drop(manager);
+    shared.gateway.apply_saved_pacing(&shared).await;
+    finish(&shared)
 }
 
 // ---------------------------------------------------------------------------
@@ -1596,20 +1750,12 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
             inner.measurement.clone(),
         )
     };
-    let gateway_profiles: Vec<GatewayProfile> = stored
-        .profiles
-        .iter()
-        .map(|profile| GatewayProfile {
-            id: profile.id.clone(),
-            image_worker_id: profile.image_worker_id.clone(),
-            video_worker_id: profile.video_worker_id.clone(),
-            binding_origin: profile.binding_origin.clone(),
-            image_worker_generation: profile.image_worker_generation.clone(),
-            video_worker_generation: profile.video_worker_generation.clone(),
-        })
-        .collect();
+    let gateway_profiles = gateway_profiles(&stored);
     let (readings, support) = match authority() {
-        Some(authority) => (authority.read(&gateway_profiles), authority.support()),
+        Some(authority) => (
+            authority.read(&gateway_profiles),
+            authority.support(&gateway_profiles, &saved_pacing(&stored.settings)),
+        ),
         None => (HashMap::new(), GatewaySupport::unavailable()),
     };
     let mut queued = 0u32;
@@ -3337,6 +3483,72 @@ mod tests {
         let mut stale = pair_view();
         stale.received_at = NOW - 1000.0;
         assert!(verified_generations(&stale, Some("image-1"), Some("video-1"), NOW).is_none());
+    }
+
+    #[test]
+    fn pacing_application_requires_every_bound_current_worker_and_saved_range() {
+        let profiles = vec![bound_profile()];
+        let requested = manager_gateway::Pacing {
+            min_seconds: 1.5,
+            max_seconds: 2.75,
+        };
+        let mut view = pair_view();
+        for worker in &mut view.workers {
+            worker.control.pacing = Some(requested.clone());
+            worker.state.as_mut().unwrap().pacing = Some(requested.clone());
+        }
+        let applied = |view: &manager_gateway::ManagerView| {
+            pacing_is_applied(view, &profiles, "https://gateway.example", &requested, NOW)
+        };
+        assert!(applied(&view));
+        let mut missing = view.clone();
+        missing.workers.pop();
+        assert!(!applied(&missing));
+        let mut different = view.clone();
+        different.workers[1]
+            .state
+            .as_mut()
+            .unwrap()
+            .pacing
+            .as_mut()
+            .unwrap()
+            .max_seconds = 15.0;
+        assert!(!applied(&different), "one matching worker is insufficient");
+        let mut old_revision = view.clone();
+        old_revision.workers[1]
+            .state
+            .as_mut()
+            .unwrap()
+            .control_revision = Some("older".into());
+        assert!(!applied(&old_revision));
+        let mut old_source = view.clone();
+        old_source.workers[1].state.as_mut().unwrap().observed_at =
+            Some(NOW - view.max_age_seconds - 1.0);
+        assert!(!applied(&old_source));
+        let mut changed_generation = view.clone();
+        changed_generation.workers[1].control.credential_generation = Some("replacement".into());
+        assert!(!applied(&changed_generation));
+        assert!(!pacing_is_applied(
+            &view,
+            &[],
+            "https://gateway.example",
+            &requested,
+            NOW
+        ));
+        assert!(!pacing_is_applied(
+            &view,
+            &profiles,
+            "https://other.example",
+            &requested,
+            NOW
+        ));
+        assert!(pacing_worker_ids(
+            &view,
+            &[profiles[0].clone(), profiles[0].clone()],
+            "https://gateway.example",
+            NOW
+        )
+        .is_err());
     }
 
     #[test]

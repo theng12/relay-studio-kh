@@ -847,7 +847,7 @@ impl ManagerClient {
     async fn control(
         &self,
         worker_ids: &[String],
-        dispatch_enabled: bool,
+        dispatch_enabled: Option<bool>,
         close_requested: Option<bool>,
         pacing: Option<Pacing>,
     ) -> Result<ManagerView, ManagerError> {
@@ -866,7 +866,7 @@ impl ManagerClient {
             .await
             .map_err(network_error)?;
         let view = parse_view(json_response(response, &self.origin).await?)?;
-        if !dispatch_enabled && !pause_confirmed(&view, worker_ids) {
+        if dispatch_enabled == Some(false) && !pause_confirmed(&view, worker_ids) {
             return Err(ManagerError::DispatchNotPaused);
         }
         Ok(view)
@@ -876,8 +876,8 @@ impl ManagerClient {
 #[derive(Serialize)]
 struct ControlRequest<'a> {
     worker_ids: &'a [String],
-    #[serde(rename = "dispatchEnabled")]
-    dispatch_enabled: bool,
+    #[serde(rename = "dispatchEnabled", skip_serializing_if = "Option::is_none")]
+    dispatch_enabled: Option<bool>,
     #[serde(rename = "closeRequested", skip_serializing_if = "Option::is_none")]
     close_requested: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -918,7 +918,22 @@ pub(crate) async fn control(
     let origin = normalize_origin(origin)?;
     let token = load_token(&origin)?.ok_or(ManagerError::NotPaired)?;
     ManagerClient::new(&origin, &token)?
-        .control(worker_ids, dispatch_enabled, close_requested, pacing)
+        .control(worker_ids, Some(dispatch_enabled), close_requested, pacing)
+        .await
+}
+
+/// Changes pacing under Gateway's lock without reading or replaying dispatch/close flags.
+pub(crate) async fn set_pacing(
+    origin: &str,
+    worker_ids: &[String],
+    pacing: Pacing,
+) -> Result<ManagerView, ManagerError> {
+    validate_worker_ids(worker_ids)?;
+    pacing.validate()?;
+    let origin = normalize_origin(origin)?;
+    let token = load_token(&origin)?.ok_or(ManagerError::NotPaired)?;
+    ManagerClient::new(&origin, &token)?
+        .control(worker_ids, None, None, Some(pacing))
         .await
 }
 
@@ -1323,6 +1338,38 @@ mod tests {
                 .safe_to_close
         );
         assert!(!close_safety_for_bindings_at(&view(vec![image]), &expected, NOW).safe_to_close);
+    }
+
+    #[test]
+    fn pacing_only_wire_omits_both_flags_and_preserves_zero_and_fractions() {
+        let ids = vec!["image-1".into(), "video-1".into()];
+        for (min, max) in [(0.0, 0.0), (1.5, 2.75), (5.0, 15.0)] {
+            let value = serde_json::to_value(ControlRequest {
+                worker_ids: &ids,
+                dispatch_enabled: None,
+                close_requested: None,
+                pacing: Some(Pacing {
+                    min_seconds: min,
+                    max_seconds: max,
+                }),
+            })
+            .unwrap();
+            assert_eq!(
+                value,
+                json!({"worker_ids": ids, "pacing": {"minSeconds": min, "maxSeconds": max}})
+            );
+        }
+        let close = serde_json::to_value(ControlRequest {
+            worker_ids: &ids,
+            dispatch_enabled: Some(false),
+            close_requested: Some(true),
+            pacing: None,
+        })
+        .unwrap();
+        assert_eq!(
+            close,
+            json!({"worker_ids": ids, "dispatchEnabled": false, "closeRequested": true})
+        );
     }
 
     #[test]
