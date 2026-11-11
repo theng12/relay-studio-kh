@@ -1092,6 +1092,9 @@ struct StoredProfile {
     binary: Option<String>,
     #[serde(default)]
     close_pending: bool,
+    /// Epoch seconds when this close was requested; shown while `close_pending` is set.
+    #[serde(default)]
+    close_requested_at: Option<f64>,
     #[serde(default)]
     open_failures: u32,
 }
@@ -1185,6 +1188,7 @@ struct ProfileSnapshot {
     process_id: Option<u32>,
     memory_mb: Option<u64>,
     close_pending: bool,
+    close_requested_at: Option<f64>,
     error: Option<String>,
     attention: bool,
     gateway: GatewaySnapshot,
@@ -1483,7 +1487,7 @@ pub(crate) fn manager_update_profile(
             if !enabled && profile.desired_open {
                 profile.desired_open = false;
                 if profile.pid.is_some() {
-                    profile.close_pending = true;
+                    request_close(profile, epoch_now());
                 }
             }
         }
@@ -1569,6 +1573,7 @@ pub(crate) fn manager_open_profiles(
             let resident = profile.pid.is_some();
             profile.desired_open = true;
             profile.open_failures = 0;
+            clear_close(profile);
             opened.push((
                 GatewayProfile {
                     id: profile.id.clone(),
@@ -1704,10 +1709,113 @@ pub(crate) fn manager_close_profiles(
                 .ok_or("Unknown browser profile.")?;
             profile.desired_open = false;
             profile.open_failures = 0;
-            profile.close_pending = profile.pid.is_some();
+            request_close(profile, epoch_now());
         }
         Ok(())
     })?;
+    finish(&manager.shared)
+}
+
+/// Explicit owner force close. Only a verified Relay-owned process with Gateway's fresh
+/// safe-to-close acknowledgement is killed; a refusal never falls back to SIGKILL.
+#[tauri::command]
+pub(crate) fn manager_force_close_profiles(
+    window: WebviewWindow,
+    manager: State<'_, BrowserManager>,
+    profile_ids: Vec<String>,
+) -> Result<Snapshot, String> {
+    super::local_only(&window)?;
+    reconcile(&manager.shared)?;
+    let chrome = manager.shared.chrome.clone();
+    let mut forced: Vec<(String, u32)> = Vec::new();
+    let mut failures: Vec<(String, String)> = Vec::new();
+    {
+        let inner = locked(&manager.shared)?;
+        let stored = stored_or_error(&inner)?;
+        // Validate every id before anything is stopped, so one typo cannot half-apply a kill.
+        if profile_ids
+            .iter()
+            .any(|id| !stored.profiles.iter().any(|profile| &profile.id == id))
+        {
+            return Err("Unknown browser profile.".into());
+        }
+        for id in &profile_ids {
+            let profile = stored
+                .profiles
+                .iter()
+                .find(|profile| &profile.id == id)
+                .ok_or("Unknown browser profile.")?;
+            let Some(pid) = profile.pid else {
+                failures.push((
+                    id.clone(),
+                    "This account is not open, so there is nothing to force close.".into(),
+                ));
+                continue;
+            };
+            let owned = inner
+                .measurement
+                .rows
+                .get(&pid)
+                .map(|row| ownership(row, profile, chrome.as_deref()) == Ownership::Verified)
+                .unwrap_or(false);
+            let input = GatewayProfile {
+                id: profile.id.clone(),
+                image_worker_id: profile.image_worker_id.clone(),
+                video_worker_id: profile.video_worker_id.clone(),
+                binding_origin: profile.binding_origin.clone(),
+                image_worker_generation: profile.image_worker_generation.clone(),
+                video_worker_generation: profile.video_worker_generation.clone(),
+            };
+            match force_close_action(owned, close_authorization(&input)) {
+                Ok(()) => forced.push((id.clone(), pid)),
+                Err(reason) => failures.push((id.clone(), reason)),
+            }
+        }
+    }
+    let mut closed = Vec::new();
+    for (id, pid) in forced {
+        match force_terminate(pid) {
+            Ok(()) => closed.push(id),
+            Err(reason) => failures.push((id, reason)),
+        }
+    }
+    if !closed.is_empty() {
+        mutate(&manager.shared, |stored| {
+            for id in &closed {
+                let profile = stored
+                    .profiles
+                    .iter_mut()
+                    .find(|profile| &profile.id == id)
+                    .ok_or("Unknown browser profile.")?;
+                profile.desired_open = false;
+                clear_close(profile);
+                profile.open_failures = 0;
+                // The killed process is already gone; its pid must not read as a later close.
+                forget_process(profile);
+            }
+            Ok(())
+        })?;
+    }
+    {
+        let mut inner = locked(&manager.shared)?;
+        for id in &closed {
+            inner.errors.insert(
+                id.clone(),
+                "Force closed by you. Open tabs were lost; Chrome can restore its session next launch."
+                    .into(),
+            );
+            inner.attention.remove(id);
+        }
+        for (id, reason) in failures {
+            inner.errors.insert(id, reason);
+        }
+    }
+    if !closed.is_empty() {
+        let mut cache = manager.shared.gateway.cache();
+        for id in &closed {
+            cache.closes.remove(id);
+        }
+    }
     finish(&manager.shared)
 }
 
@@ -1781,6 +1889,7 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
                 process_id: if alive { profile.pid } else { None },
                 memory_mb: measurement.profile_mb.get(&profile.id).copied(),
                 close_pending: profile.close_pending,
+                close_requested_at: profile.close_requested_at,
                 error: errors.get(&profile.id).cloned(),
                 attention: attention.contains(&profile.id)
                     || readings
@@ -1957,7 +2066,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                         attention.insert(profile.id.clone());
                     }
                 } else {
-                    profile.close_pending = false;
+                    clear_close(profile);
                     // The close finished or was abandoned here; its attempt must not be inherited.
                     shared.gateway.cache().closes.remove(&profile.id);
                     errors.remove(&profile.id);
@@ -1968,7 +2077,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
         }
         if profile.close_pending {
             if profile.pid.is_none() {
-                profile.close_pending = false;
+                clear_close(profile);
                 changed = true;
                 shared.gateway.cache().closes.remove(&profile.id);
                 errors.remove(&profile.id);
@@ -2091,6 +2200,30 @@ enum CloseAction {
     Terminate,
 }
 
+/// Records a deliberate close: pending only while a process is resident, with its request time.
+fn request_close(profile: &mut StoredProfile, now: f64) {
+    profile.close_pending = profile.pid.is_some();
+    profile.close_requested_at = profile.close_pending.then_some(now);
+}
+
+fn clear_close(profile: &mut StoredProfile) {
+    profile.close_pending = false;
+    profile.close_requested_at = None;
+}
+
+fn force_close_action(owned: bool, authorization: CloseAuthorization) -> Result<(), String> {
+    if !owned {
+        return Err(
+            "The recorded Chrome process could not be verified as Relay's own; it was not stopped."
+                .into(),
+        );
+    }
+    match authorization {
+        CloseAuthorization::Safe => Ok(()),
+        CloseAuthorization::NotAcknowledged(reason) => Err(reason),
+    }
+}
+
 fn close_action(owned_process: bool, authorization: CloseAuthorization) -> CloseAction {
     if !owned_process {
         return CloseAction::Wait(
@@ -2120,6 +2253,23 @@ fn terminate(pid: u32) -> Result<(), String> {
         Ok(())
     } else {
         Err("Chrome did not accept a graceful close request; it was not forced.".into())
+    }
+}
+
+/// Explicit owner force close. Targets only the verified pid; work is never replayed.
+fn force_terminate(pid: u32) -> Result<(), String> {
+    if pid == 0 {
+        return Err("Managed Chrome process identity is incomplete; it was not stopped.".into());
+    }
+    let target = pid.to_string();
+    let status = Command::new("/bin/kill")
+        .args(["-KILL", target.as_str()])
+        .status()
+        .map_err(|_| "Chrome could not be force closed; it was not stopped.".to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Chrome could not be force closed; it was not stopped.".into())
     }
 }
 
@@ -2549,6 +2699,7 @@ fn append_profile(stored: &mut Stored, raw_label: &str) -> Result<String, String
         pid_started: None,
         binary: None,
         close_pending: false,
+        close_requested_at: None,
         open_failures: 0,
     });
     Ok(id)
@@ -2796,6 +2947,7 @@ mod tests {
             pid_started: None,
             binary: None,
             close_pending: false,
+            close_requested_at: None,
             open_failures: 0,
         }
     }
@@ -2886,6 +3038,46 @@ mod tests {
             close_action(true, CloseAuthorization::Safe),
             CloseAction::Terminate
         ));
+    }
+
+    #[test]
+    fn force_close_requires_verified_ownership_and_fresh_gateway_safety() {
+        let refusal =
+            "The recorded Chrome process could not be verified as Relay's own; it was not stopped.";
+        assert_eq!(
+            force_close_action(false, CloseAuthorization::Safe).unwrap_err(),
+            refusal
+        );
+        assert_eq!(
+            force_close_action(false, CloseAuthorization::NotAcknowledged("held".into()))
+                .unwrap_err(),
+            refusal,
+            "ownership is checked before Gateway safety"
+        );
+        assert_eq!(
+            force_close_action(true, CloseAuthorization::NotAcknowledged("active work".into()))
+                .unwrap_err(),
+            "active work"
+        );
+        assert!(force_close_action(true, CloseAuthorization::Safe).is_ok());
+    }
+
+    #[test]
+    fn close_request_time_follows_close_pending_and_clears_with_it() {
+        let mut profile = sample_profile();
+        profile.pid = Some(42);
+        request_close(&mut profile, 1000.5);
+        assert!(profile.close_pending);
+        assert_eq!(profile.close_requested_at, Some(1000.5));
+        clear_close(&mut profile);
+        assert!(!profile.close_pending);
+        assert_eq!(profile.close_requested_at, None);
+
+        // No process means nothing to close, so no request time is reported.
+        let mut idle = sample_profile();
+        request_close(&mut idle, 2000.0);
+        assert!(!idle.close_pending);
+        assert_eq!(idle.close_requested_at, None);
     }
 
     #[test]

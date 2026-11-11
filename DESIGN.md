@@ -125,11 +125,13 @@ Restrained blue/slate palette with complete light and dark variants. The accent 
 
 ## Layout
 
-Single-column flow within a max-width container (1040px). The connection list is the primary surface; everything else supports it. Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script.
+A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer with the version and Quit. The selected row is marked with the accent-soft tint and `aria-current="page"`. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
 
-The worker list uses a four-column grid (identity, state, credits, action) that collapses to two columns below 680px. Details expand inline beneath each row using native `<details>`/`<summary>`. Dialogs are centered overlays capped at 480px width.
+Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script; `html` and `body` repeat the documented ground hexes so wide and fullscreen windows never show white bands.
 
-Responsive behavior at 680px: header remains a row with wrapping text, list heading becomes a block, worker rows reflow to identity-full-width with action beside it, definition lists go single-column, footer stacks.
+The window opens at 1040×760 and cannot be made smaller than 860×560. The account list uses a four-column grid (identity, state, credits, action) that reflows below 980px to identity and action above state, with the column headings hidden. Dialogs are centered overlays capped at 480px width.
+
+Responsive behavior below 980px: page padding drops to 16px, account rows reflow to a two-line layout, browser bulk actions wrap under the selection row, and definition lists go single-column.
 
 ## Elevation & Depth
 
@@ -171,6 +173,12 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 - **Details:** Provider identity, credit source/time/reset/buckets and image/video worker bindings expand inline. Memory/pacing preferences, Gateway pairing and extension setup disclose progressively.
 - **Actions:** Open/Close use exact saved IDs; attention exposes Show profile for the same managed Chrome profile. Pending close remains visible until authoritative safe-stop readback. Pairing uses a concealed one-time input cleared after either outcome.
 - **Identity:** Reuse the existing palette, system type, spacing and flat hierarchy. The desktop account grid adds a selection column and collapses at the existing 680px breakpoint. Fixture screenshots prove rendering only, never native lifecycle or account readiness.
+
+### Browsers Pane
+- **Register:** One card per resident or queued profile: number and label, state, PID, measured memory, provider, activity, and the queued or close-waiting reason. Only real Chrome processes Relay opened appear; the pane never draws a simulated browser.
+- **Actions:** Focus activates the exact owned window, Close asks Gateway for a safe stop, and Force close opens a confirmation that names the lost tabs and Chrome's session restore. A per-row and bulk Force close is blocked with an explicit reason whenever Gateway reports active or uncertain work.
+- **Waiting:** A pending close shows its elapsed wait and Gateway's reason on the row, so a refused SIGTERM never looks like a silent success.
+- **Empty state:** "No browsers open." when nothing is resident or queued.
 
 ### State Indicators
 - **Style:** Inline-flex row with 6px colored dot and semibold 12px label. Connection labels use ok (green), warn (amber), and off/info (muted). Error text and danger controls use bad (red).

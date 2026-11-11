@@ -412,6 +412,7 @@ export function mountAccounts(invoke) {
   let busy = false;
   let refreshing = false;
   const busyIds = new Set();
+  const listeners = new Set();
   const dirtyForms = new WeakSet();
   const markDirty = (event) => { if (event.target.form) dirtyForms.add(event.target.form); };
   list.addEventListener('input', markDirty);
@@ -461,7 +462,6 @@ export function mountAccounts(invoke) {
   function setControls() {
     const disabled = busy || !snapshot;
     for (const id of ['add-labels', 'add-submit', 'range-input', 'select-range', 'select-all', 'select-none']) $(id).disabled = disabled;
-    $('refresh-accounts').disabled = disabled || refreshing;
   }
   function empty(message) {
     $('profiles-empty').textContent = message;
@@ -775,6 +775,8 @@ export function mountAccounts(invoke) {
     renderPairing();
     renderList();
     setControls();
+    // Other panes (Browsers) read the same snapshot instead of asking the native manager again.
+    for (const notify of listeners) notify(next);
   }
 
   function unavailable(error) {
@@ -834,7 +836,6 @@ export function mountAccounts(invoke) {
     finally { busy = false; busyIds.delete(id); renderList(); setControls(); }
   }
 
-  $('refresh-accounts').addEventListener('click', () => { setError(null); refresh(); });
   $('add-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const labels = parseLabels($('add-labels').value);
@@ -896,5 +897,9 @@ export function mountAccounts(invoke) {
   $('manager-open').addEventListener('click', () => invoke('open_gateway').catch((error) => setPairError(error)));
   $('manager-token').addEventListener('input', () => setPairError(null));
 
-  return { refresh };
+  return {
+    refresh,
+    subscribe(notify) { listeners.add(notify); if (snapshot) notify(snapshot); return () => listeners.delete(notify); },
+    current: () => snapshot,
+  };
 }

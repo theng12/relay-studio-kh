@@ -7,6 +7,7 @@ import {
   pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
+import { browserProfiles, browserSummary, closeElapsedSeconds, elapsedLabel, forceBlockReason, forceableIds } from '../desktop/browsers.mjs';
 
 const profile = (number, overrides = {}) => ({ id: `id-${number}`, number, label: `Account ${number}`, enabled: true, desired_open: false, process_state: 'closed', ...overrides });
 const profiles = [profile(3), profile(1), profile(5), profile(2)];
@@ -409,12 +410,56 @@ test('desktop surface keeps native commands, password pairing and no browser tok
   assert.match(html, /id="manager-token" type="password" autocomplete="off"/);
   const tokenTag = html.match(/<input id="manager-token"[^>]*>/)[0];
   assert.doesNotMatch(tokenTag, /PASSWORD_|\{\{|\}\}/);
-  assert.ok(html.indexOf('id="memory-summary"') < html.indexOf('id="memory-disclosure"'), 'memory readout must sit outside the disclosure');
   assert.equal(html.includes('localStorage'), false);
+  for (const page of ['accounts', 'browsers', 'memory', 'gateway', 'extensions']) {
+    assert.match(html, new RegExp(`data-page="${page}"`), `missing sidebar row ${page}`);
+    assert.match(html, new RegExp(`id="page-${page}"`), `missing pane ${page}`);
+  }
+  for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'force-blocked', 'force-cancel', 'force-confirm']) {
+    assert.match(html, new RegExp(`id="${id}"`), `missing browser control ${id}`);
+  }
+  assert.match(html, /class="window relay-connector"/, 'shared tokens must scope to the window shell');
   const accounts = await load('../desktop/accounts.mjs');
+  const browsers = await load('../desktop/browsers.mjs');
   const app = await load('../desktop/app.mjs');
   for (const name of ['manager_snapshot', 'manager_add_profiles', 'manager_update_profile', 'manager_open_profiles', 'manager_close_profiles', 'manager_save_settings', 'manager_pair_gateway']) {
     assert.ok(accounts.includes(`'${name}'`), `missing native command ${name}`);
   }
-  assert.equal(/localStorage|sessionStorage/.test(accounts + app), false);
+  for (const name of ['manager_show_profiles', 'manager_open_profiles', 'manager_close_profiles', 'manager_force_close_profiles']) {
+    assert.ok(browsers.includes(`'${name}'`), `missing browser command ${name}`);
+  }
+  assert.equal(/localStorage|sessionStorage/.test(accounts + browsers + app), false);
+});
+
+test('browsers pane lists only resident or queued profiles and counts them honestly', () => {
+  const rows = [
+    profile(1, { process_state: 'open', process_id: 41, gateway: { activity: 'idle' } }),
+    profile(2, { process_state: 'closed' }),
+    profile(3, { process_state: 'queued', desired_open: true, gateway: { activity: 'waiting' } }),
+    profile(4, { process_state: 'closed', close_pending: true }),
+  ];
+  assert.deepEqual(browserProfiles(rows).map((entry) => entry.number), [1, 3, 4]);
+  assert.equal(browserSummary(rows), '1 browser open · 1 waiting for memory · 1 waiting to close');
+  assert.equal(browserSummary([profile(2)]), 'No browsers open.');
+});
+
+test('close age counts from the recorded request and never invents a start', () => {
+  assert.equal(closeElapsedSeconds({ close_pending: true }, 5000), null);
+  assert.equal(closeElapsedSeconds({ close_pending: false, close_requested_at: 100 }, 5000), null);
+  assert.equal(closeElapsedSeconds({ close_pending: true, close_requested_at: 100 }, 105000), 5);
+  assert.equal(elapsedLabel(5), '5 s');
+  assert.equal(elapsedLabel(150), '2 min');
+  assert.equal(elapsedLabel(7500), '2 h 5 min');
+});
+
+test('force close blocks active or uncertain Gateway work and non-resident rows', () => {
+  assert.match(forceBlockReason({ process_id: 1, gateway: { activity: 'generating' } }), /active or uncertain/);
+  assert.match(forceBlockReason({ process_id: 1, gateway: { activity: 'recovering' } }), /active or uncertain/);
+  assert.match(forceBlockReason({ process_state: 'closed' }), /nothing to force close/);
+  assert.equal(forceBlockReason({ process_id: 1, gateway: { activity: 'idle' } }), null);
+  const rows = [
+    profile(1, { process_state: 'open', process_id: 41, gateway: { activity: 'generating' } }),
+    profile(2, { process_state: 'open', process_id: 42, gateway: { activity: 'idle' } }),
+  ];
+  assert.deepEqual(forceableIds(rows, ['id-1', 'id-2']), ['id-2']);
 });

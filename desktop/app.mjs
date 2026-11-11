@@ -1,5 +1,7 @@
 import info from './app-info.mjs';
 import { mountAccounts } from './accounts.mjs';
+import { mountBrowsers } from './browsers.mjs';
+import { mountShell } from './shell.mjs';
 import { createRecovery } from './recovery.mjs';
 import { setupExtensions } from './setup.mjs';
 
@@ -7,6 +9,8 @@ const $ = (id) => document.getElementById(id);
 const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
 const accounts = mountAccounts(invoke);
+mountBrowsers(invoke, accounts);
+mountShell({ onShow: (page) => { if (page === 'accounts' || page === 'browsers') accounts.refresh(); } });
 setupExtensions(invoke, showError);
 let loginChanged = false;
 $('start-at-login').addEventListener('change', () => { loginChanged = true; });
@@ -44,13 +48,14 @@ $('reconnect').addEventListener('click', async () => {
   finally { $('reconnect').disabled = false; }
 });
 $('quit').addEventListener('click', () => invoke('quit_app').catch(showError));
-$('version').textContent = `v${info.version} · What’s New`;
+$('version').textContent = `v${info.version}`;
 for (const release of info.releases) {
   const heading = document.createElement('h3'); heading.textContent = `v${release.version}`;
   const list = document.createElement('ul');
   for (const item of release.items) { const line = document.createElement('li'); line.textContent = item; list.append(line); }
   $('notes').append(heading, list);
 }
+$('nav-whats-new').addEventListener('click', () => $('whats-new').showModal());
 $('version').addEventListener('click', () => $('whats-new').showModal());
 $('close-notes').addEventListener('click', () => $('whats-new').close());
 try {
