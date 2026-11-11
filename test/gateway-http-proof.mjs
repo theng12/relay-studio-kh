@@ -1,12 +1,30 @@
 // Opt-in real-Gateway fixture proof. Never targets a production URL or runs a provider.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, stat, writeFile } from 'node:fs/promises';
-import { videoModule } from './source.mjs';
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { basename, dirname, resolve } from 'node:path';
+import { videoModule, videoRoot } from './source.mjs';
 import { readWorkers } from '../web/api.mjs';
 
+const lock = JSON.parse(await readFile(new URL('../scripts/gateway-proof-lock.json', import.meta.url), 'utf8'));
+assert.equal(lock.schema, 1);
+assert.equal(lock.status, 'reviewed-merged', 'Gateway proof awaits review of the final merged commit.');
+assert.match(lock.gateway.commit, /^[0-9a-f]{40}$/);
+assert.deepEqual(Object.keys(lock.gateway.source_hashes).sort(), ['gateway/adapters/chrome_extension.py', 'gateway/extension_workers.py']);
+for (const hash of Object.values(lock.gateway.source_hashes)) assert.match(hash, /^[0-9a-f]{64}$/);
+assert.ok(process.env.RELAY_VIDEO_SOURCE, 'Set RELAY_VIDEO_SOURCE to the exact reviewed video worktree.');
+const catalog = JSON.parse(await readFile(new URL('../desktop/extensions.json', import.meta.url), 'utf8'));
+assert.equal(catalog.extensions.find(entry => entry.id === 'video')?.source_commit, lock.video.commit, 'Video proof lock differs from the desktop candidate.');
+async function verifiedVideoSource() {
+  const git = (...args) => execFileSync('git', ['--no-optional-locks', '-C', videoRoot, ...args], { encoding: 'utf8' }).trim();
+  assert.equal(git('status', '--porcelain', '--untracked-files=normal'), '', 'Video proof source must be clean.');
+  const source = { commit: git('rev-parse', 'HEAD'), client_sha256: createHash('sha256').update(await readFile(resolve(videoRoot, 'src/lib/gateway-client.js'))).digest('hex') };
+  assert.deepEqual(source, lock.video, 'Video client differs from the reviewed proof lock.');
+  return source;
+}
+const video = await verifiedVideoSource();
 const base = 'http://127.0.0.1:7916';
-const client = await videoModule('gateway-client.js');
 const request = (path, options) => fetch(base + path, options);
 async function control(path, body) {
   const response = await request('/__relay_proof' + path, { method: body === undefined ? 'GET' : 'POST',
@@ -21,15 +39,22 @@ async function minted(workerId) {
 }
 const info = await control('/info');
 assert.equal(info.fixture, true, 'Refuse any server that is not the dedicated fixture.');
-assert.ok(info.gateway_commit.startsWith('5b0ed72'), 'Refuse the known-bad baseline or an unreviewed candidate.');
-assert.ok(info.root.startsWith('/build/Developer/_orchestra/relay-lead/worker-contract-20261109/gateway-http-proof-'));
+assert.equal(info.gateway_commit, lock.gateway.commit, 'Gateway proof commit differs from the reviewed merged source.');
+assert.deepEqual(info.source_hashes, lock.gateway.source_hashes, 'Gateway proof bytes differ from the reviewed merged source.');
+const proofRoot = resolve(process.env.RELAY_PROOF_ROOT || resolve(import.meta.dirname, '../../_evidence/worker-contract-20261109'));
+assert.equal(dirname(info.root), await realpath(proofRoot));
+assert.ok(basename(info.root).startsWith('gateway-http-proof-'));
+const client = await videoModule('gateway-client.js');
 const checks = [];
-const settings = await minted('relay-proof-video');
-const secondary = await minted('relay-proof-other');
+const tokens = [];
 const scoped = (settings, body) => ({ method: 'POST', headers: { Authorization: `Bearer ${settings.gatewayToken}`, 'Content-Type': 'application/json' }, body });
 const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 16]), Buffer.from('ftypisom\0\0\0\0'), Buffer.from([0, 0, 0, 8]), Buffer.from('moov')]);
 const expectedHash = createHash('sha256').update(mp4).digest('hex');
 try {
+  const settings = await minted('relay-proof-video');
+  tokens.push(settings);
+  const secondary = await minted('relay-proof-other');
+  tokens.push(secondary);
   await client.testGateway(settings);
   assert.equal(await client.claimGatewayJob(settings), null);
   checks.push('original extension client authenticated health and idle204');
@@ -97,18 +122,26 @@ try {
     assert.deepEqual(Object.keys(row).sort(), ['created_at', 'kind', 'revoked_at', 'worker_id']);
   }
   checks.push('real token store contains only SHA256 keys and bounded metadata with0600 permissions');
-  const after = await control('/info');
-  assert.deepEqual(after.source_hashes, info.source_hashes, 'Gateway source changed during proof.');
 } finally {
-  for (const s of [settings, secondary]) {
-    const response = await request(`/admin/api/extension-workers/${encodeURIComponent(s.gatewayWorkerId)}`, { method: 'DELETE' });
-    assert.equal(response.status, 200);
-    assert.equal((await request('/api/workers/health', { headers: { Authorization: `Bearer ${s.gatewayToken}` } })).status, 401);
-    s.gatewayToken = '';
-  }
+  const revoked = await Promise.allSettled(tokens.map(async s => {
+    try {
+      const response = await request(`/admin/api/extension-workers/${encodeURIComponent(s.gatewayWorkerId)}`, { method: 'DELETE' });
+      assert.equal(response.status, 200);
+      assert.equal((await request('/api/workers/health', { headers: { Authorization: `Bearer ${s.gatewayToken}` } })).status, 401);
+    } finally {
+      s.gatewayToken = '';
+    }
+  }));
+  assert.ok(revoked.every(result => result.status === 'fulfilled'), 'Fixture token revocation was not fully verified.');
 }
 checks.push('fixture worker tokens revoked immediately; no raw token retained in receipt');
-const receipt = { checked_at: new Date().toISOString(), scope: 'Real Gateway source and original extension HTTP client, isolated loopback fixture only; no provider generation or production runtime.', gateway: info, checks, artifact: { sha256: expectedHash, bytes: mp4.length }, no_paid_calls: true };
+const after = await control('/info');
+assert.deepEqual(after, info, 'Gateway proof identity or source changed during proof.');
+assert.deepEqual(after.source_hashes, lock.gateway.source_hashes);
+assert.equal(after.gateway_commit, lock.gateway.commit);
+assert.deepEqual(await verifiedVideoSource(), video, 'Video source changed during proof.');
+checks.push('exact reviewed Gateway and video source identities retained through receipt');
+const receipt = { checked_at: new Date().toISOString(), scope: 'Reviewed merged Gateway source and pinned video HTTP client, isolated loopback fixture only; no provider generation or production runtime.', gateway: info, video, checks, artifact: { sha256: expectedHash, bytes: mp4.length }, no_paid_calls: true };
 const output = process.env.RELAY_PROOF_RECEIPT;
 if (output) await writeFile(output, JSON.stringify(receipt, null, 2) + '\n');
 for (const check of checks) console.log(`PASS ${check}`);

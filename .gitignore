@@ -2,4 +2,10 @@
 node_modules/
 _trash/
 dist/
+desktop-dist/
+desktop-resources/
+.desktop-resources-*/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/
 .impeccable/review/

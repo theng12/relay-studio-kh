@@ -1,0 +1,5 @@
+[
+  { "id": "chrome", "name": "Google Chrome", "bundle_id": "com.google.Chrome", "app_name": "Google Chrome.app", "settings_url": "chrome://extensions/", "instructions": "Open Chrome extension settings. Turn on Developer mode yourself, choose Load unpacked, and select each prepared extension folder." },
+  { "id": "edge", "name": "Microsoft Edge", "bundle_id": "com.microsoft.edgemac", "app_name": "Microsoft Edge.app", "settings_url": "edge://extensions/", "instructions": "Edge is a separate, unverified candidate. In Edge extension settings, turn on Developer mode yourself, choose Load unpacked, and select each prepared extension folder." },
+  { "id": "brave", "name": "Brave", "bundle_id": "com.brave.Browser", "app_name": "Brave Browser.app", "settings_url": "brave://extensions/", "instructions": "Brave is a separate, unverified candidate. In Brave extension settings, turn on Developer mode yourself, choose Load unpacked, and select each prepared extension folder." }
+]

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relay Studio KH</title>
+  <!-- RELAY_STYLE -->
+  <link rel="stylesheet" href="./desktop.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <main class="relay-connector">
+    <header class="page-header"><div><h1>Relay Studio KH</h1><p>Saved browser accounts and the Gateway connection on this Mac.</p></div><button id="refresh-accounts" type="button">Refresh accounts</button></header>
+    <p id="error" role="alert" hidden></p>
+
+    <section aria-labelledby="accounts-title">
+      <div class="section-head"><h2 id="accounts-title">Browser accounts</h2><p id="accounts-summary" role="status" aria-live="polite">Reading saved accounts...</p></div>
+      <form id="add-form" class="add-accounts">
+        <label class="field">New account labels<textarea id="add-labels" rows="2" placeholder="One label per line" spellcheck="false"></textarea></label>
+        <button id="add-submit" type="submit">Add account</button>
+      </form>
+      <p class="help">Each saved account gets its own fresh Chrome profile inside Relay. Cookies and passwords stay in Chrome; Relay never copies, reads or extracts them.</p>
+
+      <div class="account-toolbar" role="group" aria-label="Select saved accounts">
+        <label class="field compact">By number or range<input id="range-input" type="text" inputmode="numeric" autocomplete="off" placeholder="3 or 2-5"></label>
+        <button id="select-range" type="button">Select range</button>
+        <button id="select-all" type="button">All</button>
+        <button id="select-none" type="button">None</button>
+        <label class="check"><input id="attention-only" type="checkbox"> Attention only</label>
+        <span id="selection-state" class="secondary" role="status">0 selected</span>
+      </div>
+      <div class="account-bulk">
+        <button id="open-selected" type="button" disabled>Open selected</button>
+        <button id="close-selected" type="button" disabled>Close selected</button>
+        <span class="secondary">Open and close follow measured memory and Gateway safe-stop acknowledgement.</span>
+      </div>
+      <p id="memory-summary" class="secondary">Memory measurements have not been read yet.</p>
+
+      <div id="account-head" class="account-head" aria-hidden="true" hidden><span></span><span>Account</span><span>Connection · Activity</span><span></span></div>
+      <ul id="profiles" class="account-list" aria-label="Saved browser accounts" hidden></ul>
+      <p id="profiles-empty" class="secondary" aria-live="polite">Reading saved accounts...</p>
+      <p id="accounts-error" role="alert" hidden></p>
+
+      <details class="disclosure" id="memory-disclosure">
+        <summary>Memory and pacing</summary>
+        <form id="manager-settings">
+          <div class="edit-grid">
+            <label class="field">Memory budget (MB)<input id="memory-budget" type="number" min="1" step="1" placeholder="Measured use"></label>
+            <label class="field">Reserve (MB)<input id="memory-reserve" type="number" min="0" step="1"></label>
+            <label class="field">Maximum open accounts<input id="memory-max" type="number" min="1" step="1" placeholder="No cap"></label>
+            <label class="field">Pause minimum (seconds)<input id="pause-min" type="number" min="0" step="any"></label>
+            <label class="field">Pause maximum (seconds)<input id="pause-max" type="number" min="0" step="any"></label>
+          </div>
+          <div class="actions"><button id="manager-settings-save" type="submit">Save memory and pacing</button></div>
+          <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
+          <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
+          <p class="help">Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget or maximum uses measured memory with no arbitrary count cap.</p>
+        </form>
+      </details>
+    </section>
+
+    <details class="disclosure">
+      <summary>Gateway connection</summary>
+      <section aria-labelledby="connection-title">
+        <h2 id="connection-title">Gateway connection</h2>
+        <form id="settings">
+          <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" aria-describedby="address-help"></label>
+          <p id="address-help">Use your existing Gateway address. Sign in through Gateway’s own interface; do not put a password or token here.</p>
+          <label class="login-choice"><input id="start-at-login" type="checkbox" disabled> Start at Login</label>
+          <p id="login-state" role="status">Checking the saved login preference...</p>
+          <div class="actions"><button id="save" type="submit">Save settings</button><button id="reconnect" type="button">Reconnect</button></div>
+        </form>
+        <p id="connection-state" role="status" aria-live="polite">Reading saved settings...</p>
+        <p>Closing Relay’s settings keeps it available. You can close the Gateway window separately. Choose Quit Relay to stop it. Your Chrome extensions run in Chrome, not inside this app.</p>
+
+        <div class="manager-pairing" aria-labelledby="manager-pairing-title">
+          <h3 id="manager-pairing-title">Gateway manager token</h3>
+          <p id="manager-pairing-state" class="state off" role="status">Not paired</p>
+          <p id="manager-pairing-note" class="secondary" role="status">Pairing status comes from the native manager.</p>
+          <p>Create a scoped manager token in Gateway for these image/video worker IDs, then paste it once. Relay keeps it in this Mac’s Keychain.</p>
+          <form id="manager-pair-form">
+            <label class="field">Manager token<input id="manager-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="manager-pairing-help"></label>
+            <p id="manager-pairing-help" class="secondary">The token is never shown again after pairing and is never saved in browser storage.</p>
+            <div class="actions"><button id="manager-pair" type="submit">Pair Gateway</button><button id="manager-open" type="button">Open Gateway interface</button></div>
+            <p id="manager-pair-error" class="secondary" role="alert" hidden></p>
+          </form>
+        </div>
+      </section>
+    </details>
+
+    <details class="disclosure">
+      <summary>Browser extensions</summary>
+      <section aria-labelledby="extensions-title">
+        <h2 id="extensions-title">Browser extensions</h2>
+        <label class="field">Browser<select id="browser" disabled></select></label>
+        <button id="open-extensions" type="button" disabled>Open extension settings</button>
+        <p id="browser-help">Checking installed browsers...</p>
+        <p>Install each extension yourself using Load unpacked. Relay does not enable Developer mode or silently install extensions.</p>
+        <ul id="extensions"></ul>
+        <p id="setup-state" role="status">Reading bundled extension availability...</p>
+        <p>Before loading a different version, stop or resolve active and uncertain work in Gateway. Preparing a new folder preserves previous versions and does not reload workers. Keep custom extension folders as they are.</p>
+        <p>Chrome is the first target. Edge and Brave are not verified yet. Firefox and Safari are not supported.</p>
+      </section>
+    </details>
+
+    <footer><button id="version" type="button">Version unavailable</button><button id="quit" type="button">Quit Relay</button></footer>
+    <dialog id="whats-new" aria-labelledby="notes-title"><h2 id="notes-title">What’s New</h2><div id="notes"></div><button id="close-notes" type="button">Done</button></dialog>
+  </main>
+</body>
+</html>

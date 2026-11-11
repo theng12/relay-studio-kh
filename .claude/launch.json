@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "relay-browser-manager-source-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/desktop-preview.mjs"],
+      "port": 7921
+    }
+  ]
+}

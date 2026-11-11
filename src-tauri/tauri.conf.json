@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Relay Studio KH",
+  "version": "0.3.0",
+  "identifier": "kh.relay.desktop",
+  "build": {
+    "beforeDevCommand": "npm run desktop:assets",
+    "beforeBuildCommand": "npm run desktop:release-assets",
+    "frontendDist": "../desktop-dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+      "capabilities": ["local-shell"]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
+    "resources": { "../desktop-resources/": "relay/" },
+    "macOS": { "signingIdentity": "KH Studio Local Signing" }
+  }
+}

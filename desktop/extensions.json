@@ -1,0 +1,310 @@
+{
+  "schema": 1,
+  "extensions": [
+    {
+      "id": "video",
+      "name": "Video generator",
+      "version": "1.3.5",
+      "source_commit": "7a4950cf5060495f22d04ce93b1788c7a053fed8",
+      "accepted": true,
+      "manifest_sha256": "625685e8615a150501c8d03445607f17ce634f71a08bffdd769c72fde585ea5d",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "dbb27aee2963c11aad606cae23a38d5ccb1dd85a8a5b7f7f48ab6533b937113e"
+        },
+        {
+          "path": "manifest.json",
+          "sha256": "625685e8615a150501c8d03445607f17ce634f71a08bffdd769c72fde585ea5d"
+        },
+        {
+          "path": "src/background.js",
+          "sha256": "18a2cf492f84c53e0f3fdb5e5391a893e3043f114acc32cee126637d92c09c30"
+        },
+        {
+          "path": "src/icons/icon.svg",
+          "sha256": "d5fdac9936ae26c4ddeb5973a044780145388f80116e919f7366b0bcbe40cdbb"
+        },
+        {
+          "path": "src/icons/icon128.png",
+          "sha256": "0a42513d85f20dbe883f53833db05de6559f1ecbc2bf4c9cdadffafe7b9b9dc3"
+        },
+        {
+          "path": "src/icons/icon16.png",
+          "sha256": "7cb500e9cf451b6dc5b5874107c8df742e5a32d81a3a689762c0a7a37787cd8b"
+        },
+        {
+          "path": "src/icons/icon32.png",
+          "sha256": "86757cfbb81a77e117971bf934b9dc508ac7bee9c2d91dee7dd0066ff0216eea"
+        },
+        {
+          "path": "src/icons/icon48.png",
+          "sha256": "f15e0251a1783482658f97eba83d0f4250b5e1b3fc77b3c0f142f0bc762f8076"
+        },
+        {
+          "path": "src/lib/config.js",
+          "sha256": "39f48aa6aa5dbd5f183cb443cae7aab919d25b603aaeff48dde3889c71f854f4"
+        },
+        {
+          "path": "src/lib/flow-exec.js",
+          "sha256": "4802f0e9e5b54bc524bf7cc3db147ef6b463766f060f50c7c636fdf27c03f2b6"
+        },
+        {
+          "path": "src/lib/gateway-artifacts.js",
+          "sha256": "12816819cbe4e64bde29af4d9816c1f6d80232cc108c06374865181d012a3e18"
+        },
+        {
+          "path": "src/lib/gateway-client.js",
+          "sha256": "b8301705bc21050798c991d9204b08640a19c49f948b18dc05409d25ddcda343"
+        },
+        {
+          "path": "src/lib/gateway-manager.js",
+          "sha256": "714e086afdf70ce411aec21184e02c3db01cc7552f69aaa588d278932edd3323"
+        },
+        {
+          "path": "src/lib/gateway-worker.js",
+          "sha256": "f95f61e1362bc1427347cb0affee8c775af6f3b5e722d7f9e3a481558d90b2f0"
+        },
+        {
+          "path": "src/lib/story-studio.js",
+          "sha256": "b43ba9c53f10d4d2712ec5e2bd2857d2e1c679ce6632c7cbe3c075f6a123a97e"
+        },
+        {
+          "path": "src/lib/theme-preload.js",
+          "sha256": "f618944d2640f958e8dd7ee13dab068d47f4a559a61909c35398c007c5641cd1"
+        },
+        {
+          "path": "src/lib/theme.js",
+          "sha256": "8b54d3dcc8e541d9e8bd6a0c77483ca5c4603788055ae0faff221ec4baa05b23"
+        },
+        {
+          "path": "src/lib/video-models.js",
+          "sha256": "cdf59e0bea07b0db72d258ce3b1cf0d0b10a69f4c081d2662d0e3e2b726c7b6e"
+        },
+        {
+          "path": "src/lib/video-panel.js",
+          "sha256": "0aa495a043ffc4a7654256b03e607628fab1ad724057605d17cdd4c71d436dbb"
+        },
+        {
+          "path": "src/lib/video-rules.js",
+          "sha256": "3de9a9ed9c1ccf70df9e7e8fb0aa14f4344356d0a96b27e272c18ee71d143f7b"
+        },
+        {
+          "path": "src/options/options.css",
+          "sha256": "12be0260491dea85714f0cbf2189af9ccc083f57839b0b4123cad0f63ee90466"
+        },
+        {
+          "path": "src/options/options.html",
+          "sha256": "85fa474158fa33bf0ef71d9c84f8db29b7bba1f3ffa09147a04edbe383f2aa9d"
+        },
+        {
+          "path": "src/options/options.js",
+          "sha256": "8e3b44f47cb23bc6c7e8dd0edcde56645419456a046552e6a2290232abb5f8bb"
+        },
+        {
+          "path": "src/popup/popup.css",
+          "sha256": "9946d8fcd8aad49a2151ae077c7a473dd6177b1d88112c270f8821afaea9ee0a"
+        },
+        {
+          "path": "src/popup/popup.html",
+          "sha256": "7604cbb4e1d6c963ff66d96613658cb8c81ee588d1e1fb8cf8fac2257a68f01b"
+        },
+        {
+          "path": "src/popup/popup.js",
+          "sha256": "1f1b2c5bf5fdd05d20f885eb62c040a2f30ab1dbe09c4ca34a862fb9b0f5557e"
+        }
+      ]
+    },
+    {
+      "id": "image",
+      "name": "Image generator",
+      "version": "0.50.15",
+      "source_commit": "541ec8ebff2b1e49a93d9ddef91037d8bb888f20",
+      "accepted": true,
+      "manifest_sha256": "0deb330ee4e600c81a035585931cc238c568472990c25ee4e3080574caf2d7f1",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "04ff63b62a0324d3402ddd3d71295586485fe1cb79c62821221b68432c846822"
+        },
+        {
+          "path": "manifest.json",
+          "sha256": "0deb330ee4e600c81a035585931cc238c568472990c25ee4e3080574caf2d7f1"
+        },
+        {
+          "path": "src/background.js",
+          "sha256": "945a2728f85af78c54e1a414bec50598edbdb13498715f7785d4d80626efc3d3"
+        },
+        {
+          "path": "src/content/aistudio-main.js",
+          "sha256": "d6d7227673c878fc8fdfe3f6ea6625826e8522688db9a633f134029beda423c2"
+        },
+        {
+          "path": "src/content/aistudio.js",
+          "sha256": "084c23cef8c4d6970203e880715f6967074b1fa77b55c6fdc435fc58c8d87e28"
+        },
+        {
+          "path": "src/content/chatgpt-main.js",
+          "sha256": "3afd4c39ee4b265ecb6b05011fd4e3169291dfaa2e1fa84216b5a266884a60bc"
+        },
+        {
+          "path": "src/content/chatgpt.js",
+          "sha256": "042f47379f0ef4f2c602c16e7a871d1bd35464377300af0dbb593aac986cea38"
+        },
+        {
+          "path": "src/content/leonardo-main.js",
+          "sha256": "109697ca0f64f3081c0beb3a8a5f0a571fe0ae7b72dd0f28c2b9efc4bd6b07e8"
+        },
+        {
+          "path": "src/content/leonardo.js",
+          "sha256": "8ea4ce152618f7d1ef9162bb6bfd900921140ece98dd152456a8358ed8a909ec"
+        },
+        {
+          "path": "src/content/qwen-main.js",
+          "sha256": "4bf3d17750eacfe909bf974cfef574193fa12a043cb9e8293270502e11d2ac45"
+        },
+        {
+          "path": "src/content/qwen.js",
+          "sha256": "49b31abbe156df43322a3bfcbafde0460a19b8a4e19571b28a7ebf81ba611daa"
+        },
+        {
+          "path": "src/icons/icon.svg",
+          "sha256": "2503ee70540fae285a69951b2c8973cd8f939c8773167516ae777a2b3898bd54"
+        },
+        {
+          "path": "src/icons/icon128.png",
+          "sha256": "9291b104729f25d4436a3bc1ffb07e43756ec1fbf88c4a9ae744028231a3d68f"
+        },
+        {
+          "path": "src/icons/icon16.png",
+          "sha256": "bdc70be1ecab45e16c2d7c88263219eb327b9b13d5397ad2edb20a523fb203ec"
+        },
+        {
+          "path": "src/icons/icon32.png",
+          "sha256": "3adbd7c40824f491bdcbb3b6f16be6474dca62c589ef70827ca3687f4311af27"
+        },
+        {
+          "path": "src/icons/icon48.png",
+          "sha256": "ff870360e1a3ae73bcdef314f2d3cfa48943ec5c4b30e40ee207a7e1922667c8"
+        },
+        {
+          "path": "src/lib/config.js",
+          "sha256": "e6d54f702feb31d698e8de86aa400e6b170f18016cdf12bd83ad27fdc0021f89"
+        },
+        {
+          "path": "src/lib/enqueue-context.js",
+          "sha256": "6533cc8cf7a12a904c1ddd88f768cb65a7347f13eae260d8121ae46bd7f8176b"
+        },
+        {
+          "path": "src/lib/episode-progress.js",
+          "sha256": "f223cb673ae3cf79c50d6f9749b7497e1615d688df84c330dea62f832c0f092b"
+        },
+        {
+          "path": "src/lib/failure-policy.js",
+          "sha256": "4032319e75dfe4d5b1b9bbd04be14d40d6c01a74aac217058096ca3957e91cff"
+        },
+        {
+          "path": "src/lib/flow-exec.js",
+          "sha256": "d63e200436c1d52f83790a4605451705211765cfdbf002f49912cf0275f1e222"
+        },
+        {
+          "path": "src/lib/gateway-artifacts.js",
+          "sha256": "bab0b16707e28467f0826b6c227bc874fe7698b22167c4eec8f5ee984ed7045b"
+        },
+        {
+          "path": "src/lib/gateway-client.js",
+          "sha256": "94809084ebb07cb92a6bd76d9598ef15a28050b8d24eb388e4ec8c0cefd8cf48"
+        },
+        {
+          "path": "src/lib/gateway-worker.js",
+          "sha256": "cd467795eead0b0aecad89cb0257119621441db772c2220349591e828a5f825f"
+        },
+        {
+          "path": "src/lib/model-identity.js",
+          "sha256": "a9d719df8b78bc6af5cd5c7f2e5b2a02f977f12da3c02dd85b09e5c89be76192"
+        },
+        {
+          "path": "src/lib/providers.js",
+          "sha256": "88e599aa284229b3d7ff8258586822a39ece811e54208ada555c2ee1a62c1bbf"
+        },
+        {
+          "path": "src/lib/queue-all.js",
+          "sha256": "36113bbb03af0ba51032910d4eb45089537a781b8e26c20d48280eb33be8a3b3"
+        },
+        {
+          "path": "src/lib/queue-identity.js",
+          "sha256": "e0ec7e29d7bf5c2c7868a2e0c712517285a3e83a986ea850cce978fdac01739a"
+        },
+        {
+          "path": "src/lib/queue-migration.js",
+          "sha256": "e5b657aaa5550faf859af6bcc32a6cd83a9385dc8b18c67f4fe5abbf0d0df777"
+        },
+        {
+          "path": "src/lib/queue-operations.js",
+          "sha256": "057b964b125b8b6f293b42fef832920fce98cee50e204c3865026691586254fd"
+        },
+        {
+          "path": "src/lib/queue-store.js",
+          "sha256": "c2e386110d2484a86a5fd300148a1e1e5e0eede3991460a0c616c077249912c6"
+        },
+        {
+          "path": "src/lib/reference-assets.js",
+          "sha256": "e63f336d445956127de6b703caad757bc61fb298a208f6f53e4937e629d4fbbc"
+        },
+        {
+          "path": "src/lib/settings-store.js",
+          "sha256": "8d27de54064ca0607ddc27f094d0fb91d1f966aa9812ff9705428fcea2234f68"
+        },
+        {
+          "path": "src/lib/story-studio.js",
+          "sha256": "09928a87bef9c8b9b37fa2b016a4db89bb44244a5324c534099a8db2c093243e"
+        },
+        {
+          "path": "src/lib/submission-gate.js",
+          "sha256": "32dd5437bc270f800e0b4e98ae3707a7bb3945fd563381800d637f461c1ec1d1"
+        },
+        {
+          "path": "src/lib/theme-preload.js",
+          "sha256": "34b29933d4d5a0154374bf68b66c719acb64a935b7240593bfd1b978c907b8eb"
+        },
+        {
+          "path": "src/lib/theme.js",
+          "sha256": "0b2182bc65e56e8c299602fffc5ed067724f1d83fa4f99b73b944ab0b8eed18e"
+        },
+        {
+          "path": "src/options/options.css",
+          "sha256": "3a5d9b00d84f7b88a1f5edf6d948f3516999fbfc3bb3d2fe3ce561c4bd7e65fe"
+        },
+        {
+          "path": "src/options/options.html",
+          "sha256": "aa237a64a46dc1911d992f67c81bda969bae894ae63ec721651fb5dee58f8621"
+        },
+        {
+          "path": "src/options/options.js",
+          "sha256": "6d1989d4c46c73c231481d66d7e2043866bfa0b26148b56ad8690ae0e2dfc7ee"
+        },
+        {
+          "path": "src/popup/popup.css",
+          "sha256": "03fe1c48b8d07ac9433d450f7b797ad5992b307dae7c14e372492a7353b062f3"
+        },
+        {
+          "path": "src/popup/popup.html",
+          "sha256": "5670652019c3ff8a1d2dcf724306b7f45044087e3b48446d5677f11cd6ca736e"
+        },
+        {
+          "path": "src/popup/popup.js",
+          "sha256": "d7f78e864b5db51651bd77cd5c8593d5e651c0e3f4e8a7cf16adc6daa39c1d8d"
+        }
+      ]
+    },
+    {
+      "id": "audio",
+      "name": "Audio generator (optional, off)",
+      "version": "0.7.27",
+      "source_commit": "eddeb1b83b0ee22b54f8f698513d62b2fe4f91ef",
+      "required": false,
+      "accepted": false,
+      "reason": "Browser TTS is skipped and off. Its preserved source and failed paused attempt are not runtime qualification; it does not block image/video or account management."
+    }
+  ]
+}
