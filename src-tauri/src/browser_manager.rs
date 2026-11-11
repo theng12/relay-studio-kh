@@ -303,9 +303,12 @@ impl LiveGateway {
                 let stored = stored_or_error(&inner)?;
                 (gateway_profiles(stored), saved_pacing(&stored.settings))
             };
-            let (_, view) = self
+            let (view_origin, view) = self
                 .current_view()
                 .ok_or("Read Gateway before applying pacing.")?;
+            if view_origin != origin {
+                return Err("Gateway address changed before pacing could be sent.".into());
+            }
             let ids = pacing_worker_ids(&view, &profiles, origin, epoch_now())?;
             manager_gateway::set_pacing(origin, &ids, pacing)
                 .await
