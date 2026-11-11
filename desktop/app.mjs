@@ -106,7 +106,8 @@ $('start-at-login').addEventListener('change', async () => {
 async function loadDataFolder() {
   try {
     const path = await invoke('data_folder');
-    $('data-folder').textContent = path;
+    // The system path contains the bundle id; keep it out of the visible copy.
+    $('data-folder').textContent = 'Relay’s saved accounts and settings live in this folder.';
     $('data-folder').dataset.path = path;
   } catch (error) {
     $('data-folder').textContent = `Relay’s data folder could not be read. ${String(error)}`;
@@ -116,7 +117,7 @@ $('show-data-folder').addEventListener('click', () => invoke('open_data_folder')
 $('copy-data-folder').addEventListener('click', async () => {
   const path = $('data-folder').dataset.path;
   if (!path) { showError('Relay’s data folder is not available yet.'); return; }
-  try { await navigator.clipboard.writeText(path); $('data-folder').textContent = `${path} · Copied`; }
+  try { await navigator.clipboard.writeText(path); $('data-folder').textContent = 'Folder path copied.'; }
   catch { showError('Could not copy. Select and copy the folder path shown here.'); }
 });
 
