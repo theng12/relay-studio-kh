@@ -125,7 +125,7 @@ Restrained iris/slate palette with complete light and dark variants. Relay's own
 
 ## Layout
 
-A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions), a What’s New row beneath them and a footer with the version only. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
+A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer pill that pairs the version with What’s New. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
 
 Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script; `html` and `body` repeat the documented ground hexes so wide and fullscreen windows never show white bands.
 
@@ -174,7 +174,7 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 - **Identity:** Reuse the existing palette, system type, spacing and flat hierarchy. The desktop account grid adds a selection column and collapses at the existing 680px breakpoint. Fixture screenshots prove rendering only, never native lifecycle or account readiness.
 
 ### What’s New Page
-- **Surface:** A full page in the content pane, not a dialog: version sections stacked newest first, each with a heading and a roomy bulleted list in one card.
+- **Surface:** A full page in the content pane, not a dialog: version sections stacked newest first, each with a heading and a roomy bulleted list in one card. One pill in the sidebar footer reads `v<version> · What’s New` and opens it.
 
 ### Browsers Pane
 - **Register:** One card per resident or queued profile: number and label, state, PID, measured memory, provider, activity, and the queued or close-waiting reason. Only real Chrome processes Relay opened appear; the pane never draws a simulated browser.

@@ -10,7 +10,11 @@ const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
 const accounts = mountAccounts(invoke);
 mountBrowsers(invoke, accounts);
-const shell = mountShell({ onShow: (page) => { if (page === 'accounts' || page === 'browsers') accounts.refresh(); } });
+const shell = mountShell({ onShow: (page) => {
+  if (page === 'whats-new') $('version').setAttribute('aria-current', 'page');
+  else $('version').removeAttribute('aria-current');
+  if (page === 'accounts' || page === 'browsers') accounts.refresh();
+} });
 setupExtensions(invoke, showError);
 let loginChanged = false;
 $('start-at-login').addEventListener('change', () => { loginChanged = true; });
@@ -47,7 +51,7 @@ $('reconnect').addEventListener('click', async () => {
   catch (error) { showError(error); }
   finally { $('reconnect').disabled = false; }
 });
-$('version').textContent = `v${info.version}`;
+$('version').textContent = `v${info.version} · What’s New`;
 for (const release of info.releases) {
   const heading = document.createElement('h3'); heading.textContent = `v${release.version}`;
   const list = document.createElement('ul');
