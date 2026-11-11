@@ -211,6 +211,129 @@ export function profileUpdatePayload({ label, enabled, imageWorkerId, videoWorke
   };
 }
 
+// The label is the only field Relay autosaves, so it never carries enablement or worker bindings.
+export function labelAutosavePayload(label) {
+  return { label: String(label ?? '').trim() };
+}
+
+export const LABEL_AUTOSAVE_MS = 600;
+const LABEL_RETRY_MS = 400;
+
+const LABEL_STATUS = {
+  pending: { tone: 'info', text: 'Waiting to save…' },
+  saving: { tone: 'info', text: 'Saving…' },
+  saved: { tone: 'ok', text: 'Label saved' },
+  failed: { tone: 'bad', text: 'Label not saved' },
+  invalid: { tone: 'bad', text: 'A label cannot be empty' },
+  waiting: { tone: 'warn', text: 'Waiting for the current command…' },
+};
+
+// One shared timer for the whole list: a bounded debounce, one write in flight per account and the newest draft wins.
+export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_AUTOSAVE_MS, setTimer = setTimeout, clearTimer = clearTimeout, now = () => Date.now(), onChange = () => {} } = {}) {
+  const rows = new Map();
+  let timer = null;
+  let timerDue = Infinity;
+
+  const state = (id) => {
+    const row = rows.get(id);
+    return row ? { status: row.status, draft: row.draft, error: row.error, saved: row.saved } : { status: 'idle', draft: null, error: null, saved: null };
+  };
+  const rowFor = (id) => {
+    let row = rows.get(id);
+    if (!row) { row = { draft: null, due: null, sending: false, status: 'idle', error: null, saved: null, wait: LABEL_RETRY_MS, waiters: [] }; rows.set(id, row); }
+    return row;
+  };
+  const arm = (when) => {
+    if (timer !== null) { if (timerDue <= when) return; clearTimer(timer); timer = null; }
+    timerDue = when;
+    timer = setTimer(() => { timer = null; timerDue = Infinity; flush(); }, Math.max(0, when - now()));
+  };
+  const flush = () => {
+    const time = now();
+    let next = Infinity;
+    for (const [id, row] of rows) {
+      if (row.sending || row.due === null) continue;
+      if (row.due <= time) { row.due = null; write(id, row); }
+      else if (row.due < next) next = row.due;
+    }
+    if (next !== Infinity) arm(next);
+  };
+  const write = async (id, row) => {
+    if (row.sending) return;
+    const text = row.draft;
+    if (text === null) return;
+    if (!String(text).trim()) { row.status = 'invalid'; onChange(id, state(id)); return; }
+    // Another native command owns the manager right now; the edit waits instead of racing it.
+    if (!ready()) {
+      row.wait = Math.min(row.wait * 2, 2000);
+      row.due = now() + row.wait;
+      arm(row.due);
+      row.status = 'waiting';
+      onChange(id, state(id));
+      return;
+    }
+    row.sending = true;
+    row.status = 'saving';
+    onChange(id, state(id));
+    let failure = null;
+    try { await invoke('manager_update_profile', { profileId: id, ...labelAutosavePayload(text) }); }
+    catch (error) { failure = String(error?.message ?? error); }
+    row.sending = false;
+    for (const waiter of row.waiters.splice(0)) waiter();
+    if (failure !== null) { row.status = 'failed'; row.error = failure; }
+    else if (row.draft === null || row.draft === text) { row.draft = null; row.saved = String(text).trim(); row.status = 'saved'; row.error = null; }
+    // A newer edit arrived while the write was in flight, so it is sent next.
+    else { row.status = 'pending'; row.due = now(); arm(row.due); }
+    onChange(id, state(id));
+  };
+
+  // The typed value becomes the pending draft and the write is scheduled after the debounce.
+  const edit = (id, text) => {
+    const row = rowFor(id);
+    row.draft = String(text ?? '');
+    row.status = 'pending';
+    row.error = null;
+    row.wait = LABEL_RETRY_MS;
+    row.due = now() + delay;
+    arm(row.due);
+    onChange(id, state(id));
+  };
+  // Mid-composition text is kept as the draft but never written before the composition ends.
+  const hold = (id, text) => {
+    const row = rowFor(id);
+    row.draft = String(text ?? '');
+    row.status = 'pending';
+    onChange(id, state(id));
+  };
+  // The explicit account save carries the label itself, so the scheduled write is dropped but the draft is kept.
+  const cancel = (id) => {
+    const row = rows.get(id);
+    if (row) row.due = null;
+  };
+  const settled = (id, text) => {
+    const row = rows.get(id);
+    if (!row) return;
+    if (row.draft !== null && row.draft.trim() === String(text ?? '').trim()) { row.draft = null; row.due = null; row.saved = String(text ?? '').trim(); row.status = 'saved'; row.error = null; }
+    onChange(id, state(id));
+  };
+  const retry = (id) => {
+    const row = rows.get(id);
+    if (!row || row.draft === null) return;
+    row.status = 'pending';
+    row.due = now() + delay;
+    arm(row.due);
+    onChange(id, state(id));
+  };
+  const idle = (id) => {
+    const row = rows.get(id);
+    if (!row || !row.sending) return Promise.resolve();
+    return new Promise((resolve) => row.waiters.push(resolve));
+  };
+  const forget = (id) => { rows.delete(id); };
+
+  return { edit, hold, cancel, settled, retry, idle, forget, state };
+}
+
 function wholeNumber(raw, name, minimum) {
   const text = String(raw ?? '').trim();
   if (text === '') throw new Error(`${name} is required.`);
@@ -271,6 +394,26 @@ export function mountAccounts(invoke) {
   const markDirty = (event) => { if (event.target.form) dirtyForms.add(event.target.form); };
   list.addEventListener('input', markDirty);
   $('manager-settings').addEventListener('input', markDirty);
+
+  const autosave = createLabelAutosave({
+    invoke,
+    ready: () => !busy,
+    onChange: (id, next) => {
+      const refs = rows.get(id);
+      if (!refs) return;
+      renderLabelState(refs, next);
+      // The row title follows the edit at once instead of waiting for the next read.
+      const shown = next.draft !== null ? (String(next.draft).trim() || 'Untitled account') : (next.saved || '');
+      if (shown) refs.label.textContent = shown;
+    },
+  });
+
+  function renderLabelState(refs, next) {
+    const view = LABEL_STATUS[next.status];
+    refs.labelStatus.textContent = !view ? '' : (next.status === 'failed' && next.error ? `${view.text}: ${next.error}` : view.text);
+    refs.labelStatus.className = view ? `state ${view.tone}` : 'state';
+    refs.labelStatus.hidden = !view;
+  }
 
   const setError = (message) => {
     $('accounts-error').textContent = message ? String(message) : '';
@@ -405,6 +548,12 @@ export function mountAccounts(invoke) {
     labelInput.type = 'text';
     labelInput.autocomplete = 'off';
     labelInput.spellcheck = false;
+    // Only the label autosaves, and never mid-composition.
+    labelInput.addEventListener('input', (event) => {
+      if (event.isComposing) { autosave.hold(id, labelInput.value); return; }
+      autosave.edit(id, labelInput.value);
+    });
+    labelInput.addEventListener('compositionend', () => autosave.edit(id, labelInput.value));
     const imageInput = document.createElement('input');
     imageInput.type = 'text';
     imageInput.autocomplete = 'off';
@@ -426,21 +575,26 @@ export function mountAccounts(invoke) {
     const save = document.createElement('button');
     save.type = 'submit';
     save.textContent = 'Save account';
+    const labelStatus = document.createElement('span');
+    labelStatus.className = 'state';
+    labelStatus.setAttribute('role', 'status');
+    labelStatus.hidden = true;
     const note = document.createElement('p');
     note.className = 'account-meta';
     note.textContent = 'Local enablement only. Gateway account enablement stays off until Gateway authorizes this worker pairing.';
-    footer.append(save, note);
+    footer.append(save, labelStatus, note);
     form.append(grid, footer);
     details.append(summary, dl, form);
 
     li.append(row, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, fields, labelInput, imageInput, videoInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, fields, labelInput, labelStatus, imageInput, videoInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
     refs.checkbox.checked = selection.has(profile.id);
     refs.ordinal.textContent = `#${profile.number}`;
-    refs.label.textContent = value(profile.label) || 'Untitled account';
+    const draft = autosave.state(profile.id).draft;
+    refs.label.textContent = draft !== null ? (String(draft).trim() || 'Untitled account') : (value(profile.label) || 'Untitled account');
     const process = processTier(profile);
     refs.processState.className = `state ${process.tone}`;
     refs.processState.textContent = process.label;
@@ -466,7 +620,8 @@ export function mountAccounts(invoke) {
 
     const gateway = profile.gateway || {};
     const credits = creditsView(gateway);
-    setInput(refs.labelInput, value(profile.label) || '');
+    // A pending draft and a focused caret both outrank the snapshot value.
+    if (draft === null && document.activeElement !== refs.labelInput) refs.labelInput.value = value(profile.label) || '';
     setInput(refs.imageInput, value(gateway.image_worker_id) || '');
     setInput(refs.videoInput, value(gateway.video_worker_id) || '');
     if (document.activeElement !== refs.enabledInput && !dirtyForms.has(refs.enabledInput.form)) refs.enabledInput.checked = Boolean(profile.enabled);
@@ -512,7 +667,7 @@ export function mountAccounts(invoke) {
     const current = new Set(profiles.map((profile) => profile.id));
     for (const [id, refs] of rows) {
       if (current.has(id)) continue;
-      refs.li.remove(); rows.delete(id); selection.delete(id);
+      refs.li.remove(); rows.delete(id); selection.delete(id); autosave.forget(id);
     }
     let cursor = list.firstElementChild;
     for (const profile of profiles) {
@@ -631,14 +786,21 @@ export function mountAccounts(invoke) {
   }
 
   async function updateProfile(id, fields, form) {
-    if (busy) return;
-    busy = true; busyIds.add(id); setError(null); renderList();
+    if (busy || busyIds.has(id)) return;
+    busyIds.add(id);
+    // An in-flight label write settles first so it cannot land after this save.
+    await autosave.idle(id);
+    if (busy) { busyIds.delete(id); renderList(); return; }
+    // The explicit save carries the label itself, so it replaces the scheduled label write.
+    autosave.cancel(id);
+    busy = true; setError(null); renderList();
     try {
       const next = await invoke('manager_update_profile', { profileId: id, ...fields });
       dirtyForms.delete(form);
+      autosave.settled(id, fields.label);
       render(next);
     }
-    catch (error) { await reload(); setError(error); }
+    catch (error) { autosave.retry(id); await reload(); setError(error); }
     finally { busy = false; busyIds.delete(id); renderList(); setControls(); }
   }
 

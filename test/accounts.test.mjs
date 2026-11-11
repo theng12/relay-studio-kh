@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
-  activityTier, closableIds, connectionTier, creditsLine, creditsView, gatewaySpend, memorySummary, needsAttention, openableIds,
+  activityTier, closableIds, connectionTier, createLabelAutosave, creditsLine, creditsView, gatewaySpend, LABEL_AUTOSAVE_MS,
+  labelAutosavePayload, memorySummary, needsAttention, openableIds,
   pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
@@ -192,6 +193,137 @@ test('memory readout keeps deficits negative and never turns missing measurement
 test('label input is one account per non-empty line', () => {
   assert.deepEqual(parseLabels(' Studio\n\n  Draft \r\n'), ['Studio', 'Draft']);
   assert.deepEqual(parseLabels('   '), []);
+});
+
+// A controllable clock and timer so the debounce is exercised without real waiting.
+const fakeClock = () => {
+  let time = 0;
+  let handle = 0;
+  const timers = new Map();
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  return {
+    now: () => time,
+    setTimer: (fn, ms) => { const id = ++handle; timers.set(id, { at: time + ms, fn }); return id; },
+    clearTimer: (id) => timers.delete(id),
+    async advance(ms) { time += ms; for (const [id, timer] of [...timers]) if (timer.at <= time) { timers.delete(id); timer.fn(); } await settle(); },
+    settle,
+  };
+};
+
+test('the label autosave writes only the profile id and label', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push({ name, args }); },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', '  Studio  ');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'manager_update_profile');
+  assert.deepEqual(Object.keys(calls[0].args).sort(), ['label', 'profileId']);
+  assert.deepEqual(calls[0].args, { profileId: 'id-1', label: 'Studio' });
+  assert.deepEqual(labelAutosavePayload(' Studio '), { label: 'Studio' });
+});
+
+test('rapid label edits debounce into one write of the newest label', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'Stu');
+  await clock.advance(300);
+  autosave.edit('id-1', 'Studio');
+  await clock.advance(300);
+  assert.equal(calls.length, 0, 'the debounce is still open');
+  await clock.advance(300);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].label, 'Studio');
+});
+
+test('a slow reply never overwrites a newer label edit', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); await gate; },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'First');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 1);
+  autosave.edit('id-1', 'Second');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 1, 'no second write while the first is in flight');
+  release();
+  await clock.settle();
+  await clock.advance(0);
+  await clock.settle();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].label, 'Second');
+  assert.equal(autosave.state('id-1').draft, null);
+  assert.equal(autosave.state('id-1').status, 'saved');
+  assert.equal(autosave.state('id-1').saved, 'Second');
+});
+
+test('a failed label save keeps the draft, reports the failure and does not retry on its own', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); throw new Error('Gateway refused the label'); },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'Studio');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  await clock.settle();
+  const state = autosave.state('id-1');
+  assert.equal(state.status, 'failed');
+  assert.equal(state.draft, 'Studio');
+  assert.match(state.error, /Gateway refused the label/);
+  await clock.advance(LABEL_AUTOSAVE_MS * 4);
+  assert.equal(calls.length, 1, 'a failed write is not retried behind the owner’s back');
+});
+
+test('an empty label is never written and an explicit save replaces the queued write', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', '   ');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 0);
+  assert.equal(autosave.state('id-1').status, 'invalid');
+  autosave.edit('id-1', 'Studio');
+  autosave.cancel('id-1');
+  autosave.settled('id-1', 'Studio');
+  await clock.advance(LABEL_AUTOSAVE_MS * 2);
+  assert.equal(calls.length, 0, 'the explicit save carries the label itself');
+  assert.equal(autosave.state('id-1').status, 'saved');
+});
+
+test('a queued label edit finishes after the command that owns the manager', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  let busy = true;
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); },
+    ready: () => !busy,
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'Studio');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 0);
+  assert.equal(autosave.state('id-1').status, 'waiting');
+  busy = false;
+  await clock.advance(1000);
+  await clock.settle();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].label, 'Studio');
 });
 
 test('desktop surface keeps native commands, password pairing and no browser token storage', async () => {
