@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.1 — 2026-11-11
+- Read each part of Relay as its own card with a clear heading.
+- Keep the page in one centred column that never touches the window edge.
+- Open Memory and pacing, Gateway connection and Browser extensions from clear header rows.
+
 ## 0.3.0 — 2026-11-11
 - Keep saved Chrome accounts in one list and open only the ones you need.
 - Select accounts by number, or open the account that needs attention.
