@@ -286,7 +286,11 @@ pub fn run() {
             let application = SubmenuBuilder::new(app, "Relay Studio KH")
                 .text("show", "Relay Settings…").text("reconnect", "Reconnect to Gateway")
                 .separator().item(&version).separator().quit().build()?;
-            app.set_menu(MenuBuilder::new(app).item(&application).build()?)?;
+            let edit = SubmenuBuilder::new(app, "Edit");
+            #[cfg(target_os = "macos")]
+            let edit = edit.undo().redo().separator();
+            let edit = edit.cut().copy().paste().select_all().build()?;
+            app.set_menu(MenuBuilder::new(app).item(&application).item(&edit).build()?)?;
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
