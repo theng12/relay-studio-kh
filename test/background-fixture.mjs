@@ -7,6 +7,7 @@ import { videoRoot, videoModule } from './source.mjs';
 
 const source = await readFile(resolve(videoRoot, 'src/background.js'), 'utf8');
 const rules = await videoModule('video-rules.js');
+const manager = await videoModule('gateway-manager.js');
 export const worker = await videoModule('gateway-worker.js');
 export const JOB = { jobId: 'fixture_1', kind: 'video', videoMode: 'text', prompt: 'Fixture', modelKey: 'fixture_model', modelLabel: 'Fixture model', durationSec: 4, aspectRatio: '16:9', flowProjectId: 'fixture_project' };
 
@@ -48,8 +49,15 @@ export async function background({ sourceText = source, flow = async () => { thr
     },
     './lib/video-rules.js': rules,
     './lib/gateway-worker.js': worker,
+    './lib/gateway-manager.js': manager,
+    // IndexedDB is not available in this VM context.
+    './lib/gateway-artifacts.js': {
+      getGatewayArtifact: async () => undefined, putGatewayArtifact: async () => {}, deleteGatewayArtifact: async () => {},
+    },
     './lib/gateway-client.js': {
       claimGatewayJob: async () => copy(claim), testGateway: async () => ({ ok: true }),
+      gatewayBinding: async (current) => `fixture:${current.gatewayUrl}`,
+      reportGatewayTelemetry: async (...args) => { reports.push(['telemetry', ...args.slice(1)]); return { control: null }; },
       reportGatewayProgress: async (...args) => reports.push(['progress', ...args.slice(1)]),
       reportGatewayResult: async (...args) => { if (resultError) throw resultError; reports.push(['result', ...args.slice(1)]); },
       reportGatewayFailure: async (...args) => reports.push(['fail', ...args.slice(1)]),
