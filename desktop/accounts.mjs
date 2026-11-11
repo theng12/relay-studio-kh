@@ -233,6 +233,7 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
   const rows = new Map();
   let timer = null;
   let timerDue = Infinity;
+  let revision = 0;
 
   const state = (id) => {
     const row = rows.get(id);
@@ -240,7 +241,7 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
   };
   const rowFor = (id) => {
     let row = rows.get(id);
-    if (!row) { row = { draft: null, due: null, sending: false, status: 'idle', error: null, saved: null, wait: LABEL_RETRY_MS, waiters: [] }; rows.set(id, row); }
+    if (!row) { row = { draft: null, due: null, sending: false, composing: false, status: 'idle', error: null, saved: null, savedAt: 0, wait: LABEL_RETRY_MS, waiters: [] }; rows.set(id, row); }
     return row;
   };
   const arm = (when) => {
@@ -259,7 +260,7 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
     if (next !== Infinity) arm(next);
   };
   const write = async (id, row) => {
-    if (row.sending) return;
+    if (row.sending || row.composing) return;
     const text = row.draft;
     if (text === null) return;
     if (!String(text).trim()) { row.status = 'invalid'; onChange(id, state(id)); return; }
@@ -280,10 +281,14 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
     catch (error) { failure = String(error?.message ?? error); }
     row.sending = false;
     for (const waiter of row.waiters.splice(0)) waiter();
-    if (failure !== null) { row.status = 'failed'; row.error = failure; }
-    else if (row.draft === null || row.draft === text) { row.draft = null; row.saved = String(text).trim(); row.status = 'saved'; row.error = null; }
-    // A newer edit arrived while the write was in flight, so it is sent next.
-    else { row.status = 'pending'; row.due = now(); arm(row.due); }
+    if (failure === null) { row.saved = String(text).trim(); row.savedAt = ++revision; }
+    if (row.composing) { row.status = 'pending'; row.due = null; }
+    // A newer edit still gets its own attempt even when the older write failed.
+    else if (row.draft !== null && row.draft !== text) {
+      row.status = 'pending'; row.error = null; row.due ??= now(); arm(row.due);
+    }
+    else if (failure !== null) { row.status = 'failed'; row.error = failure; }
+    else { row.draft = null; row.status = 'saved'; row.error = null; }
     onChange(id, state(id));
   };
 
@@ -294,6 +299,7 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
     row.status = 'pending';
     row.error = null;
     row.wait = LABEL_RETRY_MS;
+    row.composing = false;
     row.due = now() + delay;
     arm(row.due);
     onChange(id, state(id));
@@ -302,6 +308,8 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
   const hold = (id, text) => {
     const row = rowFor(id);
     row.draft = String(text ?? '');
+    row.composing = true;
+    row.due = null;
     row.status = 'pending';
     onChange(id, state(id));
   };
@@ -313,12 +321,15 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
   const settled = (id, text) => {
     const row = rows.get(id);
     if (!row) return;
-    if (row.draft !== null && row.draft.trim() === String(text ?? '').trim()) { row.draft = null; row.due = null; row.saved = String(text ?? '').trim(); row.status = 'saved'; row.error = null; }
+    row.saved = String(text ?? '').trim(); row.savedAt = ++revision;
+    if (!row.composing && (row.draft === null || row.draft.trim() === row.saved)) {
+      row.draft = null; row.due = null; row.status = 'saved'; row.error = null;
+    } else if (!row.composing) { retry(id); }
     onChange(id, state(id));
   };
   const retry = (id) => {
     const row = rows.get(id);
-    if (!row || row.draft === null) return;
+    if (!row || row.draft === null || row.composing) return;
     row.status = 'pending';
     row.due = now() + delay;
     arm(row.due);
@@ -331,7 +342,18 @@ export function createLabelAutosave({ invoke, ready = () => true, delay = LABEL_
   };
   const forget = (id) => { rows.delete(id); };
 
-  return { edit, hold, cancel, settled, retry, idle, forget, state };
+  // Only a snapshot requested after the save acknowledgement may replace its saved label.
+  const observe = (profiles, requestedAt) => {
+    for (const profile of profiles || []) {
+      const row = rows.get(profile.id);
+      if (row && requestedAt >= row.savedAt) row.saved = null;
+    }
+  };
+  const label = (id, observed) => {
+    const row = rows.get(id);
+    return row?.draft ?? row?.saved ?? observed;
+  };
+  return { edit, hold, cancel, settled, retry, idle, forget, state, observe, label, revision: () => revision };
 }
 
 function wholeNumber(raw, name, minimum) {
@@ -407,6 +429,13 @@ export function mountAccounts(invoke) {
       if (shown) refs.label.textContent = shown;
     },
   });
+
+  async function readManager(name, args) {
+    const requestedAt = autosave.revision();
+    const next = await invoke(name, args);
+    autosave.observe(next?.profiles, requestedAt);
+    return next;
+  }
 
   function renderLabelState(refs, next) {
     const view = LABEL_STATUS[next.status];
@@ -594,7 +623,8 @@ export function mountAccounts(invoke) {
     refs.checkbox.checked = selection.has(profile.id);
     refs.ordinal.textContent = `#${profile.number}`;
     const draft = autosave.state(profile.id).draft;
-    refs.label.textContent = draft !== null ? (String(draft).trim() || 'Untitled account') : (value(profile.label) || 'Untitled account');
+    const label = autosave.label(profile.id, value(profile.label) || '');
+    refs.label.textContent = String(label).trim() || 'Untitled account';
     const process = processTier(profile);
     refs.processState.className = `state ${process.tone}`;
     refs.processState.textContent = process.label;
@@ -610,10 +640,10 @@ export function mountAccounts(invoke) {
     refs.creditsRow.textContent = creditsLine(profile.gateway);
     const action = rowAction(profile);
     refs.action.textContent = action.label;
-    refs.action.setAttribute('aria-label', `${action.label} account #${profile.number} ${profile.label}`);
+    refs.action.setAttribute('aria-label', `${action.label} account #${profile.number} ${label}`);
     refs.action.disabled = action.disabled || busyIds.has(profile.id) || busy;
     const show = showAction(profile);
-    refs.show.setAttribute('aria-label', `Show profile for account #${profile.number} ${profile.label}`);
+    refs.show.setAttribute('aria-label', `Show profile for account #${profile.number} ${label}`);
     refs.show.hidden = !show.visible;
     refs.show.disabled = show.disabled || busyIds.has(profile.id) || busy;
     refs.li.hidden = attentionOnly && !needsAttention(profile);
@@ -621,7 +651,7 @@ export function mountAccounts(invoke) {
     const gateway = profile.gateway || {};
     const credits = creditsView(gateway);
     // A pending draft and a focused caret both outrank the snapshot value.
-    if (draft === null && document.activeElement !== refs.labelInput) refs.labelInput.value = value(profile.label) || '';
+    if (draft === null && document.activeElement !== refs.labelInput) refs.labelInput.value = label;
     setInput(refs.imageInput, value(gateway.image_worker_id) || '');
     setInput(refs.videoInput, value(gateway.video_worker_id) || '');
     if (document.activeElement !== refs.enabledInput && !dirtyForms.has(refs.enabledInput.form)) refs.enabledInput.checked = Boolean(profile.enabled);
@@ -758,7 +788,7 @@ export function mountAccounts(invoke) {
 
   async function reload() {
     refreshing = true;
-    try { render(await invoke('manager_snapshot', {})); }
+    try { render(await readManager('manager_snapshot', {})); }
     catch (error) { unavailable(error); }
     finally { refreshing = false; }
   }
@@ -775,7 +805,7 @@ export function mountAccounts(invoke) {
     for (const id of ids) busyIds.add(id);
     setError(null);
     renderList();
-    try { render(await invoke(name, args)); }
+    try { render(await readManager(name, args)); }
     catch (error) { await reload(); setError(error); }
     finally {
       busy = false;
@@ -795,7 +825,7 @@ export function mountAccounts(invoke) {
     autosave.cancel(id);
     busy = true; setError(null); renderList();
     try {
-      const next = await invoke('manager_update_profile', { profileId: id, ...fields });
+      const next = await readManager('manager_update_profile', { profileId: id, ...fields });
       dirtyForms.delete(form);
       autosave.settled(id, fields.label);
       render(next);
@@ -811,7 +841,7 @@ export function mountAccounts(invoke) {
     if (!labels.length) { setError('Add at least one account label.'); return; }
     busy = true; setControls(); setError(null);
     try {
-      render(await invoke('manager_add_profiles', { labels }));
+      render(await readManager('manager_add_profiles', { labels }));
       $('add-labels').value = '';
     } catch (error) { setError(error); await reload(); }
     finally { busy = false; setControls(); }
@@ -841,7 +871,7 @@ export function mountAccounts(invoke) {
     catch (error) { setError(error); return; }
     busy = true; setControls(); setError(null);
     try {
-      const next = await invoke('manager_save_settings', payload);
+      const next = await readManager('manager_save_settings', payload);
       dirtyForms.delete($('manager-settings'));
       render(next);
       $('settings-state').textContent = 'Saved. Values shown here came back from the native manager.';
@@ -858,7 +888,7 @@ export function mountAccounts(invoke) {
     setPairError(null);
     $('manager-pairing-state').textContent = 'Saving in this Mac’s Keychain…';
     try {
-      render(await invoke('manager_pair_gateway', { token }));
+      render(await readManager('manager_pair_gateway', { token }));
       $('manager-pairing-note').textContent = 'Token saved in this Mac’s Keychain. Gateway account enablement stays off until Gateway authorizes these workers. The token is never shown again.';
     } catch (error) { renderPairing(); setPairError(error, token); $('manager-pairing-note').textContent = 'Token was not saved. Nothing was stored in browser storage.'; }
     finally { input.value = ''; busy = false; $('manager-pair').disabled = false; setControls(); }

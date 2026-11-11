@@ -326,6 +326,80 @@ test('a queued label edit finishes after the command that owns the manager', asy
   assert.equal(calls[0].label, 'Studio');
 });
 
+test('composition suspends both a queued save and continuation after an in-flight save', async () => {
+  for (const inFlight of [false, true]) {
+    const clock = fakeClock();
+    const calls = [];
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const autosave = createLabelAutosave({
+      invoke: async (name, args) => { calls.push(args); if (calls.length === 1 && inFlight) await gate; },
+      setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+    });
+    autosave.edit('id-1', 'Prefix');
+    if (inFlight) await clock.advance(LABEL_AUTOSAVE_MS);
+    autosave.hold('id-1', 'ខ្ម');
+    await clock.advance(LABEL_AUTOSAVE_MS * 2);
+    release();
+    await clock.settle();
+    await clock.advance(LABEL_AUTOSAVE_MS);
+    assert.equal(calls.length, inFlight ? 1 : 0, 'no composition text is written');
+    autosave.edit('id-1', 'ខ្មែរ');
+    await clock.advance(LABEL_AUTOSAVE_MS);
+    assert.equal(calls.at(-1).label, 'ខ្មែរ');
+  }
+});
+
+test('a newer edit is still saved after the older in-flight request fails', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  let reject;
+  const gate = new Promise((resolve, fail) => { reject = fail; });
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); if (calls.length === 1) await gate; },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'Older');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  autosave.edit('id-1', 'Newer');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  reject(new Error('Older write failed'));
+  await clock.settle();
+  await clock.advance(0);
+  assert.deepEqual(calls.map((args) => args.label), ['Older', 'Newer']);
+  assert.equal(autosave.state('id-1').status, 'saved');
+});
+
+test('pre-save snapshots cannot replace acknowledged labels but a newer read can', async () => {
+  const clock = fakeClock();
+  const autosave = createLabelAutosave({
+    invoke: async () => {}, setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  const oldRead = autosave.revision();
+  autosave.edit('id-1', 'New label');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  autosave.observe([{ id: 'id-1', label: 'Old label' }], oldRead);
+  assert.equal(autosave.label('id-1', 'Old label'), 'New label');
+  autosave.observe([{ id: 'id-1', label: 'Fresh readback' }], autosave.revision());
+  assert.equal(autosave.label('id-1', 'Fresh readback'), 'Fresh readback');
+});
+
+test('explicit save completion does not strand an edit made while it was waiting', async () => {
+  const clock = fakeClock();
+  const calls = [];
+  const autosave = createLabelAutosave({
+    invoke: async (name, args) => { calls.push(args); },
+    setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+  });
+  autosave.edit('id-1', 'Submitted');
+  autosave.edit('id-1', 'Typed while waiting');
+  autosave.cancel('id-1');
+  autosave.settled('id-1', 'Submitted');
+  await clock.advance(LABEL_AUTOSAVE_MS);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].label, 'Typed while waiting');
+});
+
 test('desktop surface keeps native commands, password pairing and no browser token storage', async () => {
   const load = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
   const html = await load('../desktop/index.html');
