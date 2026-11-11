@@ -2346,7 +2346,7 @@ fn subtree_mb(table: &ProcessTable, root: u32) -> u64 {
 
 /// Why a recorded pid may or may not be Relay's own Chrome. The recorded launch time is the only
 /// identity proof; a matching pid alone is never enough because pids are reused.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Ownership {
     Verified,
     Reused,

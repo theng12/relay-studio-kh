@@ -88,7 +88,7 @@ fn persist(path: &PathBuf, settings: &Settings) -> Result<(), String> {
     fs::write(&temporary, bytes)
         .map_err(|_| "Could not save Relay settings; existing choices are retained.")?;
     fs::rename(&temporary, path)
-        .map_err(|_| "Could not replace Relay settings; existing choices are retained.")
+        .map_err(|_| "Could not replace Relay settings; existing choices are retained.".to_string())
 }
 fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
     match fs::read(path) {

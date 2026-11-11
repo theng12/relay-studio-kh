@@ -944,18 +944,6 @@ pub(crate) fn paired(origin: &str) -> Result<bool, ManagerError> {
 }
 
 #[tauri::command]
-pub(crate) async fn manager_pair_gateway(
-    window: WebviewWindow,
-    origin: String,
-    token: String,
-) -> Result<ManagerView, String> {
-    super::local_only(&window)?;
-    pair(&origin, &token)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 pub(crate) async fn manager_read_gateway(
     window: WebviewWindow,
     origin: String,
@@ -994,7 +982,6 @@ pub(crate) fn manager_paired_gateway(
     paired(&origin).map_err(|error| error.to_string())
 }
 
-#[tauri::command]
 pub(crate) fn manager_clear_gateway(window: WebviewWindow, origin: String) -> Result<(), String> {
     super::local_only(&window)?;
     let origin = normalize_origin(&origin).map_err(|error| error.to_string())?;
