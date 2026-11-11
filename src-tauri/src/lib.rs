@@ -167,6 +167,14 @@ fn save_settings(
     }
     Ok(())
 }
+// Native window ground behind the webview, following the active scheme.
+fn window_ground(theme: tauri::Theme) -> tauri::window::Color {
+    match theme {
+        tauri::Theme::Dark => tauri::window::Color(23, 21, 31, 255),
+        _ => tauri::window::Color(244, 243, 250, 255),
+    }
+}
+
 fn show_settings(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -273,12 +281,12 @@ pub fn run() {
                     *app.state::<NativeState>().settings.lock().map_err(|_| "Settings are busy")? = saved.map(|_| settings);
                 }
             }
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Relay Studio KH")
                 .inner_size(1040.0, 760.0)
                 .min_inner_size(860.0, 560.0)
                 // Matches the design ground, so resizing never flashes white gutters.
-                .background_color(tauri::window::Color(243, 245, 248, 255))
+                .background_color(window_ground(tauri::Theme::Light))
                 .on_navigation(|url| {
                     ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost")))
@@ -286,6 +294,9 @@ pub fn run() {
                 })
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;
+            if let Ok(theme) = main.theme() {
+                let _ = main.set_background_color(Some(window_ground(theme)));
+            }
             let version = MenuItem::with_id(app, "version", format!("Relay Studio KH {}", app.package_info().version), false, None::<&str>)?;
             let application = SubmenuBuilder::new(app, "Relay Studio KH")
                 .text("show", "Relay Settings…").text("reconnect", "Reconnect to Gateway")
@@ -307,6 +318,9 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
+                }
+                if let tauri::WindowEvent::ThemeChanged(theme) = event {
+                    let _ = window.set_background_color(Some(window_ground(*theme)));
                 }
             }
         })
