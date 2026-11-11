@@ -7,7 +7,7 @@ import {
   pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
-import { browserProfiles, browserSummary, closeElapsedSeconds, elapsedLabel, forceBlockReason, forceableIds } from '../desktop/browsers.mjs';
+import { browserProfiles, browserSummary, closeElapsedSeconds, elapsedLabel, forceBlockReason, residentIds } from '../desktop/browsers.mjs';
 
 const profile = (number, overrides = {}) => ({ id: `id-${number}`, number, label: `Account ${number}`, enabled: true, desired_open: false, process_state: 'closed', ...overrides });
 const profiles = [profile(3), profile(1), profile(5), profile(2)];
@@ -460,6 +460,7 @@ test('force close blocks active or uncertain Gateway work and non-resident rows'
   const rows = [
     profile(1, { process_state: 'open', process_id: 41, gateway: { activity: 'generating' } }),
     profile(2, { process_state: 'open', process_id: 42, gateway: { activity: 'idle' } }),
+    profile(3, { process_state: 'queued', gateway: { activity: 'idle' } }),
   ];
-  assert.deepEqual(forceableIds(rows, ['id-1', 'id-2']), ['id-2']);
+  assert.deepEqual(residentIds(rows, ['id-1', 'id-2', 'id-3']), ['id-1', 'id-2']);
 });

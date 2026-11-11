@@ -54,10 +54,10 @@ export function forceBlockReason(profile = {}) {
   return null;
 }
 
-export function forceableIds(profiles = [], ids = []) {
+export function residentIds(profiles = [], ids = []) {
   const selected = new Set(ids);
   return browserProfiles(profiles)
-    .filter((profile) => selected.has(profile.id) && !forceBlockReason(profile))
+    .filter((profile) => selected.has(profile.id) && profile.process_id !== null && profile.process_id !== undefined)
     .map((profile) => profile.id);
 }
 
@@ -168,9 +168,9 @@ export function mountBrowsers(invoke, accounts) {
     const disabled = busy || busyIds.has(profile.id);
     refs.focus.disabled = disabled || !['open', 'opening'].includes(text(profile.process_state));
     refs.close.disabled = disabled || Boolean(profile.close_pending) || !['open', 'opening', 'queued'].includes(text(profile.process_state));
-    const blocked = forceBlockReason(profile);
-    refs.force.disabled = disabled || Boolean(blocked);
-    refs.force.title = blocked || '';
+    // The dialog names the reason; the native command re-checks ownership and Gateway safety.
+    refs.force.disabled = disabled || profile.process_id === null || profile.process_id === undefined;
+    refs.force.title = forceBlockReason(profile) || '';
   }
 
   function paint() {
@@ -206,7 +206,7 @@ export function mountBrowsers(invoke, accounts) {
       const profile = snapshot.profiles.find((entry) => entry.id === id);
       return profile && !profile.close_pending;
     }).length;
-    const canForce = forceableIds(snapshot?.profiles || [], ids).length;
+    const canForce = residentIds(snapshot?.profiles || [], ids).length;
     $('browser-open').disabled = busy || !canOpen;
     $('browser-close').disabled = busy || !canClose;
     $('browser-force').disabled = busy || !canForce;
@@ -274,8 +274,8 @@ export function mountBrowsers(invoke, accounts) {
     runCommand('manager_close_profiles', { profileIds: ids }, ids);
   });
   $('browser-force').addEventListener('click', () => {
-    const ids = forceableIds(snapshot?.profiles || [], [...selection]);
-    if (!ids.length) { setError('No selected browser can be force closed. Gateway active or uncertain work blocks it.'); return; }
+    const ids = residentIds(snapshot?.profiles || [], [...selection]);
+    if (!ids.length) { setError('Select an open browser first.'); return; }
     askForce(ids);
   });
 
