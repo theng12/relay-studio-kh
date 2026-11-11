@@ -320,8 +320,6 @@ pub fn run() {
                     let _ = window.hide();
                 }
                 if let tauri::WindowEvent::ThemeChanged(theme) = event {
-                    // macOS keeps the native title bar on the launch appearance until asked again.
-                    let _ = window.set_theme(Some(*theme));
                     let _ = window.set_background_color(Some(window_ground(*theme)));
                 }
             }
