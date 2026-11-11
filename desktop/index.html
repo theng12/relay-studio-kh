@@ -27,7 +27,7 @@
         <button type="button" class="nav-row" data-page="extensions" aria-describedby="nav-group-setup">Extensions</button>
       </div>
       <div class="nav-spacer"></div>
-      <button type="button" class="nav-row" id="nav-whats-new">What’s New</button>
+      <button type="button" class="nav-row" id="nav-whats-new" data-page="whats-new">What’s New</button>
       <div class="sidebar-footer">
         <button type="button" id="version" class="version-button">Version unavailable</button>
       </div>
@@ -44,7 +44,7 @@
         <div class="card">
           <form id="add-form" class="add-accounts">
             <label class="field">New account labels<textarea id="add-labels" rows="2" placeholder="One label per line" spellcheck="false"></textarea></label>
-            <button id="add-submit" type="submit">Add account</button>
+            <button class="primary" id="add-submit" type="submit">Add account</button>
           </form>
           <p class="help">Each saved account gets its own fresh Chrome profile inside Relay. Cookies and passwords stay in Chrome; Relay never copies, reads or extracts them.</p>
         </div>
@@ -59,7 +59,7 @@
             <span id="selection-state" class="secondary" role="status">0 selected</span>
           </div>
           <div class="account-bulk">
-            <button id="open-selected" type="button" disabled>Open selected</button>
+            <button class="primary" id="open-selected" type="button" disabled>Open selected</button>
             <button id="close-selected" type="button" disabled>Close selected</button>
             <span class="secondary">Open and close follow measured memory and Gateway safe-stop acknowledgement.</span>
           </div>
@@ -84,7 +84,7 @@
             <label class="check"><input id="browser-attention-only" type="checkbox"> Attention only</label>
             <span id="browser-selection" class="secondary" role="status">0 selected</span>
             <div class="actions">
-              <button id="browser-open" type="button" disabled>Open selected</button>
+              <button class="primary" id="browser-open" type="button" disabled>Open selected</button>
               <button id="browser-close" type="button" disabled>Close selected</button>
               <button id="browser-force" type="button" class="danger" disabled>Force close selected</button>
             </div>
@@ -110,7 +110,7 @@
               <label class="field">Pause minimum (seconds)<input id="pause-min" type="number" min="0" step="any"></label>
               <label class="field">Pause maximum (seconds)<input id="pause-max" type="number" min="0" step="any"></label>
             </div>
-            <div class="actions"><button id="manager-settings-save" type="submit">Save memory and pacing</button></div>
+            <div class="actions"><button class="primary" id="manager-settings-save" type="submit">Save memory and pacing</button></div>
             <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
             <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
             <p class="help">Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget or maximum uses measured memory with no arbitrary count cap.</p>
@@ -129,7 +129,7 @@
             <p id="address-help" class="help">Use your existing Gateway address. Sign in through Gateway’s own interface; do not put a password or token here.</p>
             <label class="login-choice"><input id="start-at-login" type="checkbox" disabled> Start at Login</label>
             <p id="login-state" class="secondary" role="status">Checking the saved login preference...</p>
-            <div class="actions"><button id="save" type="submit">Save settings</button><button id="reconnect" type="button">Reconnect</button></div>
+            <div class="actions"><button class="primary" id="save" type="submit">Save settings</button><button class="ghost" id="reconnect" type="button">Reconnect</button></div>
           </form>
           <p id="connection-state" class="secondary" role="status" aria-live="polite">Reading saved settings...</p>
           <p class="help">Closing Relay’s window keeps it available. You can close the Gateway window separately. Choose Quit Relay to stop it. Your Chrome extensions run in Chrome, not inside this app.</p>
@@ -143,10 +143,18 @@
           <form id="manager-pair-form">
             <label class="field">Manager token<input id="manager-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="manager-pairing-help"></label>
             <p id="manager-pairing-help" class="secondary">The token is never shown again after pairing and is never saved in browser storage.</p>
-            <div class="actions"><button id="manager-pair" type="submit">Pair Gateway</button><button id="manager-open" type="button">Open Gateway interface</button></div>
+            <div class="actions"><button class="primary" id="manager-pair" type="submit">Pair Gateway</button><button class="ghost" id="manager-open" type="button">Open Gateway interface</button></div>
             <p id="manager-pair-error" class="secondary" role="alert" hidden></p>
           </form>
         </div>
+      </section>
+
+      <section class="page" id="page-whats-new" aria-labelledby="notes-title" hidden>
+        <header class="page-head">
+          <h2 id="notes-title">What’s New</h2>
+          <p class="page-sub">Everything that changed in Relay, newest first.</p>
+        </header>
+        <div class="card"><div id="notes"></div></div>
       </section>
 
       <section class="page" id="page-extensions" aria-labelledby="extensions-title" hidden>
@@ -156,7 +164,7 @@
         </header>
         <div class="card">
           <label class="field">Browser<select id="browser" disabled></select></label>
-          <button id="open-extensions" type="button" disabled>Open extension settings</button>
+          <button class="primary" id="open-extensions" type="button" disabled>Open extension settings</button>
           <p id="browser-help" class="help">Checking installed browsers...</p>
           <p class="help">Install each extension yourself using Load unpacked. Relay does not enable Developer mode or silently install extensions.</p>
           <ul id="extensions" class="extension-list"></ul>
@@ -167,18 +175,12 @@
       </section>
     </main>
 
-    <dialog id="whats-new" aria-labelledby="notes-title">
-      <h2 id="notes-title">What’s New</h2>
-      <div id="notes"></div>
-      <button id="close-notes" type="button">Done</button>
-    </dialog>
-
     <dialog id="force-close" aria-labelledby="force-title">
       <h2 id="force-title">Force close browsers?</h2>
       <p id="force-body">Open tabs will be lost. Chrome can restore the session the next time it starts. Relay stops only the exact Chrome processes it opened, and never replays work.</p>
       <p id="force-blocked" class="secondary" role="alert" hidden></p>
       <div class="dialog-actions">
-        <button id="force-cancel" type="button">Keep open</button>
+        <button class="ghost" id="force-cancel" type="button">Keep open</button>
         <button id="force-confirm" type="button" class="danger">Force close</button>
       </div>
     </dialog>

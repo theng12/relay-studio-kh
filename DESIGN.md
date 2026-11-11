@@ -2,23 +2,23 @@
 name: Relay Studio KH
 description: Connection register for browser generator extensions on Gateway Studio KH
 colors:
-  ground-light: "#f3f5f8"
+  ground-light: "#f4f3fa"
   surface-light: "#ffffff"
-  text-light: "#202a38"
-  muted-light: "#566474"
-  line-light: "#d8dee7"
-  accent-light: "#235cc2"
-  accent-soft-light: "#edf3ff"
+  text-light: "#211f2e"
+  muted-light: "#5d5a70"
+  line-light: "#dddbe8"
+  accent-light: "#5a48c9"
+  accent-soft-light: "#eeebfb"
   ok-light: "#226346"
   warn-light: "#82561b"
   bad-light: "#a32630"
-  ground-dark: "#151b24"
-  surface-dark: "#1e2733"
-  text-dark: "#e7edf6"
-  muted-dark: "#afbdce"
-  line-dark: "#3a4759"
-  accent-dark: "#9bbfff"
-  accent-soft-dark: "#273a56"
+  ground-dark: "#17151f"
+  surface-dark: "#211f2b"
+  text-dark: "#eae7f5"
+  muted-dark: "#b4afc7"
+  line-dark: "#3c394f"
+  accent-dark: "#b6a9ff"
+  accent-soft-dark: "#302b4d"
   ok-dark: "#91d9b0"
   warn-dark: "#e8c18c"
   bad-dark: "#ffb2b9"
@@ -48,16 +48,16 @@ components:
     backgroundColor: "{colors.surface-light}"
     textColor: "{colors.text-light}"
     rounded: "{rounded.control}"
-    padding: "8px 16px"
+    padding: "6px 12px"
   button-primary:
     backgroundColor: "{colors.accent-light}"
     textColor: "#ffffff"
     rounded: "{rounded.control}"
-    padding: "8px 16px"
+    padding: "6px 12px"
   button-danger:
     textColor: "{colors.bad-light}"
     rounded: "{rounded.control}"
-    padding: "8px 16px"
+    padding: "6px 12px"
   input-field:
     backgroundColor: "{colors.surface-light}"
     textColor: "{colors.text-light}"
@@ -84,17 +84,17 @@ Light mode is the desktop working default; dark mode follows `prefers-color-sche
 
 ## Colors
 
-Restrained blue/slate palette with complete light and dark variants. The accent is used sparingly on interactive elements; semantic colors (ok, warn, bad) appear only in state indicators and error boundaries.
+Restrained iris/slate palette with complete light and dark variants. Relay's own iris accent replaces the shared Gateway blue; semantic colors (ok, warn, bad) appear only in state indicators and error boundaries.
 
 ### Primary
-- **Gateway Blue** (#235cc2 light / #9bbfff dark): Links, focus rings, primary buttons, selection highlight, and the soft background tint for notices. The single interactive accent across the entire surface.
+- **Iris** (#5a48c9 light / #b6a9ff dark): Links, focus rings, primary buttons, the selected sidebar row, group labels and the soft background tint for notices. The single interactive accent across the entire surface.
 
 ### Neutral
-- **Ground** (#f3f5f8 light / #151b24 dark): Page background outside cards and dialogs.
-- **Surface** (#ffffff light / #1e2733 dark): Cards, dialogs, inputs, and button backgrounds. The working plane.
-- **Text** (#202a38 light / #e7edf6 dark): Primary readable content. Headings, body, labels.
-- **Muted** (#566474 light / #afbdce dark): Secondary text, timestamps, captions, disabled states. Never used for primary actions.
-- **Line** (#d8dee7 light / #3a4759 dark): Borders, dividers, input strokes. The structural grid.
+- **Ground** (#f4f3fa light / #17151f dark): Page background outside cards and dialogs, with a faint iris cast.
+- **Surface** (#ffffff light / #211f2b dark): Cards, dialogs, inputs, and button backgrounds. The working plane.
+- **Text** (#211f2e light / #eae7f5 dark): Primary readable content. Headings, body, labels.
+- **Muted** (#5d5a70 light / #b4afc7 dark): Secondary text, timestamps, captions, disabled states. Never used for primary actions.
+- **Line** (#dddbe8 light / #3c394f dark): Borders, dividers, input strokes. The structural grid.
 
 ### Semantic
 - **OK** (#226346 light / #91d9b0 dark): Connected transport. This does not assert provider readiness.
@@ -102,7 +102,7 @@ Restrained blue/slate palette with complete light and dark variants. The accent 
 - **Bad** (#a32630 light / #ffb2b9 dark): Failed, stopped, error boundary. State dot, error text, danger button border.
 
 ### Named Rules
-**The One Accent Rule.** Gateway Blue is the only non-semantic color used for interaction. No second accent, no gradient, no decorative color. If something is clickable or focused, it uses this blue or its soft variant. Everything else is neutral or semantic.
+**The One Accent Rule.** Iris is the only non-semantic color used for interaction. No second accent, no gradient, no decorative color. If something is clickable or focused, it uses this iris or its soft variant. Everything else is neutral or semantic.
 
 ## Typography
 
@@ -125,7 +125,7 @@ Restrained blue/slate palette with complete light and dark variants. The accent 
 
 ## Layout
 
-A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer with the version. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
+A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions), a What’s New row beneath them and a footer with the version only. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
 
 Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script; `html` and `body` repeat the documented ground hexes so wide and fullscreen windows never show white bands.
 
@@ -149,9 +149,8 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 ## Components
 
 ### Buttons
-- **Shape:** Gently rounded corners (6px radius), minimum touch target 44px height.
-- **Default:** Surface background, text color, line border. Hover shifts to accent-soft background with accent border.
-- **Primary:** Gateway Blue background, white text, matching border. Hover darkens 15% via color-mix. Dark mode primary uses dark text (#152440) on the lighter accent.
+- **Shape:** Compact desktop scale: 32px height, 6px 12px padding, 6px radius. Buttons that sit in one row stay inline.
+- **Hierarchy:** One primary action per group (Iris background, white text; dark mode uses dark text on the lighter iris). Everything else is secondary (Surface background, text color, line border, accent-soft hover) or ghost (transparent border and background, muted text, for quiet inline actions such as Reconnect, Show folder and Copy path).
 - **Danger:** Bad color text and border, Surface background. For destructive confirmation only.
 - **Text:** Transparent border and background, accent color text, no padding-right. For low-emphasis inline actions (version link).
 - **Focus:** 2px solid accent outline, 3px offset. Applied to buttons, links, summaries, and inputs via :focus-visible.
@@ -173,6 +172,9 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 - **Details:** Provider identity, credit source/time/reset/buckets and image/video worker bindings expand inline. Memory/pacing preferences, Gateway pairing and extension setup disclose progressively.
 - **Actions:** Open/Close use exact saved IDs; attention exposes Show profile for the same managed Chrome profile. Pending close remains visible until authoritative safe-stop readback. Pairing uses a concealed one-time input cleared after either outcome.
 - **Identity:** Reuse the existing palette, system type, spacing and flat hierarchy. The desktop account grid adds a selection column and collapses at the existing 680px breakpoint. Fixture screenshots prove rendering only, never native lifecycle or account readiness.
+
+### What’s New Page
+- **Surface:** A full page in the content pane, not a dialog: version sections stacked newest first, each with a heading and a roomy bulleted list in one card.
 
 ### Browsers Pane
 - **Register:** One card per resident or queued profile: number and label, state, PID, measured memory, provider, activity, and the queued or close-waiting reason. Only real Chrome processes Relay opened appear; the pane never draws a simulated browser.

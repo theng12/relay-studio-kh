@@ -1,5 +1,5 @@
 // Sidebar navigation for the desktop shell. Pages are plain sections; the native window decides size.
-const PAGES = ['accounts', 'browsers', 'memory', 'gateway', 'extensions'];
+const PAGES = ['accounts', 'browsers', 'memory', 'gateway', 'extensions', 'whats-new'];
 
 export function mountShell({ onShow = () => {} } = {}) {
   const buttons = [...document.querySelectorAll('.nav-row[data-page]')];

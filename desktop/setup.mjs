@@ -23,9 +23,9 @@ export async function setupExtensions(invoke, showError) {
           try {
             const path = await invoke('prepare_extension', { extensionId: extension.id });
             const field = document.createElement('input'); field.readOnly = true; field.value = path; field.setAttribute('aria-label', `${extension.name} folder`);
-            const show = document.createElement('button'); show.type = 'button'; show.textContent = 'Show folder';
+            const show = document.createElement('button'); show.type = 'button'; show.className = 'ghost'; show.textContent = 'Show folder';
             show.addEventListener('click', () => invoke('show_extension_folder', { extensionId: extension.id }).catch(showError));
-            const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copy path';
+            const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'ghost'; copy.textContent = 'Copy path';
             copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(path); $('setup-state').textContent = 'Folder path copied. Browser installation is still not checked.'; } catch { showError('Could not copy. Select and copy the folder path shown here.'); } });
             prepare.replaceWith(field, show, copy);
             $('setup-state').textContent = 'Version folder prepared. Existing browser workers and previous version folders were not changed. Installation is not checked.';

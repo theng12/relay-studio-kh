@@ -411,11 +411,11 @@ test('desktop surface keeps native commands, password pairing and no browser tok
   const tokenTag = html.match(/<input id="manager-token"[^>]*>/)[0];
   assert.doesNotMatch(tokenTag, /PASSWORD_|\{\{|\}\}/);
   assert.equal(html.includes('localStorage'), false);
-  for (const page of ['accounts', 'browsers', 'memory', 'gateway', 'extensions']) {
+  for (const page of ['accounts', 'browsers', 'memory', 'gateway', 'extensions', 'whats-new']) {
     assert.match(html, new RegExp(`data-page="${page}"`), `missing sidebar row ${page}`);
     assert.match(html, new RegExp(`id="page-${page}"`), `missing pane ${page}`);
   }
-  for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'force-blocked', 'force-cancel', 'force-confirm']) {
+  for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'notes', 'notes-title', 'force-blocked', 'force-cancel', 'force-confirm']) {
     assert.match(html, new RegExp(`id="${id}"`), `missing browser control ${id}`);
   }
   assert.match(html, /class="window relay-connector"/, 'shared tokens must scope to the window shell');

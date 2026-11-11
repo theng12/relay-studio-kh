@@ -10,7 +10,7 @@ const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
 const accounts = mountAccounts(invoke);
 mountBrowsers(invoke, accounts);
-mountShell({ onShow: (page) => { if (page === 'accounts' || page === 'browsers') accounts.refresh(); } });
+const shell = mountShell({ onShow: (page) => { if (page === 'accounts' || page === 'browsers') accounts.refresh(); } });
 setupExtensions(invoke, showError);
 let loginChanged = false;
 $('start-at-login').addEventListener('change', () => { loginChanged = true; });
@@ -54,10 +54,7 @@ for (const release of info.releases) {
   for (const item of release.items) { const line = document.createElement('li'); line.textContent = item; list.append(line); }
   $('notes').append(heading, list);
 }
-const openNotes = () => { $('whats-new').showModal(); $('whats-new').scrollTop = 0; };
-$('nav-whats-new').addEventListener('click', openNotes);
-$('version').addEventListener('click', openNotes);
-$('close-notes').addEventListener('click', () => $('whats-new').close());
+$('version').addEventListener('click', () => shell.show('whats-new'));
 try {
   await window.__TAURI__.event.listen('relay-error', event => showError(event.payload));
   await loadSettings();
