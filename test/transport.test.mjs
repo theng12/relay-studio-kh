@@ -5,6 +5,7 @@ import { videoModule } from './source.mjs';
 const client = await videoModule('gateway-client.js');
 const settings = { gatewayUrl: 'http://relay.invalid///', gatewayToken: 'fixture-only', gatewayWorkerId: 'worker_fixture' };
 const job = { jobId: 'job/one', kind: 'video', prompt: 'Fixture', videoMode: 'text', modelKey: 'fixture_model', flowProjectId: 'fixture_project' };
+const health = { ok: true, kind: 'video', workerId: 'worker_fixture', maxResultBytes: 1048576, leaseSeconds: 60 };
 
 function intercept(t, reply = { ok: true }, status = 200) {
   const calls = [];
@@ -17,19 +18,41 @@ function intercept(t, reply = { ok: true }, status = 200) {
 
 // Keep interception serial: no real network or shared global fetch races.
 test('health uses outbound bearer auth and normalized base URL', async (t) => {
-  const calls = intercept(t);
-  assert.equal((await client.testGateway(settings)).ok, true);
+  const calls = intercept(t, health);
+  const result = await client.testGateway(settings);
+  assert.equal(result.ok, true);
+  assert.equal(result.kind, 'video');
+  assert.equal(result.maxResultBytes, 1048576);
   assert.equal(calls[0].url, 'http://relay.invalid/api/workers/health');
   assert.equal(calls[0].method, 'GET');
   assert.equal(calls[0].headers.Authorization, 'Bearer fixture-only');
   assert.ok(calls[0].signal instanceof AbortSignal);
 });
 
+test('health refuses a worker id that differs from the saved one', async (t) => {
+  intercept(t, { ...health, workerId: 'worker_other' });
+  await assert.rejects(client.testGateway(settings), /does not match/);
+});
+
 test('claim sends only worker identity and video kind', async (t) => {
   const calls = intercept(t, { job });
-  assert.deepEqual(await client.claimGatewayJob(settings), job);
+  const result = await client.claimGatewayJob(settings);
+  assert.deepEqual(result.job, job);
   assert.equal(calls[0].url, 'http://relay.invalid/api/workers/claim');
   assert.deepEqual(JSON.parse(calls[0].body), { workerId: 'worker_fixture', kind: 'video' });
+});
+
+test('a quote-required claim is a durable preview, never executable work', async (t) => {
+  const preview = { job, payloadSha256: 'a'.repeat(64), executionAuthorized: false };
+  intercept(t, { job: null, quoteRequired: preview });
+  const result = await client.claimGatewayJob(settings);
+  assert.deepEqual(result.quoteRequired, preview);
+  assert.equal(result.job, null);
+});
+
+test('a malformed preview is refused', async (t) => {
+  intercept(t, { job: null, quoteRequired: { job, payloadSha256: 'short', executionAuthorized: true } });
+  await assert.rejects(client.claimGatewayJob(settings), /malformed job or preview/);
 });
 
 test('empty claim is idle', async (t) => {
@@ -77,9 +100,15 @@ test('failure text is bounded and ambiguity requires boolean true', async (t) =>
   assert.deepEqual(JSON.parse(calls[0].body), { error: 'x'.repeat(500), ambiguous: false });
 });
 
+test('an unacknowledged report fails loudly without transport replay', async (t) => {
+  const calls = intercept(t, { ok: false });
+  await assert.rejects(client.reportGatewayProgress(settings, job.jobId, 'polling'), /not acknowledged/);
+  assert.equal(calls.length, 1);
+});
+
 test('an HTTP refusal fails loudly without transport replay', async (t) => {
   const calls = intercept(t, { detail: 'Fixture auth refused' }, 401);
-  await assert.rejects(client.claimGatewayJob(settings), /401.*Fixture auth refused/);
+  await assert.rejects(client.claimGatewayJob(settings), /HTTP 401/);
   assert.equal(calls.length, 1);
 });
 
