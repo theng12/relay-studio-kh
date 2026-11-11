@@ -1,18 +1,15 @@
-body {
-  margin: 0;
-  background: var(--ground);
-}
+body { margin: 0; }
 
+/* Full-bleed background from the shared token; the content column is centred by padding. */
 .relay-connector {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--space-l);
   width: 100%;
-  max-width: 960px;
   min-height: 100dvh;
-  margin-inline: auto;
-  padding: var(--space-page) var(--space-page) var(--space-xl);
+  margin: 0;
+  padding: var(--space-page) max(var(--space-page), calc((100% - 960px) / 2)) var(--space-xl);
 }
 
 h1 { letter-spacing: -.02em; }
