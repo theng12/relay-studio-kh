@@ -81,7 +81,7 @@ export function activityTier(gateway = {}) {
 
 export function processTier(profile = {}) {
   if (profile.close_pending) {
-    return { tone: 'warn', label: 'Waiting to close', detail: 'Gateway has not confirmed a safe stop yet. Relay will not force it.' };
+    return { tone: 'warn', label: 'Waiting to close', detail: 'Chrome has not exited yet. Force close becomes available after 3 seconds.' };
   }
   const state = value(profile.process_state) || 'closed';
   const labels = { closed: 'Closed', opening: 'Opening', open: 'Open', queued: 'Waiting for memory', closing: 'Closing', error: 'Error' };

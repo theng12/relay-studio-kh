@@ -411,16 +411,31 @@ test('desktop surface keeps native commands, password pairing and no browser tok
   const tokenTag = html.match(/<input id="manager-token"[^>]*>/)[0];
   assert.doesNotMatch(tokenTag, /PASSWORD_|\{\{|\}\}/);
   assert.equal(html.includes('localStorage'), false);
-  for (const page of ['accounts', 'browsers', 'memory', 'gateway', 'extensions']) {
+  for (const page of ['overview', 'accounts', 'browsers', 'memory', 'gateway', 'extensions', 'settings']) {
     assert.match(html, new RegExp(`data-page="${page}"`), `missing sidebar row ${page}`);
     assert.match(html, new RegExp(`id="page-${page}"`), `missing pane ${page}`);
   }
   assert.match(html, /id="page-whats-new"/, 'missing What’s New pane');
-  assert.match(html, /id="version" class="version-pill"/, 'version and What’s New must share one pill');
-  assert.doesNotMatch(html, /nav-whats-new/, 'What’s New must not be a separate sidebar row');
-  for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'notes', 'notes-title', 'force-blocked', 'force-cancel', 'force-confirm']) {
-    assert.match(html, new RegExp(`id="${id}"`), `missing browser control ${id}`);
+  assert.match(html, /id="whats-new-link"/, 'footer must open What’s New');
+  assert.match(html, /<span id="version" class="pill-version">/, 'version is static text in the footer pill');
+  assert.doesNotMatch(html, /nav-whats-new|data-page="whats-new"/, 'What’s New must not be a navigation row');
+  assert.equal((html.match(/class="nav-row"/g) || []).length, 7, 'one row per destination');
+  assert.equal((html.match(/class="nav-row"[\s\S]{0,160}?<svg class="icon"/g) || []).length, 7, 'every nav row carries an icon');
+  assert.equal((html.match(/id="overview-(accounts|open|memory|gateway|attention)"/g) || []).length, 5, 'overview dashboard must be complete');
+  for (const value of ['system', 'light', 'dark', 'default']) {
+    assert.match(html, new RegExp(`name="appearance" value="${value}"`), `missing appearance ${value}`);
   }
+  assert.doesNotMatch(html, /Follow System/, 'the choice is labelled System');
+  for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'notes', 'notes-title', 'force-blocked', 'force-cancel', 'force-confirm', 'start-at-login', 'data-folder', 'show-data-folder']) {
+    assert.match(html, new RegExp(`id="${id}"`), `missing control ${id}`);
+  }
+  const conf = await load('../src-tauri/tauri.conf.json');
+  assert.match(conf, /"mainBinaryName": "Relay Studio KH"/, 'the executable must not expose the repo slug');
+  assert.match(conf, /"productName": "Relay Studio KH"/, 'the bundle keeps its display name');
+  const native = await load('../src-tauri/src/lib.rs');
+  assert.match(native, /inner_size\(frame\.as_ref\(\)\.map_or\(1100\.0/, 'default window is 1100 wide');
+  assert.match(native, /min_inner_size\(860\.0, 560\.0\)/, 'minimum window size');
+  assert.doesNotMatch(native, /AppleInterfaceStyle|System Events|osascript/, 'appearance never changes macOS');
   assert.match(html, /class="window relay-connector"/, 'shared tokens must scope to the window shell');
   const accounts = await load('../desktop/accounts.mjs');
   const browsers = await load('../desktop/browsers.mjs');
@@ -432,6 +447,7 @@ test('desktop surface keeps native commands, password pairing and no browser tok
     assert.ok(browsers.includes(`'${name}'`), `missing browser command ${name}`);
   }
   assert.equal(/localStorage|sessionStorage/.test(accounts + browsers + app), false);
+  assert.doesNotMatch(app, /AppleInterfaceStyle|System Events|osascript/, 'appearance never changes macOS');
 });
 
 test('browsers pane lists only resident or queued profiles and counts them honestly', () => {

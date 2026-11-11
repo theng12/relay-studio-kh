@@ -9,31 +9,105 @@
   <script type="module" src="./app.mjs"></script>
 </head>
 <body>
+  <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-overview" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></symbol>
+    <symbol id="i-accounts" viewBox="0 0 16 16"><circle cx="5.8" cy="5.4" r="2.2"/><path d="M2 13c0-2.2 1.7-3.6 3.8-3.6S9.6 10.8 9.6 13"/><circle cx="11.6" cy="6.4" r="1.6"/><path d="M10.9 9.6c1.8.2 3.1.9 3.1 2.4"/></symbol>
+    <symbol id="i-window" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/><circle cx="4.2" cy="4.5" r=".5"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 16 16"><path d="M2.5 12a5.5 5.5 0 1 1 11 0"/><path d="M8 12 11 9"/><circle cx="8" cy="12" r=".7"/></symbol>
+    <symbol id="i-gateway" viewBox="0 0 16 16"><path d="m6.4 9.6 3.2-3.2"/><path d="M7.2 4.4 8.8 2.8a3 3 0 0 1 4.2 4.2l-1.6 1.6"/><path d="M8.8 11.6l-1.6 1.6a3 3 0 0 1-4.2-4.2l1.6-1.6"/></symbol>
+    <symbol id="i-extensions" viewBox="0 0 16 16"><path d="M6 2.5h4v2.2a1.3 1.3 0 1 0 0 2.6V10h2.5v3.5h-9V10H6V7.3a1.3 1.3 0 1 0 0-2.6z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 16 16"><path d="M8 2.2 9.3 6l3.8 1.3-3.8 1.3L8 12.8 6.7 8.6 2.9 7.3 6.7 6z"/></symbol>
+  </svg>
+
   <div class="window relay-connector">
     <nav class="sidebar" aria-label="Relay sections">
       <div class="brand">
         <img class="brand-mark" src="./relay-mark.png" alt="" width="22" height="22">
         <span>Relay Studio KH</span>
       </div>
+
       <div class="nav-group">
-        <p class="nav-heading" id="nav-group-accounts">Accounts</p>
-        <button type="button" class="nav-row" data-page="accounts" aria-describedby="nav-group-accounts" aria-current="page">Accounts</button>
-        <button type="button" class="nav-row" data-page="browsers" aria-describedby="nav-group-accounts">Browsers</button>
+        <button type="button" class="nav-row" data-page="overview" aria-current="page"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-overview"/></svg><span>Overview</span></button>
       </div>
-      <div class="nav-group">
-        <p class="nav-heading" id="nav-group-setup">Setup</p>
-        <button type="button" class="nav-row" data-page="memory" aria-describedby="nav-group-setup">Memory &amp; pacing</button>
-        <button type="button" class="nav-row" data-page="gateway" aria-describedby="nav-group-setup">Gateway</button>
-        <button type="button" class="nav-row" data-page="extensions" aria-describedby="nav-group-setup">Extensions</button>
+
+      <div class="nav-group" aria-labelledby="nav-group-browsers">
+        <p class="nav-heading" id="nav-group-browsers">Browsers</p>
+        <button type="button" class="nav-row" data-page="accounts"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-accounts"/></svg><span>Accounts</span></button>
+        <button type="button" class="nav-row" data-page="browsers"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-window"/></svg><span>Open windows</span></button>
+        <button type="button" class="nav-row" data-page="memory"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-memory"/></svg><span>Memory &amp; pacing</span></button>
       </div>
+
+      <div class="nav-group" aria-labelledby="nav-group-connection">
+        <p class="nav-heading" id="nav-group-connection">Connection</p>
+        <button type="button" class="nav-row" data-page="gateway"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gateway"/></svg><span>Gateway</span></button>
+        <button type="button" class="nav-row" data-page="extensions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-extensions"/></svg><span>Extensions</span></button>
+      </div>
+
+      <div class="nav-group" aria-labelledby="nav-group-app">
+        <p class="nav-heading" id="nav-group-app">App</p>
+        <button type="button" class="nav-row" data-page="settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg><span>Settings</span></button>
+      </div>
+
       <div class="nav-spacer"></div>
       <div class="sidebar-footer">
-        <button type="button" id="version" class="version-pill">Version unavailable</button>
+        <div class="footer-pill">
+          <button type="button" id="whats-new-link" class="pill-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg><span>What’s New</span></button>
+          <span class="pill-dot" aria-hidden="true">·</span>
+          <span id="version" class="pill-version">Version unavailable</span>
+        </div>
       </div>
     </nav>
 
     <main class="content">
-      <section class="page" id="page-accounts" aria-labelledby="accounts-title">
+      <section class="page" id="page-overview" aria-labelledby="overview-title">
+        <header class="page-head">
+          <h2 id="overview-title">Overview</h2>
+          <p class="page-sub" id="overview-summary" role="status" aria-live="polite">Reading saved accounts...</p>
+        </header>
+
+        <div class="overview-grid">
+          <div class="card">
+            <p class="stat-label">Saved accounts</p>
+            <p class="stat-value" id="overview-accounts">Reading...</p>
+            <p class="help" id="overview-accounts-note">Counts come from the native browser manager.</p>
+          </div>
+          <div class="card">
+            <p class="stat-label">Browsers open</p>
+            <p class="stat-value" id="overview-open">Reading...</p>
+            <p class="help" id="overview-open-note">Only Chrome windows Relay started.</p>
+          </div>
+          <div class="card">
+            <p class="stat-label">Memory</p>
+            <p class="stat-value" id="overview-memory">Not measured</p>
+            <p class="help" id="overview-memory-note">Used, budget and available memory.</p>
+          </div>
+          <div class="card">
+            <p class="stat-label">Gateway</p>
+            <p class="stat-value" id="overview-gateway">Not checked</p>
+            <p class="help" id="overview-gateway-note">Connection state reported by this build.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>Needs attention</h3>
+            <button type="button" class="ghost" id="overview-accounts-link">Open Accounts</button>
+          </div>
+          <p id="overview-attention-empty" class="secondary">No saved account needs attention.</p>
+          <ul id="overview-attention" class="attention-list" hidden></ul>
+        </div>
+
+        <div class="card">
+          <h3>Quick links</h3>
+          <div class="actions">
+            <button type="button" id="overview-browsers-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-window"/></svg><span>Open windows</span></button>
+            <button type="button" id="overview-gateway-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gateway"/></svg><span>Gateway</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-accounts" aria-labelledby="accounts-title" hidden>
         <header class="page-head">
           <h2 id="accounts-title">Accounts</h2>
           <p id="accounts-summary" role="status" aria-live="polite">Reading saved accounts...</p>
@@ -73,7 +147,7 @@
 
       <section class="page" id="page-browsers" aria-labelledby="browsers-title" hidden>
         <header class="page-head">
-          <h2 id="browsers-title">Browsers</h2>
+          <h2 id="browsers-title">Open windows</h2>
           <p id="browsers-summary" role="status" aria-live="polite">No browsers open.</p>
         </header>
         <p id="browsers-error" role="alert" hidden></p>
@@ -126,8 +200,6 @@
           <form id="settings">
             <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" aria-describedby="address-help"></label>
             <p id="address-help" class="help">Use your existing Gateway address. Sign in through Gateway’s own interface; do not put a password or token here.</p>
-            <label class="login-choice"><input id="start-at-login" type="checkbox" disabled> Start at Login</label>
-            <p id="login-state" class="secondary" role="status">Checking the saved login preference...</p>
             <div class="actions"><button class="primary" id="save" type="submit">Save settings</button><button class="ghost" id="reconnect" type="button">Reconnect</button></div>
           </form>
           <p id="connection-state" class="secondary" role="status" aria-live="polite">Reading saved settings...</p>
@@ -148,14 +220,6 @@
         </div>
       </section>
 
-      <section class="page" id="page-whats-new" aria-labelledby="notes-title" hidden>
-        <header class="page-head">
-          <h2 id="notes-title">What’s New</h2>
-          <p class="page-sub">Everything that changed in Relay, newest first.</p>
-        </header>
-        <div class="card"><div id="notes"></div></div>
-      </section>
-
       <section class="page" id="page-extensions" aria-labelledby="extensions-title" hidden>
         <header class="page-head">
           <h2 id="extensions-title">Extensions</h2>
@@ -171,6 +235,51 @@
           <p class="help">Before loading a different version, stop or resolve active and uncertain work in Gateway. Preparing a new folder preserves previous versions and does not reload workers. Keep custom extension folders as they are.</p>
           <p class="help">Chrome is the first target. Edge and Brave are not verified yet. Firefox and Safari are not supported.</p>
         </div>
+      </section>
+
+      <section class="page" id="page-settings" aria-labelledby="settings-title" hidden>
+        <header class="page-head">
+          <h2 id="settings-title">Settings</h2>
+          <p class="page-sub">Appearance, login and where Relay keeps its files.</p>
+        </header>
+
+        <div class="card">
+          <h3>Appearance</h3>
+          <p class="help">Applies to Relay only; macOS appearance is left untouched. System follows this Mac.</p>
+          <div class="segmented" role="radiogroup" aria-label="Appearance">
+            <label class="seg"><input type="radio" name="appearance" value="system"><span>System</span></label>
+            <label class="seg"><input type="radio" name="appearance" value="light"><span>Light</span></label>
+            <label class="seg"><input type="radio" name="appearance" value="dark"><span>Dark</span></label>
+            <label class="seg"><input type="radio" name="appearance" value="default"><span>Default</span></label>
+          </div>
+          <p id="appearance-state" class="secondary" role="status">Reading the saved appearance...</p>
+        </div>
+
+        <div class="card">
+          <h3>Start at Login</h3>
+          <label class="check"><input id="start-at-login" type="checkbox" disabled> Start at Login</label>
+          <p id="login-state" class="secondary" role="status">Checking the saved login preference...</p>
+          <p class="help">This adds Relay itself to Login Items. Relay installs no background helper.</p>
+        </div>
+
+        <div class="card">
+          <h3>Window and data</h3>
+          <p>Closing the window keeps Relay running. Quit Relay from the app menu to stop it.</p>
+          <p id="data-folder" class="secondary">Reading Relay’s data folder...</p>
+          <div class="actions">
+            <button type="button" id="show-data-folder">Show folder</button>
+            <button type="button" id="copy-data-folder" class="ghost">Copy path</button>
+          </div>
+          <p class="help">Saved accounts and settings stay in this folder across updates. Removing it resets Relay’s saved accounts; browser profiles are kept separately.</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-whats-new" aria-labelledby="notes-title" hidden>
+        <header class="page-head">
+          <h2 id="notes-title">What’s New</h2>
+          <p class="page-sub">Everything that changed in Relay, newest first.</p>
+        </header>
+        <div class="card"><div id="notes"></div></div>
       </section>
     </main>
 

@@ -2,25 +2,35 @@ mod browser_manager;
 mod extensions;
 mod manager_gateway;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, sync::Mutex, time::Duration};
+use std::{fs, path::PathBuf, process::Command, sync::Mutex, time::Duration};
 use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
-    Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Emitter, Manager, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use url::Url;
 
+fn default_appearance() -> String {
+    "system".into()
+}
+fn valid_appearance(value: &str) -> bool {
+    matches!(value, "system" | "light" | "dark" | "default")
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Settings {
     gateway_url: Option<String>,
     start_at_login: bool,
+    /// In-app only: system, light, dark or the app's designed look. Never changes macOS.
+    #[serde(default = "default_appearance")]
+    appearance: String,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
             gateway_url: None,
             start_at_login: true,
+            appearance: default_appearance(),
         }
     }
 }
@@ -96,6 +106,9 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
             let mut settings: Settings = serde_json::from_slice(&bytes)
                 .map_err(|_| "Saved settings are unreadable. The file has not been reset.")?;
             settings.gateway_url = origin(settings.gateway_url.as_deref().unwrap_or(""))?;
+            if !valid_appearance(&settings.appearance) {
+                settings.appearance = default_appearance();
+            }
             Ok((settings, false))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -140,18 +153,26 @@ fn save_settings(
     app: tauri::AppHandle,
     gateway_url: String,
     start_at_login: Option<bool>,
+    appearance: Option<String>,
 ) -> Result<(), String> {
     local_only(&window)?;
     let state = app.state::<NativeState>();
     let mut guard = state.settings.lock().map_err(|_| "Settings are busy.")?;
     let previous = guard.as_ref().map_err(Clone::clone)?;
+    if let Some(value) = appearance.as_deref() {
+        if !valid_appearance(value) {
+            return Err("Choose System, Light, Dark or Default for appearance.".into());
+        }
+    }
     let settings = Settings {
         gateway_url: origin(&gateway_url)?,
         start_at_login: start_at_login.unwrap_or(previous.start_at_login),
+        appearance: appearance.unwrap_or_else(|| previous.appearance.clone()),
     };
     persist(&state.path, &settings)?;
-    *guard = Ok(settings);
+    *guard = Ok(settings.clone());
     drop(guard);
+    apply_appearance(&window, &settings.appearance);
     // Save intent first; a URL-only edit never reverses an OS opt-out.
     if let Some(enabled) = start_at_login {
         let result = if enabled {
@@ -168,11 +189,118 @@ fn save_settings(
     Ok(())
 }
 // Native window ground behind the webview, following the active scheme.
-fn window_ground(theme: tauri::Theme) -> tauri::window::Color {
+fn window_ground(theme: Theme) -> tauri::window::Color {
     match theme {
-        tauri::Theme::Dark => tauri::window::Color(23, 21, 31, 255),
-        _ => tauri::window::Color(244, 243, 250, 255),
+        Theme::Dark => tauri::window::Color(20, 18, 28, 255),
+        _ => tauri::window::Color(245, 243, 250, 255),
     }
+}
+fn appearance_theme(value: &str) -> Option<Theme> {
+    match value {
+        // Default is Relay's designed iris look: the light palette.
+        "light" | "default" => Some(Theme::Light),
+        "dark" => Some(Theme::Dark),
+        _ => None,
+    }
+}
+/// The appearance is pinned by the user's in-app choice; `system` releases it to macOS.
+fn apply_appearance(window: &WebviewWindow, value: &str) {
+    let _ = window.set_theme(appearance_theme(value));
+    let ground = match appearance_theme(value) {
+        Some(theme) => window_ground(theme),
+        None => window.theme().map(window_ground).unwrap_or(window_ground(Theme::Light)),
+    };
+    let _ = window.set_background_color(Some(ground));
+}
+#[derive(Serialize, Deserialize)]
+struct SavedFrame {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+fn frame_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|dir| dir.join("window.json"))
+}
+fn read_frame(app: &tauri::AppHandle) -> Option<SavedFrame> {
+    let frame: SavedFrame = serde_json::from_slice(&fs::read(frame_path(app)?).ok()?).ok()?;
+    let usable = frame.x.is_finite()
+        && frame.y.is_finite()
+        && frame.width.is_finite()
+        && frame.height.is_finite()
+        && frame.width >= 860.0
+        && frame.height >= 560.0
+        && frame.width <= 10000.0
+        && frame.height <= 10000.0;
+    usable.then_some(frame)
+}
+fn write_frame(
+    app: &tauri::AppHandle,
+    scale: Result<f64, tauri::Error>,
+    position: Result<tauri::PhysicalPosition<i32>, tauri::Error>,
+    size: Result<tauri::PhysicalSize<u32>, tauri::Error>,
+) {
+    let (Ok(scale), Ok(position), Ok(size)) = (scale, position, size) else {
+        return;
+    };
+    if scale <= 0.0 {
+        return;
+    }
+    let Some(path) = frame_path(app) else {
+        return;
+    };
+    let frame = SavedFrame {
+        x: f64::from(position.x) / scale,
+        y: f64::from(position.y) / scale,
+        width: f64::from(size.width) / scale,
+        height: f64::from(size.height) / scale,
+    };
+    if let Ok(bytes) = serde_json::to_vec_pretty(&frame) {
+        let _ = fs::write(path, bytes);
+    }
+}
+fn save_frame(window: &tauri::Window) {
+    write_frame(
+        window.app_handle(),
+        window.scale_factor(),
+        window.outer_position(),
+        window.inner_size(),
+    );
+}
+fn save_webview_frame(window: &WebviewWindow) {
+    write_frame(
+        window.app_handle(),
+        window.scale_factor(),
+        window.outer_position(),
+        window.inner_size(),
+    );
+}
+#[tauri::command]
+fn data_folder(window: WebviewWindow, app: tauri::AppHandle) -> Result<String, String> {
+    local_only(&window)?;
+    Ok(app
+        .path()
+        .app_config_dir()
+        .map_err(|_| "Relay's data folder is unavailable.")?
+        .to_string_lossy()
+        .into_owned())
+}
+#[tauri::command]
+fn open_data_folder(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    local_only(&window)?;
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| "Relay's data folder is unavailable.")?;
+    fs::create_dir_all(&path).map_err(|_| "Could not create Relay's data folder.")?;
+    let status = Command::new("/usr/bin/open")
+        .arg(path)
+        .status()
+        .map_err(|_| "Could not open Relay's data folder.")?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Could not open Relay's data folder.".to_string())
 }
 
 fn show_settings(app: &tauri::AppHandle) {
@@ -257,7 +385,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { show_settings(app); }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
+        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
         .setup(|app| {
             app.manage(browser_manager::init(app.handle())?);
             let path = app.path().app_config_dir()?.join("settings.json");
@@ -281,22 +409,29 @@ pub fn run() {
                     *app.state::<NativeState>().settings.lock().map_err(|_| "Settings are busy")? = saved.map(|_| settings);
                 }
             }
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let frame = read_frame(app.handle());
+            let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Relay Studio KH")
-                .inner_size(1040.0, 760.0)
+                .inner_size(frame.as_ref().map_or(1100.0, |f| f.width), frame.as_ref().map_or(760.0, |f| f.height))
                 .min_inner_size(860.0, 560.0)
                 // Matches the design ground, so resizing never flashes white gutters.
-                .background_color(window_ground(tauri::Theme::Light))
+                .background_color(window_ground(Theme::Light))
                 .on_navigation(|url| {
                     ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost")))
                         && url.port().is_none() && url.username().is_empty() && url.password().is_none()
                 })
-                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                .build()?;
-            if let Ok(theme) = main.theme() {
-                let _ = main.set_background_color(Some(window_ground(theme)));
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+            if let Some(frame) = frame {
+                builder = builder.position(frame.x, frame.y);
             }
+            let main = builder.build()?;
+            let appearance = current(app.handle())
+                .map(|settings| settings.appearance)
+                .unwrap_or_else(|_| default_appearance());
+            apply_appearance(&main, &appearance);
+            // Always leave a frame on disk, even if the app is quit from the menu later.
+            save_webview_frame(&main);
             let version = MenuItem::with_id(app, "version", format!("Relay Studio KH {}", app.package_info().version), false, None::<&str>)?;
             let application = SubmenuBuilder::new(app, "Relay Studio KH")
                 .text("show", "Relay Settings…").text("reconnect", "Reconnect to Gateway")
@@ -316,17 +451,34 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    save_frame(window);
                     api.prevent_close();
                     let _ = window.hide();
                 }
                 if let tauri::WindowEvent::ThemeChanged(theme) = event {
-                    let _ = window.set_background_color(Some(window_ground(*theme)));
+                    // A forced in-app appearance owns the title bar and ground.
+                    let appearance = window
+                        .app_handle()
+                        .state::<NativeState>()
+                        .settings
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.as_ref().ok().map(|settings| settings.appearance.clone()))
+                        .unwrap_or_else(default_appearance);
+                    if appearance == "system" {
+                        let _ = window.set_background_color(Some(window_ground(*theme)));
+                    }
                 }
             }
         })
         .build(tauri::generate_context!())
         .expect("Relay could not start; existing settings and Gateway work were not reset.")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                if let Some(window) = app.get_webview_window("main") {
+                    save_webview_frame(&window);
+                }
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = event { show_settings(app); }
         });

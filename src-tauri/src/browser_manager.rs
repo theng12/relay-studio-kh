@@ -400,7 +400,8 @@ impl ManagerGateway for LiveGateway {
         let Some(origin) = gateway_origin(&self.app) else {
             return CloseAuthorization::NotAcknowledged("Save a Gateway address first.".into());
         };
-        let expected = match expected_bindings(profile, &origin) {
+        // Only workers that exist are asked about; unbound profiles never reach this path.
+        let expected = match close_bindings(profile, &origin) {
             Ok(bindings) => bindings,
             Err(reason) => return CloseAuthorization::NotAcknowledged(reason),
         };
@@ -757,6 +758,72 @@ fn expected_bindings(
             credential_generation: video_generation.to_string(),
         },
     ])
+}
+
+/// A profile with no worker ids is local work: Relay stops its own Chrome without Gateway.
+fn no_close_workers(profile: &GatewayProfile) -> bool {
+    [&profile.image_worker_id, &profile.video_worker_id]
+        .iter()
+        .all(|id| id.as_deref().map_or(true, str::is_empty))
+}
+
+/// Graceful close asks Gateway only about the worker kinds this profile actually has.
+fn close_bindings(
+    profile: &GatewayProfile,
+    origin: &str,
+) -> Result<Vec<manager_gateway::ExpectedWorkerBinding>, String> {
+    let mut bindings = Vec::new();
+    for (id, generation, kind) in [
+        (
+            &profile.image_worker_id,
+            &profile.image_worker_generation,
+            "image",
+        ),
+        (
+            &profile.video_worker_id,
+            &profile.video_worker_generation,
+            "video",
+        ),
+    ] {
+        let Some(id) = id.as_deref().filter(|id| !id.is_empty()) else {
+            continue;
+        };
+        let Some(binding_origin) = profile.binding_origin.as_deref() else {
+            return Err(
+                "This profile has no saved Gateway worker binding; save the account binding while Gateway is connected."
+                    .into(),
+            );
+        };
+        if binding_origin != origin {
+            return Err(
+                "This profile's worker binding belongs to a different Gateway address; save the account binding again."
+                    .into(),
+            );
+        }
+        let Some(generation) = generation.as_deref().filter(|value| !value.is_empty()) else {
+            return Err(
+                "The saved credential generation for this worker is unknown; save the account binding while Gateway is connected."
+                    .into(),
+            );
+        };
+        if bindings
+            .iter()
+            .any(|binding: &manager_gateway::ExpectedWorkerBinding| binding.worker_id == id)
+        {
+            return Err(
+                "The image and video bindings must be two different workers; close waits.".into(),
+            );
+        }
+        bindings.push(manager_gateway::ExpectedWorkerBinding {
+            worker_id: id.to_string(),
+            kind: kind.into(),
+            credential_generation: generation.to_string(),
+        });
+    }
+    if bindings.is_empty() {
+        return Err("This profile has no Gateway worker to stop.".into());
+    }
+    Ok(bindings)
 }
 
 fn same_bindings(
@@ -1766,7 +1833,7 @@ pub(crate) fn manager_force_close_profiles(
                 image_worker_generation: profile.image_worker_generation.clone(),
                 video_worker_generation: profile.video_worker_generation.clone(),
             };
-            match force_close_action(owned, close_authorization(&input)) {
+            match force_close_action(owned, paid_work_block(&input)) {
                 Ok(()) => forced.push((id.clone(), pid)),
                 Err(reason) => failures.push((id.clone(), reason)),
             }
@@ -2090,7 +2157,13 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                     image_worker_generation: profile.image_worker_generation.clone(),
                     video_worker_generation: profile.video_worker_generation.clone(),
                 };
-                match close_action(true, close_authorization(&input)) {
+                // Unbound profiles are local: no Gateway round-trip, no waiting for a binding.
+                let authorization = if no_close_workers(&input) {
+                    CloseAuthorization::Safe
+                } else {
+                    close_authorization(&input)
+                };
+                match close_action(true, authorization) {
                     CloseAction::Terminate => match terminate(profile.pid.unwrap_or_default()) {
                         Ok(()) => {
                             errors.insert(
@@ -2211,17 +2284,34 @@ fn clear_close(profile: &mut StoredProfile) {
     profile.close_requested_at = None;
 }
 
-fn force_close_action(owned: bool, authorization: CloseAuthorization) -> Result<(), String> {
+/// Force close is blocked only by explicit paid work, never by an unreachable or unpaired
+/// Gateway. Ownership is still checked first.
+fn force_close_action(owned: bool, paid_work: Option<String>) -> Result<(), String> {
     if !owned {
         return Err(
             "The recorded Chrome process could not be verified as Relay's own; it was not stopped."
                 .into(),
         );
     }
-    match authorization {
-        CloseAuthorization::Safe => Ok(()),
-        CloseAuthorization::NotAcknowledged(reason) => Err(reason),
+    match paid_work {
+        Some(reason) => Err(reason),
+        None => Ok(()),
     }
+}
+
+/// Explicit active or uncertain paid work is the only thing that blocks force close.
+fn paid_work_block(profile: &GatewayProfile) -> Option<String> {
+    let mut readings = authority()?.read(std::slice::from_ref(profile));
+    let activity = readings.remove(&profile.id)?.activity?;
+    let activity = activity.to_ascii_lowercase();
+    matches!(
+        activity.as_str(),
+        "generating" | "recovering" | "active" | "uncertain"
+    )
+    .then(|| {
+        "Gateway reports active or uncertain work for this account. Relay will not force it."
+            .to_string()
+    })
 }
 
 fn close_action(owned_process: bool, authorization: CloseAuthorization) -> CloseAction {
@@ -3041,25 +3131,45 @@ mod tests {
     }
 
     #[test]
-    fn force_close_requires_verified_ownership_and_fresh_gateway_safety() {
+    fn force_close_requires_verified_ownership_and_only_paid_work_blocks_it() {
         let refusal =
             "The recorded Chrome process could not be verified as Relay's own; it was not stopped.";
+        assert_eq!(force_close_action(false, None).unwrap_err(), refusal);
         assert_eq!(
-            force_close_action(false, CloseAuthorization::Safe).unwrap_err(),
-            refusal
-        );
-        assert_eq!(
-            force_close_action(false, CloseAuthorization::NotAcknowledged("held".into()))
-                .unwrap_err(),
+            force_close_action(false, Some("held".into())).unwrap_err(),
             refusal,
-            "ownership is checked before Gateway safety"
+            "ownership is checked before paid work"
         );
         assert_eq!(
-            force_close_action(true, CloseAuthorization::NotAcknowledged("active work".into()))
-                .unwrap_err(),
+            force_close_action(true, Some("active work".into())).unwrap_err(),
             "active work"
         );
-        assert!(force_close_action(true, CloseAuthorization::Safe).is_ok());
+        assert!(
+            force_close_action(true, None).is_ok(),
+            "an unreachable Gateway must not block force close"
+        );
+    }
+
+    #[test]
+    fn unbound_profiles_close_locally_and_close_asks_only_bound_workers() {
+        let unbound = GatewayProfile {
+            id: "one".into(),
+            image_worker_id: None,
+            video_worker_id: Some(String::new()),
+            binding_origin: None,
+            image_worker_generation: None,
+            video_worker_generation: None,
+        };
+        assert!(no_close_workers(&unbound));
+
+        let both = close_bindings(&bound_profile(), "https://gateway.example").unwrap();
+        assert_eq!(both.len(), 2);
+        let mut only_image = bound_profile();
+        only_image.video_worker_id = None;
+        let image = close_bindings(&only_image, "https://gateway.example").unwrap();
+        assert_eq!(image.len(), 1);
+        assert_eq!(image[0].kind, "image");
+        assert!(close_bindings(&only_image, "https://other.example").is_err());
     }
 
     #[test]

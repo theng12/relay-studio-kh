@@ -2,23 +2,23 @@
 name: Relay Studio KH
 description: Connection register for browser generator extensions on Gateway Studio KH
 colors:
-  ground-light: "#f4f3fa"
+  ground-light: "#f5f3fa"
   surface-light: "#ffffff"
-  text-light: "#211f2e"
-  muted-light: "#5d5a70"
-  line-light: "#dddbe8"
-  accent-light: "#5a48c9"
-  accent-soft-light: "#eeebfb"
+  text-light: "#1f1b2e"
+  muted-light: "#5f5a70"
+  line-light: "#ddd8e8"
+  accent-light: "#6d28d9"
+  accent-soft-light: "#f1eafe"
   ok-light: "#226346"
   warn-light: "#82561b"
   bad-light: "#a32630"
-  ground-dark: "#17151f"
-  surface-dark: "#211f2b"
-  text-dark: "#eae7f5"
-  muted-dark: "#b4afc7"
-  line-dark: "#3c394f"
-  accent-dark: "#b6a9ff"
-  accent-soft-dark: "#302b4d"
+  ground-dark: "#14121c"
+  surface-dark: "#1e1b2a"
+  text-dark: "#ece9f5"
+  muted-dark: "#b3aec4"
+  line-dark: "#3a3450"
+  accent-dark: "#c4b5fd"
+  accent-soft-dark: "#2b2440"
   ok-dark: "#91d9b0"
   warn-dark: "#e8c18c"
   bad-dark: "#ffb2b9"
@@ -87,14 +87,14 @@ Light mode is the desktop working default; dark mode follows `prefers-color-sche
 Restrained iris/slate palette with complete light and dark variants. Relay's own iris accent replaces the shared Gateway blue; semantic colors (ok, warn, bad) appear only in state indicators and error boundaries.
 
 ### Primary
-- **Iris** (#5a48c9 light / #b6a9ff dark): Links, focus rings, primary buttons, the selected sidebar row, group labels and the soft background tint for notices. The single interactive accent across the entire surface.
+- **Iris** (#6d28d9 light / #c4b5fd dark): Links, focus rings, primary buttons, the selected sidebar row and the soft background tint for notices. The single interactive accent across the entire surface.
 
 ### Neutral
-- **Ground** (#f4f3fa light / #17151f dark): Page background outside cards and dialogs, with a faint iris cast.
-- **Surface** (#ffffff light / #211f2b dark): Cards, dialogs, inputs, and button backgrounds. The working plane.
-- **Text** (#211f2e light / #eae7f5 dark): Primary readable content. Headings, body, labels.
-- **Muted** (#5d5a70 light / #b4afc7 dark): Secondary text, timestamps, captions, disabled states. Never used for primary actions.
-- **Line** (#dddbe8 light / #3c394f dark): Borders, dividers, input strokes. The structural grid.
+- **Ground** (#f5f3fa light / #14121c dark): Page background outside cards and dialogs, with a faint iris cast.
+- **Surface** (#ffffff light / #1e1b2a dark): Cards, dialogs, inputs, and button backgrounds. The working plane.
+- **Text** (#1f1b2e light / #ece9f5 dark): Primary readable content. Headings, body, labels.
+- **Muted** (#5f5a70 light / #b3aec4 dark): Secondary text, timestamps, captions, disabled states. Never used for primary actions.
+- **Line** (#ddd8e8 light / #3a3450 dark): Borders, dividers, input strokes. The structural grid.
 
 ### Semantic
 - **OK** (#226346 light / #91d9b0 dark): Connected transport. This does not assert provider readiness.
@@ -125,11 +125,15 @@ Restrained iris/slate palette with complete light and dark variants. Relay's own
 
 ## Layout
 
-A fixed 220px sidebar beside one scrolling content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, two row groups (Accounts: Accounts, Browsers — Setup: Memory & pacing, Gateway, Extensions) and a footer pill that pairs the version with What’s New. Group labels use the accent in small caps, the selected row is marked with an accent left rule, the accent-soft tint and `aria-current="page"`, and Quit lives only in the app menu so it cannot be clicked by accident. The content pane shows one page at a time, titled with the row that is selected, with 28px page padding on every side and no centred max-width column: the pane itself is the page, and the ground fills the whole window at any size.
+A fixed 220px sidebar beside one content pane, the same shell as Gateway and Studio Hub. The sidebar carries the app mark and name, then Overview, Browsers (Accounts, Open windows, Memory & pacing), Connection (Gateway, Extensions) and App (Settings). Every row and the footer pill carry one leading icon from a single stroke set. Group labels are 11px muted capitals; rows are 32px with an 8px radius and 8px gaps. The selected row uses the accent-soft tint, accent text, a 2px leading accent rule and `aria-current="page"`. The footer is one centred pill with clickable What’s New and static `v<version>` text; the version is never a link, and Quit lives only in the app menu.
+
+Each row is its own page with its own scroll position: Overview opens as the dashboard (saved accounts, browsers open, memory used/budget/available, Gateway connection state, up to five attention items and quick links), and Accounts, Open windows, Memory & pacing, Gateway, Extensions and Settings each keep their place. Pages use 28px padding on every side and stretch to the pane: no centred max-width column, no wide gutters. Cards and lists fill the width; prose inside cards caps at about 75ch. The ground fills the whole window at any size, and each page scrolls independently rather than the shell moving as one long page.
 
 Spacing uses the shared KH scale exclusively, applied through CSS custom properties set on the `.relay-connector` scope by the build script; `html` and `body` repeat the documented ground hexes so wide and fullscreen windows never show white bands.
 
-The window opens at 1040×760 and cannot be made smaller than 860×560. The account list uses a four-column grid (identity, state, credits, action) that reflows below 980px to identity and action above state, with the column headings hidden. Dialogs are centered overlays capped at 480px width.
+The window opens at 1100×760 and cannot be made smaller than 860×560. Relay remembers its last frame and restores that size and position on the next launch. The account list uses a four-column grid (identity, state, credits, action) that reflows below 980px to identity and action above state, with the column headings hidden. Dialogs are centered overlays capped at 460px width.
+
+The spacing system is app-wide: body 13/1.6, help 12/1.55 (max 68ch), caption 11/1.5; label 12 semibold → 6px → 36px control (10px 12px padding, 13px text) → 8px → help; field to field 20px; card padding 24px with 16px title-to-content and 24px between groups; button rows sit 16px above with 8px gaps; checkbox to label 8px; paragraphs 12px apart and groups 16px apart. One set of shared `field` and form rules provides it.
 
 Responsive behavior below 980px: page padding drops to 16px, account rows reflow to a two-line layout, browser bulk actions wrap under the selection row, and definition lists go single-column.
 
@@ -149,17 +153,18 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 ## Components
 
 ### Buttons
-- **Shape:** Compact desktop scale: 32px height, 6px 12px padding, 6px radius. Buttons that sit in one row stay inline.
-- **Hierarchy:** One primary action per group (Iris background, white text; dark mode uses dark text on the lighter iris). Everything else is secondary (Surface background, text color, line border, accent-soft hover) or ghost (transparent border and background, muted text, for quiet inline actions such as Reconnect, Show folder and Copy path).
-- **Danger:** Bad color text and border, Surface background. For destructive confirmation only.
-- **Text:** Transparent border and background, accent color text, no padding-right. For low-emphasis inline actions (version link).
-- **Focus:** 2px solid accent outline, 3px offset. Applied to buttons, links, summaries, and inputs via :focus-visible.
-- **Disabled:** 58% opacity, default cursor.
+- **Shape:** 32px height (30px minimum), 0 12px padding, 6px radius, 13px/600, inline-flex with 8px group gaps. No full-width bars.
+- **Hierarchy:** One primary action per group (Iris background, contrast text; dark mode uses dark text on the lighter iris). Everything else is secondary (Surface background, text color, line border) or ghost (transparent border and background, muted text, for quiet inline actions such as Reconnect, Show folder and Copy path). Danger uses Bad text on the Surface background.
+- **Focus:** 2px solid accent outline, 2px offset. Applied via :focus-visible.
+- **Disabled:** 50% opacity, default cursor.
 
 ### Inputs
-- **Style:** Full width, 44px minimum height, 12px padding, 16px font size (prevents iOS zoom). Surface background, line border, control radius.
-- **Focus:** 2px solid accent outline, 3px offset. Accent caret color.
+- **Style:** Full width, 36px control height, 10px 12px padding, 13px text. Surface background, line border, 6px radius.
+- **Focus:** 2px solid accent outline, 2px offset. Accent caret color.
 - **Readonly:** Ground background to signal non-editable state (token display, gateway address).
+
+### Appearance
+Settings offers System, Light, Dark and Default. System follows macOS; Default is Relay’s designed iris look (light); all four apply only inside Relay and never change macOS. The choice is saved and restored on launch. New installs start on System.
 
 ### Connection List
 - **Container:** Card-radius (8px) border, surface background, overflow hidden. Workers separated by 1px line dividers.
@@ -174,12 +179,12 @@ All borders are 1px solid using the Line color. No clipping, no rounded-corner a
 - **Identity:** Reuse the existing palette, system type, spacing and flat hierarchy. The desktop account grid adds a selection column and collapses at the existing 680px breakpoint. Fixture screenshots prove rendering only, never native lifecycle or account readiness.
 
 ### What’s New Page
-- **Surface:** A full page in the content pane, not a dialog: version sections stacked newest first, each with a heading and a roomy bulleted list in one card. One pill in the sidebar footer reads `v<version> · What’s New` and opens it.
+- **Surface:** A full page in the content pane, not a dialog: version sections stacked newest first, each with a heading and a roomy bulleted list in one card. The footer pill holds a clickable What’s New entry and static `v<version>` text separated by a middle dot; the version is never a link and has no hover or click handler.
 
 ### Browsers Pane
 - **Register:** One card per resident or queued profile: number and label, state, PID, measured memory, provider, activity, and the queued or close-waiting reason. Only real Chrome processes Relay opened appear; the pane never draws a simulated browser.
-- **Actions:** Focus activates the exact owned window, Close asks Gateway for a safe stop, and Force close opens a confirmation that names the lost tabs and Chrome's session restore. A per-row and bulk Force close is blocked with an explicit reason whenever Gateway reports active or uncertain work.
-- **Waiting:** A pending close shows its elapsed wait and Gateway's reason on the row, so a refused SIGTERM never looks like a silent success.
+- **Actions:** Focus activates the exact owned window. Close stops an unbound profile locally and immediately; a bound profile asks Gateway only about the workers it actually has, for at most five seconds. Force close opens a confirmation that names the lost tabs and Chrome's session restore, verifies the exact PID, start time and binary, then SIGKILLs only that process. It is blocked only while Gateway explicitly reports active or uncertain paid work.
+- **Waiting:** A pending close shows its elapsed time and reason on the row and refreshes every 500 ms. After three seconds alive it reads “Chrome did not exit” and offers Force close, so a refused SIGTERM never looks like a silent success.
 - **Empty state:** "No browsers open." when nothing is resident or queued.
 
 ### State Indicators

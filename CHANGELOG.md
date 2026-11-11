@@ -1,12 +1,14 @@
 # What's New
 
-## 0.3.2 — 2026-11-11
-- Move between Accounts, Browsers, Memory & pacing, Gateway and Extensions from a sidebar with the Relay mark, accented section labels and a clear selected row.
-- Fill the whole window with the page ground, so wide and fullscreen windows show no white side bands.
-- Manage the real Chrome windows Relay opened in a Browsers pane: focus, close or force close each account.
-- See how long a close has been waiting and why; Force close asks first and refuses while Gateway reports active or uncertain work.
-- Read What's New as a full page with roomy version sections, opened from one version pill; Quit Relay now lives only in the app menu.
-- Relay wears its own iris accent and compact buttons, with one clear primary action beside quieter ones.
+## 0.3.2 — 2026-11-12
+- Start on an Overview dashboard: saved accounts, browsers open, memory used and available, Gateway state and the accounts that need attention.
+- Move between Overview, Accounts, Open windows, Memory & pacing, Gateway, Extensions and Settings; every page keeps its own scroll.
+- Give each sidebar row and the footer pill a matching icon, with a clear selected row and a version that is no longer a link.
+- Fill the whole window at 1100×760, remember the window frame, and keep only 28px page padding — no centred column or side bands.
+- Choose System, Light, Dark or Default appearance inside Relay; macOS appearance is never changed.
+- Close unbound Chrome profiles immediately; bound profiles ask Gateway only about workers that exist, and a close that takes longer than three seconds shows why and offers a verified Force close.
+- Force close now stops only the exact Chrome process Relay started and is blocked only by explicit active or uncertain paid work.
+- Read What's New as a full page from the footer pill; Quit Relay lives only in the app menu.
 
 ## 0.3.1 — 2026-11-11
 - Read each part of Relay as its own card with a clear heading.

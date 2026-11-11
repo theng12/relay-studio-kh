@@ -153,10 +153,13 @@ export function mountBrowsers(invoke, accounts) {
     refs.meta.textContent = parts.join(' · ');
 
     const reason = text(profile.error);
-    const elapsed = elapsedLabel(closeElapsedSeconds(profile));
+    const seconds = closeElapsedSeconds(profile);
+    const elapsed = elapsedLabel(seconds);
     if (profile.close_pending) {
       refs.reason.hidden = false;
-      refs.reason.textContent = `Waiting to close${elapsed ? ` for ${elapsed}` : ''}. ${reason || 'Gateway has not confirmed a safe stop yet.'}`;
+      refs.reason.textContent = seconds >= 3
+        ? `Chrome did not exit${elapsed ? ` after ${elapsed}` : ''}. ${reason || 'Force close stops only this exact Chrome process.'}`
+        : `Waiting to close${elapsed ? ` for ${elapsed}` : ''}. ${reason || 'Chrome is shutting down.'}`;
     } else if (reason) {
       refs.reason.hidden = false;
       refs.reason.textContent = reason;
@@ -169,8 +172,9 @@ export function mountBrowsers(invoke, accounts) {
     refs.focus.disabled = disabled || !['open', 'opening'].includes(text(profile.process_state));
     refs.close.disabled = disabled || Boolean(profile.close_pending) || !['open', 'opening', 'queued'].includes(text(profile.process_state));
     // The dialog names the reason; the native command re-checks ownership and Gateway safety.
-    refs.force.disabled = disabled || profile.process_id === null || profile.process_id === undefined;
-    refs.force.title = forceBlockReason(profile) || '';
+    const waitingToExit = profile.close_pending && (seconds ?? 0) < 3;
+    refs.force.disabled = disabled || profile.process_id === null || profile.process_id === undefined || waitingToExit;
+    refs.force.title = forceBlockReason(profile) || (waitingToExit ? 'Force close is available after 3 seconds.' : '');
   }
 
   function paint() {
@@ -206,7 +210,10 @@ export function mountBrowsers(invoke, accounts) {
       const profile = snapshot.profiles.find((entry) => entry.id === id);
       return profile && !profile.close_pending;
     }).length;
-    const canForce = residentIds(snapshot?.profiles || [], ids).length;
+    const canForce = residentIds(snapshot?.profiles || [], ids).filter((id) => {
+      const profile = snapshot.profiles.find((entry) => entry.id === id);
+      return profile && (!profile.close_pending || (closeElapsedSeconds(profile) ?? 0) >= 3);
+    }).length;
     $('browser-open').disabled = busy || !canOpen;
     $('browser-close').disabled = busy || !canClose;
     $('browser-force').disabled = busy || !canForce;
@@ -279,8 +286,11 @@ export function mountBrowsers(invoke, accounts) {
     askForce(ids);
   });
 
-  // The close age ticks while a card is waiting; the snapshot itself refreshes every five seconds.
+  // The close age ticks while a card is waiting; closing rows refresh every 500 ms until they settle.
   setInterval(() => { if (!document.getElementById('page-browsers').hidden) paint(); }, 1000);
+  setInterval(() => {
+    if (!document.getElementById('page-browsers').hidden && snapshot?.profiles?.some((profile) => profile.close_pending)) accounts.refresh();
+  }, 500);
 
   accounts.subscribe((next) => render(next));
   return { refresh: () => accounts.refresh() };

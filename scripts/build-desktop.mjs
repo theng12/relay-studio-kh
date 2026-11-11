@@ -25,7 +25,7 @@ const output = resolve(root, 'desktop-dist');
 await mkdir(output, { recursive: true });
 const html = await readFile(resolve(root, 'desktop/index.html'), 'utf8');
 await writeFile(resolve(output, 'index.html'), html.replace('<!-- RELAY_STYLE -->', style));
-for (const name of ['app.mjs', 'accounts.mjs', 'browsers.mjs', 'shell.mjs', 'recovery.mjs', 'setup.mjs', 'desktop.css']) await copyFile(resolve(root, 'desktop', name), resolve(output, name));
+for (const name of ['app.mjs', 'accounts.mjs', 'browsers.mjs', 'overview.mjs', 'shell.mjs', 'recovery.mjs', 'setup.mjs', 'desktop.css']) await copyFile(resolve(root, 'desktop', name), resolve(output, name));
 await copyFile(resolve(root, 'src-tauri/icons/64x64.png'), resolve(output, 'relay-mark.png'));
 execFileSync(python, ['-I', '-X', 'utf8', resolve(root, 'scripts/make-icon.py'), resolve(root, 'src-tauri/icons')], { stdio: 'inherit' });
 await writeFile(resolve(output, 'app-info.mjs'), `export default ${JSON.stringify({ version, releases })};\n`);

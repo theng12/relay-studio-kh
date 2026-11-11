@@ -1,6 +1,7 @@
 import info from './app-info.mjs';
 import { mountAccounts } from './accounts.mjs';
 import { mountBrowsers } from './browsers.mjs';
+import { mountOverview } from './overview.mjs';
 import { mountShell } from './shell.mjs';
 import { createRecovery } from './recovery.mjs';
 import { setupExtensions } from './setup.mjs';
@@ -11,33 +12,63 @@ const showError = (error) => { $('error').textContent = String(error); $('error'
 const accounts = mountAccounts(invoke);
 mountBrowsers(invoke, accounts);
 const shell = mountShell({ onShow: (page) => {
-  if (page === 'whats-new') $('version').setAttribute('aria-current', 'page');
-  else $('version').removeAttribute('aria-current');
   if (page === 'accounts' || page === 'browsers') accounts.refresh();
 } });
+mountOverview(accounts, (page) => shell.show(page));
 setupExtensions(invoke, showError);
-let loginChanged = false;
-$('start-at-login').addEventListener('change', () => { loginChanged = true; });
+
+const appearanceChoices = [...document.querySelectorAll('input[name="appearance"]')];
+const APPEARANCE = new Set(['system', 'light', 'dark', 'default']);
+let currentSettings = null;
+
+// In-app only: colour-scheme is scoped to this document, never to macOS.
+function applyAppearance(value) {
+  const choice = APPEARANCE.has(value) ? value : 'system';
+  document.documentElement.dataset.appearance = choice;
+  document.documentElement.style.colorScheme = choice === 'dark' ? 'dark' : choice === 'system' ? 'light dark' : 'light';
+  for (const input of appearanceChoices) input.checked = input.value === choice;
+  $('appearance-state').textContent = choice === 'system'
+    ? 'Following this Mac.'
+    : choice === 'default'
+    ? 'Relay’s designed look.'
+    : `${choice[0].toUpperCase()}${choice.slice(1)} appearance.`;
+}
+
 const tick = createRecovery({
   probe: () => invoke('gateway_health'),
   openGateway: () => invoke('open_gateway'),
   report: (message) => { $('connection-state').textContent = message; },
 });
+
 async function loadSettings() {
   const snapshot = await invoke('get_settings');
-  $('gateway-url').value = snapshot.settings.gateway_url || '';
-  $('start-at-login').checked = snapshot.settings.start_at_login;
+  currentSettings = snapshot.settings || {};
+  $('gateway-url').value = currentSettings.gateway_url || '';
+  $('start-at-login').checked = Boolean(currentSettings.start_at_login);
   $('start-at-login').disabled = false;
-  loginChanged = false;
   $('login-state').textContent = snapshot.autostart_error || (snapshot.autostart_observed === null ? 'Start at Login has not been checked.' : `Start at Login is ${snapshot.autostart_observed ? 'on' : 'off'}.`);
+  applyAppearance(currentSettings.appearance || 'system');
+  return snapshot;
 }
+
+async function saveSettings(changes) {
+  const payload = {
+    gatewayUrl: currentSettings?.gateway_url || '',
+    startAtLogin: null,
+    appearance: currentSettings?.appearance || 'system',
+    ...changes,
+  };
+  await invoke('save_settings', payload);
+  await loadSettings();
+  return payload;
+}
+
 $('settings').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('save').disabled = true;
   $('error').hidden = true;
   try {
-    await invoke('save_settings', { gatewayUrl: $('gateway-url').value.trim(), startAtLogin: loginChanged ? $('start-at-login').checked : null });
-    await loadSettings();
+    await saveSettings({ gatewayUrl: $('gateway-url').value.trim() });
     await tick();
   } catch (error) {
     try { await loadSettings(); } catch { /* Preserve the original save error. */ }
@@ -51,22 +82,62 @@ $('reconnect').addEventListener('click', async () => {
   catch (error) { showError(error); }
   finally { $('reconnect').disabled = false; }
 });
-$('version').textContent = `v${info.version} · What’s New`;
+
+for (const input of appearanceChoices) {
+  input.addEventListener('change', async () => {
+    if (!input.checked) return;
+    applyAppearance(input.value);
+    try { await saveSettings({ appearance: input.value }); }
+    catch (error) {
+      try { await loadSettings(); } catch { /* Keep the saved appearance shown. */ }
+      $('appearance-state').textContent = `Appearance was not saved. ${String(error)}`;
+    }
+  });
+}
+$('start-at-login').addEventListener('change', async () => {
+  try {
+    await saveSettings({ startAtLogin: $('start-at-login').checked });
+  } catch (error) {
+    $('login-state').textContent = String(error);
+    try { await loadSettings(); } catch { /* Preserve the reported failure. */ }
+  }
+});
+
+async function loadDataFolder() {
+  try {
+    const path = await invoke('data_folder');
+    $('data-folder').textContent = path;
+    $('data-folder').dataset.path = path;
+  } catch (error) {
+    $('data-folder').textContent = `Relay’s data folder could not be read. ${String(error)}`;
+  }
+}
+$('show-data-folder').addEventListener('click', () => invoke('open_data_folder').catch(showError));
+$('copy-data-folder').addEventListener('click', async () => {
+  const path = $('data-folder').dataset.path;
+  if (!path) { showError('Relay’s data folder is not available yet.'); return; }
+  try { await navigator.clipboard.writeText(path); $('data-folder').textContent = `${path} · Copied`; }
+  catch { showError('Could not copy. Select and copy the folder path shown here.'); }
+});
+
+$('version').textContent = `v${info.version}`;
 for (const release of info.releases) {
   const heading = document.createElement('h3'); heading.textContent = `v${release.version}`;
   const list = document.createElement('ul');
   for (const item of release.items) { const line = document.createElement('li'); line.textContent = item; list.append(line); }
   $('notes').append(heading, list);
 }
-$('version').addEventListener('click', () => shell.show('whats-new'));
+$('whats-new-link').addEventListener('click', () => shell.show('whats-new'));
 try {
   await window.__TAURI__.event.listen('relay-error', event => showError(event.payload));
   await loadSettings();
   await tick();
   await accounts.refresh();
+  await loadDataFolder();
   setInterval(tick, 15000);
   setInterval(() => accounts.refresh(), 5000);
 } catch (error) {
+  applyAppearance('system');
   showError(error);
   $('save').disabled = true;
   $('connection-state').textContent = 'Saved settings could not be read. Existing choices have not been reset.';
