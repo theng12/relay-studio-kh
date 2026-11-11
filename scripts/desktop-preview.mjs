@@ -78,8 +78,9 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
 `;
 const files = new Map([
   ['/', ['index.html','text/html']],
-  ...['app.mjs','accounts.mjs','app-info.mjs','recovery.mjs','setup.mjs','extension-info.mjs'].map(name=>['/'+name,[name,'text/javascript']]),
-  ['/desktop.css',['desktop.css','text/css']]
+  ...['app.mjs','accounts.mjs','app-info.mjs','recovery.mjs','setup.mjs','extension-info.mjs','browsers.mjs','overview.mjs','shell.mjs'].map(name=>['/'+name,[name,'text/javascript']]),
+  ['/desktop.css',['desktop.css','text/css']],
+  ['/relay-mark.png',['relay-mark.png','image/png']]
 ]);
 const port = Number(process.env.PORT || 7921);
 createServer(async (req,res) => {
@@ -88,7 +89,7 @@ createServer(async (req,res) => {
   if(req.url==='/favicon.ico') {res.writeHead(204).end();return;}
   const entry=files.get(req.url); if(!entry) {res.writeHead(404).end();return;}
   try {
-    let body=await readFile(new URL(entry[0],assets),'utf8');
+    let body=await readFile(new URL(entry[0],assets), entry[1]==='image/png' ? undefined : 'utf8');
     if(entry[0]==='index.html') body=body.replace('<script type="module"','<script src="./fixture-bridge.js"></script><script type="module"').replace('<body>','<body><p style="color:#e7edf6;background:#151b24;padding:12px;font:13px system-ui;margin:0">Browser fixture — synthetic accounts and memory. No Chrome processes, Keychain items, saved login preferences or Gateway jobs are changed.</p>');
     res.setHeader('Content-Type',entry[1]);res.end(body);
   } catch {res.writeHead(500).end('Prepare desktop web assets first.');}
