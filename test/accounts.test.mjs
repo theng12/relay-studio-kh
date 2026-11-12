@@ -422,9 +422,12 @@ test('desktop surface keeps native commands, password pairing and no browser tok
   assert.equal((html.match(/class="nav-row"/g) || []).length, 7, 'one row per destination');
   assert.equal((html.match(/class="nav-row"[\s\S]{0,160}?<svg class="icon"/g) || []).length, 7, 'every nav row carries an icon');
   assert.equal((html.match(/id="overview-(accounts|open|memory|gateway|attention)"/g) || []).length, 5, 'overview dashboard must be complete');
-  for (const value of ['system', 'light', 'dark', 'default']) {
+  for (const value of ['system', 'light', 'dark']) {
     assert.match(html, new RegExp(`name="appearance" value="${value}"`), `missing appearance ${value}`);
   }
+  // Three options only; a stored `default` from an older build resolves to System instead.
+  assert.doesNotMatch(html, /name="appearance" value="default"/, 'the fourth appearance option is gone');
+  assert.equal((html.match(/name="appearance" value=/g) || []).length, 3, 'exactly three appearance choices');
   assert.doesNotMatch(html, /Follow System/, 'the choice is labelled System');
   for (const id of ['browsers-summary', 'browser-attention-only', 'browser-close', 'browser-force', 'browser-cards', 'browser-empty', 'notes', 'notes-title', 'force-blocked', 'force-cancel', 'force-confirm', 'start-at-login', 'data-folder', 'show-data-folder']) {
     assert.match(html, new RegExp(`id="${id}"`), `missing control ${id}`);

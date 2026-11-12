@@ -14,7 +14,15 @@ fn default_appearance() -> String {
     "system".into()
 }
 fn valid_appearance(value: &str) -> bool {
-    matches!(value, "system" | "light" | "dark" | "default")
+    matches!(value, "system" | "light" | "dark")
+}
+/// A stored `default` came from a build that offered a fourth option; it now means `system`.
+fn normalized_appearance(value: &str) -> String {
+    match value {
+        "default" => "system".to_string(),
+        other if valid_appearance(other) => other.to_string(),
+        _ => default_appearance(),
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -106,9 +114,7 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
             let mut settings: Settings = serde_json::from_slice(&bytes)
                 .map_err(|_| "Saved settings are unreadable. The file has not been reset.")?;
             settings.gateway_url = origin(settings.gateway_url.as_deref().unwrap_or(""))?;
-            if !valid_appearance(&settings.appearance) {
-                settings.appearance = default_appearance();
-            }
+            settings.appearance = normalized_appearance(&settings.appearance);
             Ok((settings, false))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -161,7 +167,7 @@ fn save_settings(
     let previous = guard.as_ref().map_err(Clone::clone)?;
     if let Some(value) = appearance.as_deref() {
         if !valid_appearance(value) {
-            return Err("Choose System, Light, Dark or Default for appearance.".into());
+            return Err("Choose System, Light or Dark for appearance.".into());
         }
     }
     let settings = Settings {
@@ -197,8 +203,7 @@ fn window_ground(theme: Theme) -> tauri::window::Color {
 }
 fn appearance_theme(value: &str) -> Option<Theme> {
     match value {
-        // Default is Relay's designed iris look: the light palette.
-        "light" | "default" => Some(Theme::Light),
+        "light" => Some(Theme::Light),
         "dark" => Some(Theme::Dark),
         _ => None,
     }
@@ -482,4 +487,22 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = event { show_settings(app); }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_default_reads_as_system_and_only_three_values_are_accepted() {
+        // The fourth option is gone; an older build's saved choice must not fall through.
+        assert_eq!(normalized_appearance("default"), "system");
+        assert_eq!(normalized_appearance("system"), "system");
+        assert_eq!(normalized_appearance("light"), "light");
+        assert_eq!(normalized_appearance("dark"), "dark");
+        assert_eq!(normalized_appearance("sepia"), "system");
+        assert!(!valid_appearance("default"));
+        assert!(appearance_theme("default").is_none());
+        assert_eq!(appearance_theme("system"), None);
+    }
 }

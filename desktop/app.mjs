@@ -18,19 +18,18 @@ mountOverview(accounts, (page) => shell.show(page));
 setupExtensions(invoke, showError);
 
 const appearanceChoices = [...document.querySelectorAll('input[name="appearance"]')];
-const APPEARANCE = new Set(['system', 'light', 'dark', 'default']);
+const APPEARANCE = new Set(['system', 'light', 'dark']);
 let currentSettings = null;
 
 // In-app only: colour-scheme is scoped to this document, never to macOS.
 function applyAppearance(value) {
-  const choice = APPEARANCE.has(value) ? value : 'system';
+  // A stored `default` came from a build that offered a fourth option; it now means System.
+  const choice = value === 'default' || !APPEARANCE.has(value) ? 'system' : value;
   document.documentElement.dataset.appearance = choice;
   document.documentElement.style.colorScheme = choice === 'dark' ? 'dark' : choice === 'system' ? 'light dark' : 'light';
   for (const input of appearanceChoices) input.checked = input.value === choice;
   $('appearance-state').textContent = choice === 'system'
     ? 'Following this Mac.'
-    : choice === 'default'
-    ? 'Relay’s designed look.'
     : `${choice[0].toUpperCase()}${choice.slice(1)} appearance.`;
 }
 
