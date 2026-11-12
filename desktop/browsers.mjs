@@ -214,7 +214,8 @@ export function mountBrowsers(invoke, accounts) {
     }).length;
     const canForce = residentIds(snapshot?.profiles || [], ids).filter((id) => {
       const profile = snapshot.profiles.find((entry) => entry.id === id);
-      return profile && (!profile.close_pending || (closeElapsedSeconds(profile) ?? 0) >= 3);
+      // A blocked account is not offered at all, in bulk exactly as on its card.
+      return profile && (!profile.close_pending || (closeElapsedSeconds(profile) ?? 0) >= 3) && !forceBlockReason(profile);
     }).length;
     $('browser-open').disabled = busy || !canOpen;
     $('browser-close').disabled = busy || !canClose;
