@@ -1,6 +1,6 @@
 [package]
 name = "relay-studio-kh"
-version = "0.3.8"
+version = "0.3.9"
 edition = "2021"
 publish = false
 
@@ -20,6 +20,8 @@ serde_json = "1"
 sha2 = "0.10"
 url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# dup2 for Chrome's remote-debugging-pipe (fd 3/4); already in the dependency tree.
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"

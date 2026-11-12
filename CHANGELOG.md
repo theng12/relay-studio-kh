@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.9 — 2026-11-12
+- Browsers Relay opens from Accounts now load the bundled Image, Video and Audio extensions themselves — no Load unpacked step. Chrome no longer accepts the old load-extension flag, so Relay uses Chrome's own debugging control.
+- Each extension has a "Load in Relay's browsers" switch on the Extensions page; turn one off and the next browser Relay opens leaves it out.
+- "Show folder" prepares and reveals a version folder without copying a path, and "Check loaded in open browsers" asks Chrome what it actually loaded, with versions.
+
 ## 0.3.8 — 2026-11-12
 - The second accounts view is called Card; a previously saved Grid choice still opens Card.
 - Account details open from a Show details button. The disclosure triangle is gone from every screen, including the Gateway worker list.

@@ -1325,6 +1325,7 @@ pub(crate) struct BrowserManager {
 }
 
 struct Shared {
+    app: tauri::AppHandle,
     state_path: PathBuf,
     profiles_dir: PathBuf,
     chrome: Option<PathBuf>,
@@ -1332,7 +1333,14 @@ struct Shared {
     inner: Mutex<Inner>,
     // Retained spawn leases: a live Child proves this exact pid is still our process, so its
     // start time may be captured safely and a reused pid is never adopted.
-    children: Mutex<HashMap<u32, Child>>,
+    children: Mutex<HashMap<u32, SpawnLease>>,
+}
+
+struct SpawnLease {
+    child: Child,
+    // Session-scoped Chrome control pipe used to load and report Relay's extensions; dropping it
+    // ends Chrome, so the lease owns it for the process lifetime.
+    devtools: Option<super::devtools::Devtools>,
 }
 
 struct Inner {
@@ -1380,6 +1388,7 @@ pub(crate) fn init(app: &tauri::AppHandle) -> Result<BrowserManager, String> {
     let authority: Arc<dyn ManagerGateway> = gateway.clone();
     let _ = install_gateway(authority);
     let shared = Arc::new(Shared {
+        app: app.clone(),
         state_path,
         profiles_dir,
         chrome,
@@ -1650,47 +1659,72 @@ pub(crate) fn manager_delete_profile(
     finish(shared)
 }
 
-fn today() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // 2026-11-12 style date without pulling in a date crate: days since the epoch to civil date.
-    let days = (seconds / 86_400) as i64;
-    let (y, m, d) = civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}")
+#[derive(Serialize)]
+pub(crate) struct LoadedExtension {
+    id: String,
+    name: String,
+    version: String,
+    path: String,
+    enabled: bool,
 }
 
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
+#[derive(Serialize)]
+pub(crate) struct BrowserExtensions {
+    number: u32,
+    label: String,
+    extensions: Vec<LoadedExtension>,
 }
 
-fn safe_label(label: &str) -> String {
-    let cleaned: String = label
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '@' || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(40)
-        .collect();
-    if cleaned.is_empty() {
-        "account".to_string()
-    } else {
-        cleaned
+/// What Chrome itself reports as loaded in each browser Relay opened. Read from the retained
+/// control pipe, so it is Chrome's registry, not Relay's intention.
+#[tauri::command]
+pub(crate) fn manager_loaded_extensions(
+    window: WebviewWindow,
+    manager: State<'_, BrowserManager>,
+) -> Result<Vec<BrowserExtensions>, String> {
+    super::local_only(&window)?;
+    let running: Vec<(u32, String, Option<u32>)> = {
+        let guard = locked(&manager.shared)?;
+        guard
+            .stored
+            .as_ref()
+            .map(|stored| {
+                stored
+                    .profiles
+                    .iter()
+                    .filter(|profile| profile.pid.is_some())
+                    .map(|profile| (profile.number, profile.label.clone(), profile.pid))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut rows = Vec::new();
+    let mut children = manager
+        .shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (number, label, pid) in running {
+        let Some(pid) = pid else { continue };
+        let Some(lease) = children.get_mut(&pid) else { continue };
+        let Some(devtools) = lease.devtools.as_mut() else { continue };
+        let extensions = devtools
+            .extensions()
+            .map_err(|error| format!("{label}: {error}"))?
+            .into_iter()
+            .filter_map(|value| {
+                Some(LoadedExtension {
+                    id: value.get("id")?.as_str()?.to_string(),
+                    name: value.get("name")?.as_str()?.to_string(),
+                    version: value.get("version")?.as_str()?.to_string(),
+                    path: value.get("path")?.as_str()?.to_string(),
+                    enabled: value.get("enabled").and_then(|enabled| enabled.as_bool()).unwrap_or(false),
+                })
+            })
+            .collect();
+        rows.push(BrowserExtensions { number, label, extensions });
     }
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -2159,7 +2193,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
             .children
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        children.retain(|_, child| child.try_wait().is_ok_and(|status| status.is_none()));
+        children.retain(|_, lease| lease.child.try_wait().is_ok_and(|status| status.is_none()));
     }
     for profile in stored.profiles.iter_mut() {
         if profile.pid_started.is_some() {
@@ -2331,11 +2365,21 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 Ok(()) => {
                     let id = profile.id.clone();
                     match launch(shared, &mut stored.profiles[index], chrome_path) {
-                        Ok(()) => {
+                        Ok(problems) => {
                             changed = true;
                             launched = true;
                             errors.remove(&id);
                             attention.remove(&id);
+                            if let Some(first) = problems.first() {
+                                lifecycle_log(
+                                    shared,
+                                    &format!("extensions not loaded for profile {id}: {}", problems.join("; ")),
+                                );
+                                errors.insert(
+                                    id.clone(),
+                                    format!("Chrome opened, but an extension did not load: {first}"),
+                                );
+                            }
                             resident = resident.saturating_add(1);
                             match estimate {
                                 Some(value) => {
@@ -2834,12 +2878,25 @@ fn forget_process(profile: &mut StoredProfile) {
     profile.binary = None;
 }
 
-fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result<(), String> {
+fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result<Vec<String>, String> {
     let directory = profile_dir(shared, &profile.id)?;
-    let child = Command::new(chrome)
-        .arg(user_data_arg(&directory))
+    let (extension_directories, mut problems) = super::extensions::loadable_extensions(&shared.app);
+    let mut command = Command::new(chrome);
+    command.arg(user_data_arg(&directory));
+    let mut devtools = None;
+    if !extension_directories.is_empty() {
+        match super::devtools::attach(&mut command) {
+            Ok(attached) => devtools = Some(attached),
+            Err(error) => problems.push(error),
+        }
+    }
+    let child = command
         .spawn()
         .map_err(|_| "Could not start Google Chrome for this profile.".to_string())?;
+    if let Some(attached) = devtools.as_mut() {
+        attached.spawned();
+        problems.extend(attached.load_unpacked(&extension_directories));
+    }
     let pid = child.id();
     let binary = chrome.to_string_lossy().into_owned();
     profile.pid = Some(pid);
@@ -2851,10 +2908,16 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
             .children
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        children.insert(pid, child);
+        children.insert(
+            pid,
+            SpawnLease {
+                child,
+                devtools,
+            },
+        );
     }
     profile.pid_started = capture_identity(shared, pid, &binary);
-    Ok(())
+    Ok(problems)
 }
 
 /// Exact start time of the retained spawn, confirmed by the live Child and our binary. A failed
@@ -2865,7 +2928,7 @@ fn leased_identity(shared: &Shared, pid: u32, binary: &str) -> Option<String> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let alive = match children.get_mut(&pid) {
-        Some(child) => child.try_wait().is_ok_and(|status| status.is_none()),
+        Some(lease) => lease.child.try_wait().is_ok_and(|status| status.is_none()),
         None => return None,
     };
     if !alive {
@@ -2895,7 +2958,7 @@ fn leased_running(shared: &Shared, pid: u32) -> bool {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let alive = match children.get_mut(&pid) {
-        Some(child) => child.try_wait().is_ok_and(|status| status.is_none()),
+        Some(lease) => lease.child.try_wait().is_ok_and(|status| status.is_none()),
         None => return false,
     };
     if !alive {

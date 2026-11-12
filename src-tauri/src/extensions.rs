@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fs,
     path::{Component, Path, PathBuf},
     process::Command,
@@ -37,9 +38,14 @@ struct Extension {
     available: bool,
     #[serde(default = "required_by_default")]
     required: bool,
+    #[serde(default = "enabled_by_default")]
+    enabled: bool,
     reason: Option<String>,
     files: Vec<FileEntry>,
     payload_sha256: Option<String>,
+}
+fn enabled_by_default() -> bool {
+    true
 }
 #[derive(Deserialize, Serialize)]
 struct Catalog {
@@ -105,6 +111,71 @@ fn catalog(app: &tauri::AppHandle) -> Result<(Catalog, PathBuf), String> {
         );
     }
     Ok((catalog, root))
+}
+fn enabled_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Relay support folder is unavailable.")?
+        .join("extensions")
+        .join("enabled.json"))
+}
+// A missing or unreadable file means every bundled extension stays on; the file only records opt-outs.
+fn enabled_map(app: &tauri::AppHandle) -> HashMap<String, bool> {
+    enabled_path(app)
+        .ok()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+fn setup(app: &tauri::AppHandle) -> Result<Setup, String> {
+    let (mut catalog, _) = catalog(app)?;
+    let states = enabled_map(app);
+    for extension in &mut catalog.extensions {
+        extension.enabled = states.get(&extension.id).copied().unwrap_or(true);
+    }
+    Ok(Setup {
+        browsers: browsers()?,
+        extensions: catalog.extensions,
+    })
+}
+/// Directories for the extensions Relay should load into the Chrome it starts: available and
+/// enabled, prepared on demand. Problems are returned so the caller can say what Chrome missed.
+pub(crate) fn loadable_extensions(app: &tauri::AppHandle) -> (Vec<PathBuf>, Vec<String>) {
+    let mut directories = Vec::new();
+    let mut problems = Vec::new();
+    let Ok((catalog, _)) = catalog(app) else {
+        return (directories, vec!["Bundled extension index is unavailable.".into()]);
+    };
+    let states = enabled_map(app);
+    for entry in catalog
+        .extensions
+        .iter()
+        .filter(|entry| entry.available && states.get(&entry.id).copied().unwrap_or(true))
+    {
+        let (extension, source) = match selected(app, &entry.id) {
+            Ok(value) => value,
+            Err(error) => {
+                problems.push(format!("{}: {error}", entry.id));
+                continue;
+            }
+        };
+        let target = match folder(app, &extension) {
+            Ok(path) => path,
+            Err(error) => {
+                problems.push(format!("{}: {error}", entry.id));
+                continue;
+            }
+        };
+        if !target.exists() {
+            if let Err(error) = prepare_copy(app, &extension, &source) {
+                problems.push(format!("{}: {error}", entry.id));
+                continue;
+            }
+        }
+        directories.push(target);
+    }
+    (directories, problems)
 }
 fn hex(value: &str, size: usize) -> bool {
     value.len() == size && value.bytes().all(|c| c.is_ascii_hexdigit())
@@ -266,11 +337,32 @@ pub(crate) async fn get_extension_setup(
     app: tauri::AppHandle,
 ) -> Result<Setup, String> {
     super::local_only(&window)?;
+    setup(&app)
+}
+#[tauri::command]
+pub(crate) async fn set_extension_enabled(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    extension_id: String,
+    enabled: bool,
+) -> Result<Setup, String> {
+    super::local_only(&window)?;
     let (catalog, _) = catalog(&app)?;
-    Ok(Setup {
-        browsers: browsers()?,
-        extensions: catalog.extensions,
-    })
+    if !catalog.extensions.iter().any(|entry| entry.id == extension_id) {
+        return Err("Unknown extension.".into());
+    }
+    let path = enabled_path(&app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|_| "Could not create Relay's extension folder.")?;
+    }
+    let mut states = enabled_map(&app);
+    states.insert(extension_id, enabled);
+    let bytes = serde_json::to_vec_pretty(&states)
+        .map_err(|_| "Could not record the extension choice.")?;
+    let pending = path.with_extension("json.pending");
+    fs::write(&pending, bytes).map_err(|_| "Could not record the extension choice.")?;
+    fs::rename(&pending, &path).map_err(|_| "Could not record the extension choice.")?;
+    setup(&app)
 }
 #[tauri::command]
 pub(crate) async fn open_extension_settings(
