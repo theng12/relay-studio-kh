@@ -2124,6 +2124,14 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
             }
             Some(Ownership::Reused) | None if profile.pid.is_some() => {
                 let wanted = profile.desired_open;
+                // Say so rather than forgetting silently: a pid we cannot verify is an orphan we
+                // found, and the next reader should be able to see it happened.
+                if let Some(pid) = profile.pid {
+                    lifecycle_log(shared, &format!(
+                        "launch: dropped recorded Chrome pid {pid} for profile {} — it no longer matches Relay's own process",
+                        profile.id
+                    ));
+                }
                 forget_process(profile);
                 changed = true;
                 if wanted && !profile.close_pending {
@@ -2312,6 +2320,94 @@ fn paid_work_block(profile: &GatewayProfile) -> Option<String> {
         "Gateway reports active or uncertain work for this account. Relay will not force it."
             .to_string()
     })
+}
+
+/// What happens to a Chrome process Relay started when Relay is quitting.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ExitAction {
+    Stop,
+    Leave(String),
+}
+
+/// A busy profile is left alone: killing it can interrupt paid generation or a half-finished
+/// sign-in, and an orphan we can name is a smaller failure than a browser taken from under
+/// someone's hands.
+fn exit_action(owned_process: bool, paid: Option<String>) -> ExitAction {
+    match (owned_process, paid) {
+        (false, _) => {
+            ExitAction::Leave("the recorded process could not be verified as Relay's own".into())
+        }
+        (true, Some(reason)) => ExitAction::Leave(reason),
+        (true, None) => ExitAction::Stop,
+    }
+}
+
+fn lifecycle_log(shared: &Shared, line: &str) {
+    let Some(dir) = shared.state_path.parent() else {
+        return;
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("lifecycle.log"))
+    {
+        let _ = std::io::Write::write_all(&mut file, format!("{stamp} {line}\n").as_bytes());
+    }
+}
+
+/// Quit-time cleanup: stop the Chrome processes Relay started that have no active or uncertain
+/// paid work, and name the ones left running so the next launch is not surprised by them.
+pub(crate) fn shutdown(manager: &BrowserManager) {
+    let shared = &manager.shared;
+    let Ok(mut children) = shared.children.lock() else {
+        return;
+    };
+    if children.is_empty() {
+        return;
+    }
+    let profiles: Vec<(Option<u32>, GatewayProfile)> = {
+        let Ok(guard) = locked(shared) else { return };
+        let Some(stored) = guard.stored.clone() else {
+            return;
+        };
+        let pids: HashMap<String, Option<u32>> = stored
+            .profiles
+            .iter()
+            .map(|profile| (profile.id.clone(), profile.pid))
+            .collect();
+        gateway_profiles(&stored)
+            .into_iter()
+            .map(|view| (pids.get(&view.id).copied().flatten(), view))
+            .collect()
+    };
+    let mut stopping = Vec::new();
+    for pid in children.keys().copied().collect::<Vec<_>>() {
+        let profile = profiles.iter().find(|(recorded, _)| *recorded == Some(pid));
+        let paid = profile.and_then(|(_, view)| paid_work_block(view));
+        match exit_action(profile.is_some(), paid) {
+            ExitAction::Stop => {
+                let _ = terminate(pid);
+                stopping.push(pid);
+                lifecycle_log(
+                    shared,
+                    &format!("quit: stopped Chrome pid {pid} (no active paid work)"),
+                );
+            }
+            ExitAction::Leave(reason) => {
+                lifecycle_log(
+                    shared,
+                    &format!("quit: left Chrome pid {pid} running — {reason}"),
+                );
+            }
+        }
+    }
+    for pid in stopping {
+        children.remove(&pid);
+    }
 }
 
 fn close_action(owned_process: bool, authorization: CloseAuthorization) -> CloseAction {
@@ -3015,6 +3111,30 @@ fn save_state(path: &Path, stored: &Stored) -> Result<(), String> {
     fs::rename(&temporary, path).map_err(|_| {
         "Could not replace browser profile settings; existing choices are retained.".to_string()
     })
+}
+
+#[cfg(test)]
+mod exit_tests {
+    use super::{exit_action, ExitAction};
+
+    #[test]
+    fn quit_stops_an_idle_owned_browser_and_leaves_a_busy_one() {
+        // Idle and provably ours: stopped.
+        assert_eq!(exit_action(true, None), ExitAction::Stop);
+        // Active or uncertain paid work: left running, with the reason recorded.
+        match exit_action(
+            true,
+            Some("Gateway reports active or uncertain work".into()),
+        ) {
+            ExitAction::Leave(reason) => assert!(reason.contains("active or uncertain")),
+            other => panic!("a busy profile must never be stopped on exit: {other:?}"),
+        }
+        // Not provably ours: never killed on the strength of a recorded pid.
+        match exit_action(false, None) {
+            ExitAction::Leave(reason) => assert!(reason.contains("could not be verified")),
+            other => panic!("an unverified process must never be stopped: {other:?}"),
+        }
+    }
 }
 
 #[cfg(test)]

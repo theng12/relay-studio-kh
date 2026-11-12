@@ -213,7 +213,10 @@ fn apply_appearance(window: &WebviewWindow, value: &str) {
     let _ = window.set_theme(appearance_theme(value));
     let ground = match appearance_theme(value) {
         Some(theme) => window_ground(theme),
-        None => window.theme().map(window_ground).unwrap_or(window_ground(Theme::Light)),
+        None => window
+            .theme()
+            .map(window_ground)
+            .unwrap_or(window_ground(Theme::Light)),
     };
     let _ = window.set_background_color(Some(ground));
 }
@@ -225,7 +228,10 @@ struct SavedFrame {
     height: f64,
 }
 fn frame_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|dir| dir.join("window.json"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join("window.json"))
 }
 fn read_frame(app: &tauri::AppHandle) -> Option<SavedFrame> {
     let frame: SavedFrame = serde_json::from_slice(&fs::read(frame_path(app)?).ok()?).ok()?;
@@ -336,7 +342,10 @@ fn report_second_launch(app: &tauri::AppHandle) {
 fn login_item_is_stale(registered: &str, exe_path: &str) -> bool {
     // Compare the plist's own entries exactly: a substring test would accept another copy whose
     // path merely ends with the same bundle name.
-    let entries = registered.split("<string>").skip(1).filter_map(|part| part.split("</string>").next());
+    let entries = registered
+        .split("<string>")
+        .skip(1)
+        .filter_map(|part| part.split("</string>").next());
     !entries.into_iter().any(|entry| entry.trim() == exe_path)
 }
 /// The LaunchAgent plist is written with the executable path of whichever copy registered it, so
@@ -347,11 +356,19 @@ fn heal_login_item(app: &tauri::AppHandle, start_at_login: bool) {
     if !start_at_login {
         return;
     }
-    let Ok(exe) = std::env::current_exe() else { return };
-    let Ok(home) = app.path().home_dir() else { return };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Ok(home) = app.path().home_dir() else {
+        return;
+    };
     let plist = home.join("Library/LaunchAgents/Relay Studio KH.plist");
-    let Ok(registered) = fs::read_to_string(&plist) else { return };
-    if login_item_is_stale(&registered, &exe.to_string_lossy()) && app.autolaunch().enable().is_err() {
+    let Ok(registered) = fs::read_to_string(&plist) else {
+        return;
+    };
+    if login_item_is_stale(&registered, &exe.to_string_lossy())
+        && app.autolaunch().enable().is_err()
+    {
         if let Some(state) = app.try_state::<NativeState>() {
             if let Ok(mut error) = state.login_error.lock() {
                 *error = Some(
@@ -533,6 +550,11 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 if let Some(window) = app.get_webview_window("main") {
                     save_webview_frame(&window);
+                }
+                // Nothing Relay starts may outlive it: idle browsers are stopped, busy ones are
+                // left running and named in lifecycle.log.
+                if let Some(manager) = app.try_state::<browser_manager::BrowserManager>() {
+                    browser_manager::shutdown(&manager);
                 }
             }
             #[cfg(target_os = "macos")]
