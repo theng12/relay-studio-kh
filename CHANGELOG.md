@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.6 — 2026-11-12
+- Rename and Delete are always visible on every account row; they are no longer hidden until the pointer hovers the row.
+
 ## 0.3.5 — 2026-11-12
 - Gateway's admin pages button sits apart from pairing, says it asks for the Gateway app's browser password, and says it is never needed to pair or to claim work.
 - Pairing reads as what it is: mint a manager token in Gateway → Providers → Browser workers, then paste it here.
