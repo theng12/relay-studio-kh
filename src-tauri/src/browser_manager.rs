@@ -1388,6 +1388,13 @@ pub(crate) fn init(app: &tauri::AppHandle) -> Result<BrowserManager, String> {
         }
         Err(error) => (None, Some(error)),
     };
+    // Credentials live in Relay's own support folder (mode 0600), never the Keychain.
+    let support = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Relay's support folder is unavailable.")?;
+    manager_gateway::init_store(support.join("manager-token.json"));
+    super::seeding::init_store(support.join("extension-workers.json"));
     let gateway = Arc::new(LiveGateway::new(app.clone()));
     let authority: Arc<dyn ManagerGateway> = gateway.clone();
     let _ = install_gateway(authority);

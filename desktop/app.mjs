@@ -156,9 +156,9 @@ async function loadWorkerCredentials() {
       const title = document.createElement('strong');
       title.textContent = WORKER_KINDS[row.kind] || row.kind;
       const state = document.createElement('span');
-      state.className = `state ${row.denied ? 'bad' : row.has_token ? 'ok' : 'off'}`;
-      state.textContent = row.denied
-        ? 'Keychain access was denied — allow Relay when macOS asks, then save again'
+      state.className = `state ${row.unreadable ? 'bad' : row.has_token ? 'ok' : 'off'}`;
+      state.textContent = row.unreadable
+        ? 'The saved worker token could not be read — save it again'
         : row.has_token ? `Saved for worker ${row.worker_id}` : 'No worker token saved';
       const worker = document.createElement('input');
       worker.type = 'text';
@@ -173,6 +173,15 @@ async function loadWorkerCredentials() {
       token.spellcheck = false;
       token.placeholder = 'Worker token from Gateway';
       token.setAttribute('aria-label', `${title.textContent} worker token`);
+      const reveal = document.createElement('button');
+      reveal.type = 'button';
+      reveal.className = 'ghost';
+      reveal.textContent = 'Show';
+      reveal.addEventListener('click', () => {
+        const shown = token.type === 'text';
+        token.type = shown ? 'password' : 'text';
+        reveal.textContent = shown ? 'Show' : 'Hide';
+      });
       const save = document.createElement('button');
       save.type = 'button';
       save.textContent = 'Save';
@@ -181,7 +190,7 @@ async function loadWorkerCredentials() {
         try {
           await invoke('save_extension_worker', { kind: row.kind, workerId: worker.value.trim(), token: token.value });
           token.value = '';
-          $('extension-workers-state').textContent = `${title.textContent} worker saved in the Keychain. The token is never shown again.`;
+          $('extension-workers-state').textContent = `${title.textContent} worker saved in Relay's data folder. The token is never shown again.`;
           await loadWorkerCredentials();
         } catch (error) { $('extension-workers-state').textContent = String(error); }
         finally { save.disabled = false; }
@@ -197,7 +206,7 @@ async function loadWorkerCredentials() {
           await loadWorkerCredentials();
         } catch (error) { $('extension-workers-state').textContent = String(error); }
       });
-      wrap.append(title, state, worker, token, save, clear);
+      wrap.append(title, state, worker, token, reveal, save, clear);
       list.append(wrap);
     }
   } catch (error) { $('extension-workers-state').textContent = `Worker credentials could not be read. ${String(error)}`; }

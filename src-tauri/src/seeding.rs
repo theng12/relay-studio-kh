@@ -1,17 +1,46 @@
-//! Extension worker credentials entered once in Relay, kept in the Keychain, and seeded into the
-//! extension inside each Chrome Relay opens. The token is never returned to the page after saving
-//! and never written to browser storage by Relay itself.
+//! Extension worker credentials entered once in Relay, kept in a private file in Relay's own
+//! support folder (mode 0600), and seeded into the extension inside each Chrome Relay opens.
+//! The token is never returned to the page after saving and never written to browser storage.
 use serde::Serialize;
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 // Only kinds with a per-account binding can be seeded; audio has none, so it is never offered.
 pub(crate) const KINDS: [&str; 2] = ["image", "video"];
 const FOLDER_KINDS: [&str; 3] = ["image", "video", "audio"];
-const KEYCHAIN_SERVICE: &str = "kh.relay.desktop.extension-worker";
-const CREDENTIAL_VERSION: u8 = 1;
+// Legacy Keychain service, touched once to move tokens saved by earlier builds into the file.
+const LEGACY_KEYCHAIN_SERVICE: &str = "kh.relay.desktop.extension-worker";
+const FILE_VERSION: u8 = 1;
 
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
+static STORE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+pub(crate) fn init_store(path: PathBuf) {
+    let _ = STORE.set(path);
+}
+fn store_path() -> Result<&'static PathBuf, String> {
+    STORE.get().ok_or_else(|| "Relay's worker credential file is unavailable.".to_string())
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 struct Stored {
+    worker_id: String,
+    token: String,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct CredentialFile {
+    version: u8,
+    workers: BTreeMap<String, Stored>,
+}
+
+impl CredentialFile {
+    fn empty() -> Self {
+        Self { version: FILE_VERSION, workers: BTreeMap::new() }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyStored {
     version: u8,
     worker_id: String,
     token: String,
@@ -22,14 +51,15 @@ pub(crate) struct Status {
     kind: &'static str,
     worker_id: Option<String>,
     has_token: bool,
-    /// True when macOS refused the read (a prompt was declined, or interaction is blocked).
-    denied: bool,
+    /// True when the file exists but cannot be read or parsed; the token must be saved again.
+    unreadable: bool,
 }
 
+#[derive(Debug)]
 enum ReadOutcome {
     Found(Stored),
     Missing,
-    Denied,
+    Unreadable,
 }
 
 fn label(kind: &str) -> &'static str {
@@ -43,85 +73,109 @@ fn account(kind: &str) -> String {
     format!("worker-{kind}")
 }
 
-#[cfg(target_os = "macos")]
-fn read(kind: &str) -> ReadOutcome {
-    match security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, &account(kind)) {
-        Ok(bytes) => match serde_json::from_slice::<Stored>(&bytes) {
-            Ok(stored)
-                if stored.version == CREDENTIAL_VERSION
-                    && !stored.worker_id.is_empty()
-                    && !stored.token.is_empty()
-                    && stored.worker_id.len() <= 160 =>
-            {
-                ReadOutcome::Found(stored)
-            }
-            _ => ReadOutcome::Missing,
-        },
-        // errSecItemNotFound: nothing saved.
-        Err(error) if error.code() == -25300 => ReadOutcome::Missing,
-        // Anything else is a refusal (declined prompt, interaction not allowed, auth failure,
-        // timeout). Say so instead of pretending no token exists.
-        Err(_) => ReadOutcome::Denied,
+fn load_file(path: &Path) -> Result<CredentialFile, ReadOutcome> {
+    match crate::storage::read_private(path) {
+        Ok(bytes) => {
+            let file: CredentialFile =
+                serde_json::from_slice(&bytes).map_err(|_| ReadOutcome::Unreadable)?;
+            (file.version == FILE_VERSION).then_some(file).ok_or(ReadOutcome::Unreadable)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(CredentialFile::empty()),
+        Err(_) => Err(ReadOutcome::Unreadable),
     }
 }
-#[cfg(not(target_os = "macos"))]
-fn read(_: &str) -> ReadOutcome {
+
+fn save_file(path: &Path, file: &CredentialFile) -> Result<(), String> {
+    let bytes = serde_json::to_vec(file)
+        .map_err(|_| "Could not encode the worker credentials.".to_string())?;
+    crate::storage::write_private(path, &bytes)
+        .map_err(|_| "Relay could not save the worker token in its data folder.".to_string())
+}
+
+fn valid(stored: &Stored) -> bool {
+    !stored.worker_id.is_empty() && !stored.token.is_empty() && stored.worker_id.len() <= 160
+}
+
+fn read(kind: &str) -> ReadOutcome {
+    let Ok(path) = store_path() else {
+        return ReadOutcome::Unreadable;
+    };
+    match load_file(path) {
+        Ok(file) => match file.workers.get(kind) {
+            Some(stored) if valid(stored) => ReadOutcome::Found(stored.clone()),
+            Some(_) => ReadOutcome::Unreadable,
+            None => migrate_legacy(path, kind),
+        },
+        Err(outcome) => outcome,
+    }
+}
+
+/// One attempt per launch and only when the file has no entry: move a token saved by earlier
+/// Keychain builds into the file and delete the item. A refused read is never retried by the
+/// same launch, so the app cannot prompt in a loop.
+fn migrate_legacy(path: &Path, kind: &str) -> ReadOutcome {
+    let marker = path.with_extension(format!("legacy-tried-{kind}"));
+    if marker.exists() {
+        return ReadOutcome::Missing;
+    }
+    let _ = crate::storage::write_private(&marker, b"1");
+    #[cfg(target_os = "macos")]
+    if let Ok(bytes) = security_framework::passwords::get_generic_password(
+        LEGACY_KEYCHAIN_SERVICE,
+        &account(kind),
+    ) {
+        if let Ok(legacy) = serde_json::from_slice::<LegacyStored>(&bytes) {
+            let stored = Stored { worker_id: legacy.worker_id, token: legacy.token };
+            if legacy.version == 1 && valid(&stored) {
+                let mut file = load_file(path).unwrap_or_else(|_| CredentialFile::empty());
+                file.workers.insert(kind.to_string(), stored.clone());
+                if save_file(path, &file).is_ok() {
+                    let _ = security_framework::passwords::delete_generic_password(
+                        LEGACY_KEYCHAIN_SERVICE,
+                        &account(kind),
+                    );
+                    return ReadOutcome::Found(stored);
+                }
+            }
+        }
+    }
     ReadOutcome::Missing
 }
 
-#[cfg(target_os = "macos")]
 fn write(kind: &str, worker_id: &str, token: &str) -> Result<(), String> {
-    let stored = Stored { version: CREDENTIAL_VERSION, worker_id: worker_id.to_string(), token: token.to_string() };
-    let bytes = serde_json::to_vec(&stored).map_err(|_| "Could not encode the worker credential.")?;
-    // Delete + add re-mints the item's ACL for THIS build; security_framework's update would keep
-    // an older ACL that a rebuild may no longer satisfy.
-    let _ = security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, &account(kind));
-    security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, &account(kind), &bytes)
-        .map_err(|error| format!("Relay could not save this credential in the Keychain (status {}).", error.code()))
-}
-#[cfg(not(target_os = "macos"))]
-fn write(_: &str, _: &str, _: &str) -> Result<(), String> {
-    Err("Extension worker credentials are available only on macOS.".into())
+    let path = store_path()?;
+    let mut file = match load_file(path) {
+        Ok(file) => file,
+        Err(_) => CredentialFile::empty(),
+    };
+    file.workers.insert(kind.to_string(), Stored { worker_id: worker_id.to_string(), token: token.to_string() });
+    save_file(path, &file)
 }
 
-#[cfg(target_os = "macos")]
 fn remove(kind: &str) -> Result<(), String> {
-    match security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, &account(kind)) {
-        Ok(()) => Ok(()),
-        // Deleting only our own item; an absent item is already the goal.
-        Err(error) if error.code() == -25300 => Ok(()),
-        Err(error) => Err(format!("Relay could not remove this credential (status {}).", error.code())),
-    }
-}
-#[cfg(not(target_os = "macos"))]
-fn remove(_: &str) -> Result<(), String> {
-    Err("Extension worker credentials are available only on macOS.".into())
+    let path = store_path()?;
+    let mut file = match load_file(path) {
+        Ok(file) => file,
+        Err(_) => CredentialFile::empty(),
+    };
+    file.workers.remove(kind);
+    save_file(path, &file)
 }
 
 pub(crate) fn status_all() -> Vec<Status> {
     KINDS
         .iter()
         .map(|kind| match read(kind) {
-            ReadOutcome::Found(stored) => {
-                // Self-heal: a token that could be read is rewritten once per launch so its ACL
-                // belongs to this build (macOS may have asked once after an update).
-                if !refreshed(kind) {
-                    let _ = write(kind, &stored.worker_id, &stored.token);
-                }
-                Status { kind, worker_id: Some(stored.worker_id), has_token: true, denied: false }
-            }
-            ReadOutcome::Missing => Status { kind, worker_id: None, has_token: false, denied: false },
-            ReadOutcome::Denied => Status { kind, worker_id: None, has_token: false, denied: true },
+            ReadOutcome::Found(stored) => Status {
+                kind,
+                worker_id: Some(stored.worker_id),
+                has_token: true,
+                unreadable: false,
+            },
+            ReadOutcome::Missing => Status { kind, worker_id: None, has_token: false, unreadable: false },
+            ReadOutcome::Unreadable => Status { kind, worker_id: None, has_token: false, unreadable: true },
         })
         .collect()
-}
-
-fn refreshed(kind: &str) -> bool {
-    use std::sync::{Mutex, OnceLock};
-    static REFRESHED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
-    let set = REFRESHED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
-    let mut guard = set.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    !guard.insert(kind.to_string())
 }
 
 fn valid_kind(kind: &str) -> Result<(), String> {
@@ -179,7 +233,7 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
     let stored = match read(kind) {
         ReadOutcome::Found(value) => value,
         ReadOutcome::Missing => return format!("{}: not seeded — no worker token saved in Relay", label(kind)),
-        ReadOutcome::Denied => return format!("{}: not seeded — Keychain access was denied; allow Relay and retry", label(kind)),
+        ReadOutcome::Unreadable => return format!("{}: not seeded — its saved worker token could not be read; save it again", label(kind)),
     };
     if stored.worker_id != bound {
         return format!("{}: not seeded — the saved token belongs to worker {}, not {}", label(kind), stored.worker_id, bound);
@@ -223,4 +277,41 @@ pub(crate) async fn clear_extension_worker(window: tauri::WebviewWindow, kind: S
 pub(crate) fn kind_for_dir(directory: &Path) -> Option<&'static str> {
     let parent = directory.parent()?.file_name()?.to_str()?;
     FOLDER_KINDS.iter().copied().find(|kind| *kind == parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("relay-seed-test-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("extension-workers.json")
+    }
+
+    #[test]
+    fn credential_file_round_trips_and_never_parses_garbage() {
+        let path = temp_path("roundtrip");
+        let mut file = CredentialFile::empty();
+        file.workers.insert("image".into(), Stored { worker_id: "local-image-1".into(), token: "ekw_secret".into() });
+        save_file(&path, &file).unwrap();
+        let loaded = load_file(&path).unwrap();
+        assert_eq!(loaded.workers.get("image").unwrap().worker_id, "local-image-1");
+        std::fs::write(&path, b"not json").unwrap();
+        assert!(matches!(load_file(&path), Err(ReadOutcome::Unreadable)));
+        let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&path).unwrap().permissions());
+        assert_eq!(mode & 0o777, 0o600, "credential files are readable only by this user");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn private_writes_are_0600_and_atomic() {
+        let path = temp_path("private");
+        crate::storage::write_private(&path, b"secret").unwrap();
+        let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&path).unwrap().permissions());
+        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(crate::storage::read_private(&path).unwrap(), b"secret");
+        assert!(!path.with_extension("pending").exists());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 }

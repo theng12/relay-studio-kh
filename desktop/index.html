@@ -199,7 +199,7 @@
             <div class="actions"><button class="primary" id="manager-settings-save" type="submit">Save memory and pacing</button></div>
             <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
             <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
-            <p class="help">The reserve is kept free for macOS and other apps: the room left is available memory minus the reserve, and how many more accounts fit is that room divided by the measured per-account memory. Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget uses measured memory; a blank maximum means no account-count cap.</p>
+            <p class="help">The budget caps the measured memory of all open accounts; the reserve is kept free for macOS and other apps, so the room left is available memory minus the reserve. How many more accounts fit uses whichever is tighter: the budget left or that room, divided by the measured per-account memory. Measured use is not a cap: the first opened account is measured, and that figure governs the next. Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget uses measured memory; a blank maximum means no account-count cap.</p>
           </form>
         </div>
       </section>
@@ -221,7 +221,7 @@
 
         <div class="card">
           <h3 id="extension-workers-title">Extension workers</h3>
-          <p>Paste each worker's id and the <code>ekw_</code> token Gateway showed once — <strong>Gateway → Providers → Browser workers → Pair</strong>. Relay keeps them in this Mac's Keychain, never shows the token again, and seeds them into the extension in the Chrome it opens. A kind with no token stays unseeded and says so on its account row. macOS may ask once after an update; choose Always Allow and the token keeps working.</p>
+          <p>Paste each worker's id and the <code>ekw_</code> token Gateway showed once — <strong>Gateway → Providers → Browser workers → Pair</strong>. Relay keeps them in its own data folder (readable only by this Mac user), never shows the token again, and seeds them into the extension in the Chrome it opens. A kind with no token stays unseeded and says so on its account row.</p>
           <div id="extension-workers"></div>
           <p id="extension-workers-state" class="secondary" role="status" aria-live="polite"></p>
         </div>
@@ -231,7 +231,7 @@
           <p id="manager-pairing-state" class="state off" role="status">Not paired</p>
           <p id="manager-pairing-note" class="secondary" role="status">Pairing status comes from the native manager.</p>
           <p>A <strong>manager token</strong> is a credential scoped to the worker IDs Relay controls. Relay uses it to arm dispatch and to set pacing for those workers — it is not the <code>ekw_</code> worker token an extension uses to claim jobs, and it cannot claim or generate anything itself.</p>
-          <p>Mint it in <strong>Gateway → Providers → Browser workers</strong>, for exactly the worker IDs saved here, or with <code>POST /admin/api/extension-workers/manager</code> passing <code>manager_id</code> and <code>worker_ids</code>. It is shown once; Gateway stores only a hash, and Relay keeps its copy in this Mac’s Keychain.</p>
+          <p>Mint it in <strong>Gateway → Providers → Browser workers</strong>, for exactly the worker IDs saved here, or with <code>POST /admin/api/extension-workers/manager</code> passing <code>manager_id</code> and <code>worker_ids</code>. It is shown once; Gateway stores only a hash, and Relay keeps its copy in its own data folder.</p>
           <p class="help">Dispatch can also be armed without Relay holding a manager token, from the same Browser workers pane. A worker sitting at <code>204</code> is usually dispatch that was never armed, not a failed pairing.</p>
           <form id="manager-pair-form">
             <label class="field">Manager token<input id="manager-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="manager-pairing-help"></label>

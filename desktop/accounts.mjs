@@ -401,14 +401,13 @@ export function memorySummary(memory = {}) {
   const reserve = number(memory.reserve_mb);
   const perProfile = number(memory.per_profile_mb);
   if (perProfile !== null) parts.push(`${formatAmount(perProfile)} MB per open account`);
-  // Plain arithmetic, so the page answers "how much is there and how many fit" without the
-  // reader doing subtraction in their head.
-  if (available !== null && reserve !== null) {
-    const room = available - reserve;
-    parts.push(`room ${formatAmount(Math.max(0, room))} MB after the ${formatAmount(reserve)} MB reserve`);
-    if (perProfile) parts.push(`about ${Math.floor(Math.max(0, room) / perProfile)} more account(s) fit at ${formatAmount(perProfile)} MB each`);
-  }
-  if (used === null || used === 0) parts.push('Measured use is not a cap: the first opened account is measured, and that figure governs the next');
+  // How many more fit is limited by the tighter of the budget and physical room after the reserve.
+  const budgetRoom = budget !== null && used !== null ? budget - used : null;
+  const physicalRoom = available !== null && reserve !== null ? available - reserve : null;
+  const room = [budgetRoom, physicalRoom].filter((value) => value !== null);
+  const fitRoom = room.length ? Math.min(...room) : null;
+  if (physicalRoom !== null) parts.push(`room ${formatAmount(Math.max(0, physicalRoom))} MB after the ${formatAmount(reserve)} MB reserve`);
+  if (perProfile && fitRoom !== null) parts.push(`about ${Math.floor(Math.max(0, fitRoom) / perProfile)} more fit`);
   if (physical !== null) parts.push(available === null ? `${formatAmount(physical)} MB physical memory; available not reported` : `${formatAmount(available)} MB available of ${formatAmount(physical)} MB physical`);
   if (number(memory.queued)) parts.push(`${formatAmount(memory.queued)} waiting to open${value(memory.reason) ? `: ${memory.reason}` : ''}`);
   return parts.join(' · ');
@@ -1012,10 +1011,10 @@ export function mountAccounts(invoke) {
     busy = true;
     $('manager-pair').disabled = true;
     setPairError(null);
-    $('manager-pairing-state').textContent = 'Saving in this Mac’s Keychain…';
+    $('manager-pairing-state').textContent = 'Saving in Relay’s data folder…';
     try {
       render(await readManager('manager_pair_gateway', { token }));
-      $('manager-pairing-note').textContent = 'Token saved in this Mac’s Keychain. Gateway account enablement stays off until Gateway authorizes these workers. The token is never shown again.';
+      $('manager-pairing-note').textContent = 'Token saved in Relay’s data folder. Gateway account enablement stays off until Gateway authorizes these workers. The token is never shown again.';
     } catch (error) { renderPairing(); setPairError(error, token); $('manager-pairing-note').textContent = 'Token was not saved. Nothing was stored in browser storage.'; }
     finally { input.value = ''; busy = false; $('manager-pair').disabled = false; setControls(); }
   });

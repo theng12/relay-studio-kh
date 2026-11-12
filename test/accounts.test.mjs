@@ -185,9 +185,10 @@ test('memory readout keeps deficits negative and never turns missing measurement
   assert.match(summary, /-904 MB headroom/);
   assert.match(summary, /-100 MB available of/);
   assert.match(summary, /1 waiting to open: Below reserve/);
-  const zero = memorySummary({ used_mb: 0, budget_mb: 4096, available_mb: 8192 });
+  const zero = memorySummary({ used_mb: 0, budget_mb: 4096, available_mb: 8192, reserve_mb: 2048, per_profile_mb: 1024 });
   assert.match(zero, /Nothing opened yet/);
-  assert.doesNotMatch(zero, /0 MB headroom/);
+  assert.match(zero, /about 4 more fit/, 'the fit estimate respects the budget');
+  assert.doesNotMatch(zero, /account\(s\)/);
   const unknown = memorySummary({});
   assert.doesNotMatch(unknown, /headroom/);
   assert.match(unknown, /Measured use not reported/);

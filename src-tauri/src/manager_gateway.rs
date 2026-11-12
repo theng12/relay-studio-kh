@@ -18,7 +18,15 @@ use std::time::Duration;
 use tauri::WebviewWindow;
 use url::Url;
 
-const KEYCHAIN_SERVICE: &str = "kh.relay.desktop.manager-gateway.v1";
+// Legacy Keychain service, touched only once to migrate an existing pairing into the file.
+const LEGACY_KEYCHAIN_SERVICE: &str = "kh.relay.desktop.manager-gateway.v1";
+static STORE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+pub(crate) fn init_store(path: std::path::PathBuf) {
+    let _ = STORE.set(path);
+}
+fn store_path() -> Result<&'static std::path::PathBuf, ManagerError> {
+    STORE.get().ok_or(ManagerError::Storage)
+}
 const MANAGER_PATH: &str = "/api/workers/manager";
 const CONTROL_PATH: &str = "/api/workers/manager/control";
 const CREDENTIAL_VERSION: u8 = 1;
@@ -29,8 +37,6 @@ const MAX_WORKERS: usize = 256;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 // Small allowance for Gateway/Relay clock skew; larger gaps fail closed.
 const CLOCK_SKEW_SECONDS: f64 = 5.0;
-#[cfg(target_os = "macos")]
-const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ManagerError {
@@ -43,7 +49,7 @@ pub(crate) enum ManagerError {
     FutureView,
     StaleView,
     NotPaired,
-    Keychain(i32),
+    Storage,
     StoredCredential,
     StoredCredentialMismatch,
     Client,
@@ -75,11 +81,8 @@ impl std::fmt::Display for ManagerError {
             Self::FutureView => "Gateway's manager view is dated in the future.",
             Self::StaleView => "Gateway's manager view is older than its freshness limit.",
             Self::NotPaired => "No Relay manager credential is stored for this Gateway.",
-            Self::Keychain(code) => {
-                return write!(
-                    formatter,
-                    "Relay could not use its macOS Keychain item (status {code})."
-                )
+            Self::Storage => {
+                "Relay could not read or write its saved Gateway pairing in its own data folder."
             }
             Self::StoredCredential => {
                 "Relay's stored manager credential is unreadable; paste a new token."
@@ -674,55 +677,55 @@ fn decode_credential(bytes: &[u8], origin: &str) -> Result<String, ManagerError>
     Ok(credential.token)
 }
 
-#[cfg(target_os = "macos")]
 fn store_token(origin: &str, token: &str) -> Result<(), ManagerError> {
+    let path = store_path()?;
     let bytes = encode_credential(origin, token)?;
-    security_framework::passwords::set_generic_password(
-        KEYCHAIN_SERVICE,
-        &origin_account(origin),
-        &bytes,
-    )
-    .map_err(|error| ManagerError::Keychain(error.code()))
+    crate::storage::write_private(path, &bytes).map_err(|_| ManagerError::Storage)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn store_token(_: &str, _: &str) -> Result<(), ManagerError> {
-    Err(ManagerError::UnsupportedPlatform)
-}
-
-#[cfg(target_os = "macos")]
 fn load_token(origin: &str) -> Result<Option<String>, ManagerError> {
-    match security_framework::passwords::get_generic_password(
-        KEYCHAIN_SERVICE,
-        &origin_account(origin),
-    ) {
+    let path = store_path()?;
+    match crate::storage::read_private(path) {
         Ok(bytes) => decode_credential(&bytes, origin).map(Some),
-        Err(error) if error.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
-        Err(error) => Err(ManagerError::Keychain(error.code())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => migrate_legacy(path, origin),
+        Err(_) => Err(ManagerError::Storage),
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn load_token(_: &str) -> Result<Option<String>, ManagerError> {
-    Err(ManagerError::UnsupportedPlatform)
-}
-
-#[cfg(target_os = "macos")]
-fn clear_token(origin: &str) -> Result<(), ManagerError> {
-    match security_framework::passwords::delete_generic_password(
-        KEYCHAIN_SERVICE,
+/// One attempt only: a Keychain item from earlier builds is moved into the file once. A refused
+/// or prompting read leaves a marker so the app never asks again and the person can re-pair.
+fn migrate_legacy(path: &std::path::Path, origin: &str) -> Result<Option<String>, ManagerError> {
+    let marker = path.with_extension("legacy-tried");
+    if marker.exists() {
+        return Ok(None);
+    }
+    let _ = crate::storage::write_private(&marker, b"1");
+    #[cfg(target_os = "macos")]
+    if let Ok(bytes) = security_framework::passwords::get_generic_password(
+        LEGACY_KEYCHAIN_SERVICE,
         &origin_account(origin),
     ) {
-        Ok(()) => Ok(()),
-        // Deleting only our own item; an already absent item is already the goal.
-        Err(error) if error.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
-        Err(error) => Err(ManagerError::Keychain(error.code())),
+        if let Ok(token) = decode_credential(&bytes, origin) {
+            crate::storage::write_private(path, &bytes).map_err(|_| ManagerError::Storage)?;
+            let _ = security_framework::passwords::delete_generic_password(
+                LEGACY_KEYCHAIN_SERVICE,
+                &origin_account(origin),
+            );
+            return Ok(Some(token));
+        }
     }
+    Ok(None)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn clear_token(_: &str) -> Result<(), ManagerError> {
-    Err(ManagerError::UnsupportedPlatform)
+fn clear_token(origin: &str) -> Result<(), ManagerError> {
+    let path = store_path()?;
+    crate::storage::remove_private(path);
+    #[cfg(target_os = "macos")]
+    let _ = security_framework::passwords::delete_generic_password(
+        LEGACY_KEYCHAIN_SERVICE,
+        &origin_account(origin),
+    );
+    Ok(())
 }
 
 fn http_client() -> Result<reqwest::Client, ManagerError> {

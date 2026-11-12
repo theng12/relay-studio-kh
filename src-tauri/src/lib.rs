@@ -2,6 +2,7 @@ mod browser_manager;
 mod devtools;
 mod extensions;
 mod seeding;
+mod storage;
 mod manager_gateway;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, process::Command, sync::Mutex, time::Duration};
