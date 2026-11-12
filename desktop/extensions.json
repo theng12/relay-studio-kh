@@ -118,22 +118,22 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.16",
-      "source_commit": "58eb89dfc8b37c7951cdfb23ee64440b3d729e51",
+      "version": "0.50.17",
+      "source_commit": "d6c6dbdd058ecac7459905041443ad1cfcb14cc0",
       "accepted": true,
-      "manifest_sha256": "1fd9911012ad8a4828c56af3493c09a1466b8c6ef81f863dbf8d52667e45d148",
+      "manifest_sha256": "c46bd3bb0f381dc0502422ed26b2963a697b023cc7bc49eb91d968cc91b6979f",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "320b9c28e22e62d33af7895db54f791abc669147843f4a0c5f5db279bc725809"
+          "sha256": "3620e0e03f89b38fd6a76df32524d37cefa4ae426c86ad1fbeef1fd7179d5889"
         },
         {
           "path": "manifest.json",
-          "sha256": "1fd9911012ad8a4828c56af3493c09a1466b8c6ef81f863dbf8d52667e45d148"
+          "sha256": "c46bd3bb0f381dc0502422ed26b2963a697b023cc7bc49eb91d968cc91b6979f"
         },
         {
           "path": "src/background.js",
-          "sha256": "6f472ade6658746f6ebc90fdd107a51f2b78c9051c9e59a3a05d5561fd40770d"
+          "sha256": "62c6cf1297b97e71105c05d9376d7e3355bca77c58e82eac80b881fd5092aa55"
         },
         {
           "path": "src/content/aistudio-main.js",

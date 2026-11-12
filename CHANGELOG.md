@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.10 — 2026-11-12
+- Bundle Image extension 0.50.17: an armed Gateway worker opens the Flow tab it needs and reports "waiting" instead of looking idle, so Gateway no longer withdraws an image job unsent. Video 1.3.18 and Audio 0.7.28 are unchanged.
+
 ## 0.3.9 — 2026-11-12
 - Browsers Relay opens from Accounts now load the bundled Image, Video and Audio extensions themselves — no Load unpacked step. Chrome no longer accepts the old load-extension flag, so Relay uses Chrome's own debugging control.
 - Each extension has a "Load in Relay's browsers" switch on the Extensions page; turn one off and the next browser Relay opens leaves it out.
