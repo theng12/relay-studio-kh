@@ -861,7 +861,8 @@ export function mountAccounts(invoke) {
   function renderMemory() {
     if (!snapshot) return;
     const settings = snapshot.settings || {};
-    const summary = memorySummary(snapshot.memory || {});
+    const memory = { ...(snapshot.memory || {}), reserve_mb: (snapshot.memory || {}).reserve_mb ?? settings.reserve_mb };
+    const summary = memorySummary(memory);
     $('memory-summary').textContent = summary;
     $('memory-summary-page').textContent = summary;
     setInput($('memory-budget'), settings.memory_budget_mb ?? '');

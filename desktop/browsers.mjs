@@ -155,6 +155,7 @@ export function mountBrowsers(invoke, accounts) {
     const reason = text(profile.error);
     const seconds = closeElapsedSeconds(profile);
     const elapsed = elapsedLabel(seconds);
+    const blockedReason = forceBlockReason(profile);
     if (profile.close_pending) {
       refs.reason.hidden = false;
       refs.reason.textContent = seconds >= 3
@@ -163,6 +164,10 @@ export function mountBrowsers(invoke, accounts) {
     } else if (reason) {
       refs.reason.hidden = false;
       refs.reason.textContent = reason;
+    } else if (blockedReason) {
+      // Visible on the card: a disabled button must not be the only place a refusal lives.
+      refs.reason.hidden = false;
+      refs.reason.textContent = blockedReason;
     } else {
       refs.reason.hidden = true;
       refs.reason.textContent = '';
@@ -206,7 +211,8 @@ export function mountBrowsers(invoke, accounts) {
 
   function renderSelection() {
     const ids = [...selection];
-    $('browser-selection').textContent = `${ids.length} selected`;
+    const blocked = ids.map((id) => snapshot?.profiles?.find((entry) => entry.id === id)).find((profile) => profile && forceBlockReason(profile));
+    $('browser-selection').textContent = `${ids.length} selected${blocked ? ` · Force close refused: ${forceBlockReason(blocked)}` : ''}`;
     const canOpen = openableIds(snapshot?.profiles || [], ids).length;
     const canClose = closableIds(snapshot?.profiles || [], ids).filter((id) => {
       const profile = snapshot.profiles.find((entry) => entry.id === id);
