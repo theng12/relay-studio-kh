@@ -211,6 +211,16 @@ async function loadWorkerCredentials() {
     }
   } catch (error) { $('extension-workers-state').textContent = `Worker credentials could not be read. ${String(error)}`; }
 }
+async function loadPairingStatus() {
+  try {
+    const status = await invoke('pairing_status');
+    $('pairing-file-state').textContent = status.automatic
+      ? `Local pairing · ${status.machine_id} · ${status.url}`
+      : status.note;
+  } catch (error) {
+    $('pairing-file-state').textContent = `Local pairing could not be checked. ${String(error)}`;
+  }
+}
 async function loadDataFolder() {
   try {
     const path = await invoke('data_folder');
@@ -243,6 +253,7 @@ try {
   await tick();
   await accounts.refresh();
   await loadDataFolder();
+  await loadPairingStatus();
   await loadWorkerCredentials();
   setInterval(tick, 15000);
   setInterval(() => accounts.refresh(), 5000);

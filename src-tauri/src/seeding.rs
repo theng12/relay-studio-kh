@@ -178,6 +178,20 @@ pub(crate) fn status_all() -> Vec<Status> {
         .collect()
 }
 
+/// The stored credential for a kind, for the pairing check: (worker id, token).
+pub(crate) fn stored(kind: &str) -> Option<(String, String)> {
+    match read(kind) {
+        ReadOutcome::Found(entry) => Some((entry.worker_id, entry.token)),
+        _ => None,
+    }
+}
+
+/// Stores a token minted through the local pairing file.
+pub(crate) fn store_credential(kind: &str, worker_id: &str, token: &str) -> Result<(), String> {
+    valid_kind(kind)?;
+    write(kind, worker_id, token)
+}
+
 fn valid_kind(kind: &str) -> Result<(), String> {
     KINDS.contains(&kind).then_some(()).ok_or_else(|| "Unknown extension kind.".to_string())
 }

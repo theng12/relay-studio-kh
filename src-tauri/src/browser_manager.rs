@@ -1686,6 +1686,19 @@ pub(crate) struct BrowserExtensions {
     extensions: Vec<LoadedExtension>,
 }
 
+/// The first worker id bound for a kind across saved accounts, for automatic pairing.
+pub(crate) fn first_bound_worker_id(app: &tauri::AppHandle, kind: &str) -> Option<String> {
+    use tauri::Manager;
+    let manager = app.state::<BrowserManager>();
+    let guard = locked(&manager.shared).ok()?;
+    let stored = guard.stored.as_ref()?;
+    stored.profiles.iter().find_map(|profile| match kind {
+        "image" => profile.image_worker_id.clone(),
+        "video" => profile.video_worker_id.clone(),
+        _ => None,
+    })
+}
+
 /// What Chrome itself reports as loaded in each browser Relay opened. Read from the retained
 /// control pipe, so it is Chrome's registry, not Relay's intention.
 #[tauri::command]

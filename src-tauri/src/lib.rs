@@ -4,6 +4,7 @@ mod extensions;
 mod seeding;
 mod storage;
 mod manager_gateway;
+mod pairing;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, process::Command, sync::Mutex, time::Duration};
 use tauri::{
@@ -519,11 +520,23 @@ fn quit_app(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> 
     Ok(())
 }
 
+/// The local pairing file wins over a stale saved address; the manual field remains the fallback.
+fn apply_pairing_url(state: &NativeState, url: &str) {
+    if let Ok(mut guard) = state.settings.lock() {
+        if let Ok(saved) = guard.as_mut() {
+            if saved.gateway_url.as_deref() != Some(url) {
+                saved.gateway_url = Some(url.to_string());
+                let _ = persist(&state.path, saved);
+            }
+        }
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { report_second_launch(app); }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, open_support_link, open_updater, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::set_extension_enabled, seeding::extension_worker_status, seeding::save_extension_worker, seeding::clear_extension_worker, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_loaded_extensions, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
+        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, open_support_link, open_updater, pairing::pairing_status, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::set_extension_enabled, seeding::extension_worker_status, seeding::save_extension_worker, seeding::clear_extension_worker, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_loaded_extensions, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
         .setup(|app| {
             app.manage(browser_manager::init(app.handle())?);
             let path = app.path().app_config_dir()?.join("settings.json");
@@ -534,6 +547,10 @@ pub fn run() {
                 client: reqwest::Client::builder().timeout(Duration::from_secs(4))
                     .redirect(reqwest::redirect::Policy::none()).build()?,
             });
+            // The Gateway's local pairing file, when present, points Relay at that Gateway.
+            if let Ok(Some(endpoint)) = pairing::read_endpoint() {
+                apply_pairing_url(&app.state::<NativeState>(), &endpoint.url);
+            }
             if let Ok((settings, _)) = &loaded {
                 // A moved or reinstalled app leaves the login item pointing at the old bundle.
                 heal_login_item(app.handle(), settings.start_at_login);
@@ -584,6 +601,14 @@ pub fn run() {
                 builder = builder.position(frame.x, frame.y);
             }
             let main = builder.build()?;
+            // Mint a worker token per bound kind through the pairing token, off the UI thread.
+            let pairing_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let notes = pairing::autopair(pairing_handle.clone()).await;
+                if notes.iter().any(|note| note.contains("failed") || note.contains("could not")) {
+                    let _ = pairing_handle.emit_to("main", "relay-error", format!("Automatic pairing: {}", notes.join(" · ")));
+                }
+            });
             let appearance = current(app.handle())
                 .map(|settings| settings.appearance)
                 .unwrap_or_else(|_| default_appearance());

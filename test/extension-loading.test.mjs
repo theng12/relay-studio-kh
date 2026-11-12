@@ -41,3 +41,17 @@ test('Relay seeds bound workers into the extensions it opens, never inventing co
   assert.match(html, /id="extension-workers"/, 'the card exists');
   assert.match(accounts, /Extension seeding/, 'each account row reports its seeding result');
 });
+
+test('Relay consumes the Gateway local pairing file and points itself at it', async () => {
+  const pairing = await load('../src-tauri/src/pairing.rs');
+  const native = await load('../src-tauri/src/lib.rs');
+  const app = await load('../desktop/app.mjs');
+  const html = await load('../desktop/index.html');
+  assert.match(pairing, /gateway-endpoint\.json/, 'the pairing file is the documented location');
+  assert.match(pairing, /extension-workers\/pair/, 'minting uses the narrow pairing endpoint only');
+  assert.match(pairing, /gwp_/, 'only pairing tokens are accepted from the file');
+  assert.match(native, /apply_pairing_url/, 'the launch path adopts the paired URL');
+  assert.match(native, /pairing::autopair/, 'tokens are minted at launch off the UI thread');
+  assert.match(app, /pairing_status/, 'the Gateway page shows the pairing state');
+  assert.match(html, /id="pairing-file-state"/, 'one line, no wizard');
+});
