@@ -1,5 +1,11 @@
 # What's New
 
+## 0.3.4 — 2026-11-12
+- Saving a Gateway address checks it and stops there — no sign-in window appears just because you typed a URL.
+- The Gateway page says when the loopback address is right, and that pairing a manager token removes the need to sign in at all.
+- The manager token is explained: what it is scoped to, where it is minted, and that it is not the worker token an extension uses.
+- Audio is described as unfinished rather than optional — it ships as-is and does not block image or video.
+
 ## 0.3.3 — 2026-11-12
 - Rename a saved account in place: click its name, type, and press Enter.
 - Delete an account recoverably: its Chrome profile moves to Relay's own `_trash` and the page tells you where.
