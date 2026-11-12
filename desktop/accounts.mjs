@@ -396,7 +396,17 @@ export function memorySummary(memory = {}) {
   const parts = [used === null ? 'Measured use not reported' : `Measured use ${formatAmount(used)} MB`];
   parts.push(budget === null ? 'budget not set' : `budget ${formatAmount(budget)} MB`);
   if (used !== null && budget !== null) parts.push(`${formatAmount(budget - used)} MB headroom`);
-  if (number(memory.per_profile_mb) !== null) parts.push(`${formatAmount(memory.per_profile_mb)} MB per open account`);
+  const reserve = number(memory.reserve_mb);
+  const perProfile = number(memory.per_profile_mb);
+  if (perProfile !== null) parts.push(`${formatAmount(perProfile)} MB per open account`);
+  // Plain arithmetic, so the page answers "how much is there and how many fit" without the
+  // reader doing subtraction in their head.
+  if (available !== null && reserve !== null) {
+    const room = available - reserve;
+    parts.push(`room ${formatAmount(Math.max(0, room))} MB after the ${formatAmount(reserve)} MB reserve`);
+    if (perProfile) parts.push(`about ${Math.floor(Math.max(0, room) / perProfile)} more account(s) fit at ${formatAmount(perProfile)} MB each`);
+  }
+  if (used === null || used === 0) parts.push('Measured use is not a cap: the first opened account is measured, and that figure governs the next');
   if (physical !== null) parts.push(available === null ? `${formatAmount(physical)} MB physical memory; available not reported` : `${formatAmount(available)} MB available of ${formatAmount(physical)} MB physical`);
   if (number(memory.queued)) parts.push(`${formatAmount(memory.queued)} waiting to open${value(memory.reason) ? `: ${memory.reason}` : ''}`);
   return parts.join(' · ');
