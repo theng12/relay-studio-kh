@@ -1,5 +1,9 @@
 # What's New
 
+## 0.3.5 — 2026-11-12
+- Gateway's admin pages button sits apart from pairing, says it asks for the Gateway app's browser password, and says it is never needed to pair or to claim work.
+- Pairing reads as what it is: mint a manager token in Gateway → Providers → Browser workers, then paste it here.
+
 ## 0.3.4 — 2026-11-12
 - Saving a Gateway address checks it and stops there — no sign-in window appears just because you typed a URL.
 - The Gateway page says when the loopback address is right, and that pairing a manager token removes the need to sign in at all.
