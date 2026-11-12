@@ -1,6 +1,6 @@
 //! Private manager-auth adapter for Gateway's scoped browser-worker manager token.
 //!
-//! The token lives only in Relay's own macOS Keychain item, keyed by a SHA-256 of
+//! The token lives only in Relay's own 0600 file in its support folder, keyed by
 //! the exact normalized Gateway origin. It is never written to settings, argv,
 //! logs, rendered pages or process arguments. This adapter exposes only the two
 //! manager routes: GET /api/workers/manager and POST /api/workers/manager/control.
@@ -12,14 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::time::Duration;
 use tauri::WebviewWindow;
 use url::Url;
 
-// Legacy Keychain service, touched only once to migrate an existing pairing into the file.
-const LEGACY_KEYCHAIN_SERVICE: &str = "kh.relay.desktop.manager-gateway.v1";
 static STORE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 pub(crate) fn init_store(path: std::path::PathBuf) {
     let _ = STORE.set(path);
@@ -644,10 +641,6 @@ fn validate_worker_ids(worker_ids: &[String]) -> Result<(), ManagerError> {
     Ok(())
 }
 
-fn origin_account(origin: &str) -> String {
-    format!("{:x}", Sha256::digest(origin.as_bytes()))
-}
-
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Credential {
@@ -687,44 +680,14 @@ fn load_token(origin: &str) -> Result<Option<String>, ManagerError> {
     let path = store_path()?;
     match crate::storage::read_private(path) {
         Ok(bytes) => decode_credential(&bytes, origin).map(Some),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => migrate_legacy(path, origin),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(_) => Err(ManagerError::Storage),
     }
 }
 
-/// One attempt only: a Keychain item from earlier builds is moved into the file once. A refused
-/// or prompting read leaves a marker so the app never asks again and the person can re-pair.
-fn migrate_legacy(path: &std::path::Path, origin: &str) -> Result<Option<String>, ManagerError> {
-    let marker = path.with_extension("legacy-tried");
-    if marker.exists() {
-        return Ok(None);
-    }
-    let _ = crate::storage::write_private(&marker, b"1");
-    #[cfg(target_os = "macos")]
-    if let Ok(bytes) = security_framework::passwords::get_generic_password(
-        LEGACY_KEYCHAIN_SERVICE,
-        &origin_account(origin),
-    ) {
-        if let Ok(token) = decode_credential(&bytes, origin) {
-            crate::storage::write_private(path, &bytes).map_err(|_| ManagerError::Storage)?;
-            let _ = security_framework::passwords::delete_generic_password(
-                LEGACY_KEYCHAIN_SERVICE,
-                &origin_account(origin),
-            );
-            return Ok(Some(token));
-        }
-    }
-    Ok(None)
-}
-
-fn clear_token(origin: &str) -> Result<(), ManagerError> {
+fn clear_token(_origin: &str) -> Result<(), ManagerError> {
     let path = store_path()?;
     crate::storage::remove_private(path);
-    #[cfg(target_os = "macos")]
-    let _ = security_framework::passwords::delete_generic_password(
-        LEGACY_KEYCHAIN_SERVICE,
-        &origin_account(origin),
-    );
     Ok(())
 }
 
@@ -940,7 +903,7 @@ pub(crate) async fn set_pacing(
         .await
 }
 
-/// Local Keychain presence only; live auth still requires a successful read.
+/// Local file presence only; live auth still requires a successful read.
 pub(crate) fn paired(origin: &str) -> Result<bool, ManagerError> {
     let origin = normalize_origin(origin)?;
     Ok(load_token(&origin)?.is_some())
@@ -1072,15 +1035,6 @@ mod tests {
         ] {
             assert_eq!(normalize_origin(bad), Err(ManagerError::InvalidOrigin));
         }
-    }
-
-    #[test]
-    fn keychain_account_binds_the_exact_origin_by_hash() {
-        let first = origin_account("https://one.example");
-        assert_ne!(first, origin_account("https://two.example"));
-        assert_eq!(first, origin_account("https://one.example"));
-        assert_eq!(first.len(), 64);
-        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 
     #[test]

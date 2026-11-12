@@ -31,7 +31,11 @@ test('Relay seeds bound workers into the extensions it opens, never inventing co
   const html = await load('../desktop/index.html');
   const accounts = await load('../desktop/accounts.mjs');
   assert.match(manager, /seeding::seed_extension/, 'each launched browser seeds its extensions');
-  assert.match(seeding, /KEYCHAIN_SERVICE/, 'worker credentials live in the Keychain');
+  assert.match(manager, /extension-workers\.json/, "worker tokens live in Relay's own data file");
+  assert.match(manager, /manager-token\.json/, "the manager token lives in Relay's own data file");
+  assert.doesNotMatch(seeding, /security_framework/, 'no Keychain path remains');
+  const storage = await load('../src-tauri/src/storage.rs');
+  assert.match(storage, /0o600/, 'credential files are readable only by this user');
   assert.match(seeding, /save_extension_worker/, 'the Gateway page saves a worker credential');
   assert.match(seeding, /imageGeneratorWorkMode/, 'image activation uses the panel-selected mode key');
   assert.match(seeding, /gatewayWorkerToken/, 'video/audio tokens go to their own storage key');

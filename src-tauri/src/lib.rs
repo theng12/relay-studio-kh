@@ -94,12 +94,24 @@ fn local_only(window: &WebviewWindow) -> Result<(), String> {
     }
     Ok(())
 }
+/// Gateway's default port; the address field supplies it when the person leaves it out.
+const DEFAULT_GATEWAY_PORT: u16 = 8787;
+
+/// Takes what the person types: a bare host or IP gets `http://` and Gateway's default port;
+/// a trailing slash is trimmed; every refusal names the address actually tried.
 fn origin(value: &str) -> Result<Option<String>, String> {
-    if value.trim().is_empty() {
+    let text = value.trim();
+    if text.is_empty() {
         return Ok(None);
     }
-    let parsed =
-        Url::parse(value.trim()).map_err(|_| "Use a complete HTTP or HTTPS Gateway address.")?;
+    let candidate = if text.contains("://") {
+        text.to_string()
+    } else {
+        format!("http://{text}")
+    };
+    let parsed = Url::parse(&candidate).map_err(|_| {
+        format!("{text} is not a Gateway address. Use a host or IP, like 127.0.0.1 or 100.82.91.102.")
+    })?;
     if !matches!(parsed.scheme(), "http" | "https")
         || parsed.host_str().is_none()
         || !parsed.username().is_empty()
@@ -108,11 +120,18 @@ fn origin(value: &str) -> Result<Option<String>, String> {
         || parsed.fragment().is_some()
         || parsed.path() != "/"
     {
-        return Err(
-            "Use the Gateway origin without a path, password, token, query or fragment.".into(),
-        );
+        return Err(format!(
+            "{text} is not a Gateway origin. Leave out the path, password, query and fragment."
+        ));
     }
-    Ok(Some(parsed.origin().ascii_serialization()))
+    let host = match parsed.host() {
+        Some(url::Host::Ipv6(address)) => format!("[{address}]"),
+        Some(url::Host::Ipv4(address)) => address.to_string(),
+        Some(url::Host::Domain(domain)) => domain.to_string(),
+        None => return Err(format!("{text} has no Gateway host.")),
+    };
+    let port = parsed.port().unwrap_or(DEFAULT_GATEWAY_PORT);
+    Ok(Some(format!("{}://{host}:{port}", parsed.scheme())))
 }
 fn current(app: &tauri::AppHandle) -> Result<Settings, String> {
     app.state::<NativeState>()
@@ -697,6 +716,16 @@ mod tests {
         let registered_elsewhere = "<string>/Users/x/Applications/Relay Studio KH.app/Contents/MacOS/Relay Studio KH</string>";
         assert!(login_item_is_stale(registered_elsewhere, mine));
         assert!(login_item_is_stale("", mine));
+    }
+
+    #[test]
+    fn the_address_field_takes_a_bare_host_and_fills_gateway_defaults() {
+        assert_eq!(origin("100.82.91.102").unwrap().unwrap(), "http://100.82.91.102:8787");
+        assert_eq!(origin("100.82.91.102:9000").unwrap().unwrap(), "http://100.82.91.102:9000");
+        assert_eq!(origin("http://127.0.0.1/").unwrap().unwrap(), "http://127.0.0.1:8787");
+        assert_eq!(origin("https://gateway.example").unwrap().unwrap(), "https://gateway.example:8787");
+        assert!(origin("http://gateway.example/path").unwrap_err().contains("gateway.example"));
+        assert!(origin("not a host").unwrap_err().contains("not a host"));
     }
 
     #[test]

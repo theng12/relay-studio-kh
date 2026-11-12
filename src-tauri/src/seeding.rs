@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 // Only kinds with a per-account binding can be seeded; audio has none, so it is never offered.
 pub(crate) const KINDS: [&str; 2] = ["image", "video"];
 const FOLDER_KINDS: [&str; 3] = ["image", "video", "audio"];
-// Legacy Keychain service, touched once to move tokens saved by earlier builds into the file.
-const LEGACY_KEYCHAIN_SERVICE: &str = "kh.relay.desktop.extension-worker";
 const FILE_VERSION: u8 = 1;
 
 static STORE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
@@ -39,13 +37,6 @@ impl CredentialFile {
     }
 }
 
-#[derive(serde::Deserialize)]
-struct LegacyStored {
-    version: u8,
-    worker_id: String,
-    token: String,
-}
-
 #[derive(Serialize)]
 pub(crate) struct Status {
     kind: &'static str,
@@ -69,10 +60,6 @@ fn label(kind: &str) -> &'static str {
         _ => "Audio",
     }
 }
-fn account(kind: &str) -> String {
-    format!("worker-{kind}")
-}
-
 fn load_file(path: &Path) -> Result<CredentialFile, ReadOutcome> {
     match crate::storage::read_private(path) {
         Ok(bytes) => {
@@ -104,42 +91,10 @@ fn read(kind: &str) -> ReadOutcome {
         Ok(file) => match file.workers.get(kind) {
             Some(stored) if valid(stored) => ReadOutcome::Found(stored.clone()),
             Some(_) => ReadOutcome::Unreadable,
-            None => migrate_legacy(path, kind),
+            None => ReadOutcome::Missing,
         },
         Err(outcome) => outcome,
     }
-}
-
-/// One attempt per launch and only when the file has no entry: move a token saved by earlier
-/// Keychain builds into the file and delete the item. A refused read is never retried by the
-/// same launch, so the app cannot prompt in a loop.
-fn migrate_legacy(path: &Path, kind: &str) -> ReadOutcome {
-    let marker = path.with_extension(format!("legacy-tried-{kind}"));
-    if marker.exists() {
-        return ReadOutcome::Missing;
-    }
-    let _ = crate::storage::write_private(&marker, b"1");
-    #[cfg(target_os = "macos")]
-    if let Ok(bytes) = security_framework::passwords::get_generic_password(
-        LEGACY_KEYCHAIN_SERVICE,
-        &account(kind),
-    ) {
-        if let Ok(legacy) = serde_json::from_slice::<LegacyStored>(&bytes) {
-            let stored = Stored { worker_id: legacy.worker_id, token: legacy.token };
-            if legacy.version == 1 && valid(&stored) {
-                let mut file = load_file(path).unwrap_or_else(|_| CredentialFile::empty());
-                file.workers.insert(kind.to_string(), stored.clone());
-                if save_file(path, &file).is_ok() {
-                    let _ = security_framework::passwords::delete_generic_password(
-                        LEGACY_KEYCHAIN_SERVICE,
-                        &account(kind),
-                    );
-                    return ReadOutcome::Found(stored);
-                }
-            }
-        }
-    }
-    ReadOutcome::Missing
 }
 
 fn write(kind: &str, worker_id: &str, token: &str) -> Result<(), String> {
@@ -262,7 +217,6 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
 }
 
 #[tauri::command]
-// Async so a slow or prompting Keychain read runs off the main thread and can never freeze the app.
 pub(crate) async fn extension_worker_status(window: tauri::WebviewWindow) -> Result<Vec<Status>, String> {
     super::local_only(&window)?;
     Ok(status_all())
