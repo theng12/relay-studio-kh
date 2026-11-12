@@ -502,8 +502,17 @@ test('accounts page offers rename, recoverable delete and a persisted compact/gr
   // Rename and delete exist and go through the native commands rather than local state.
   assert.match(accounts, /manager_update_profile/, 'rename saves through the native update command');
   assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');
+  assert.match(accounts, /remove.textContent = 'Delete'/, 'a delete button is always drawn on the row');
   assert.match(accounts, /startRename/, 'the label can be edited in place');
   const manager = await load('../src-tauri/src/browser_manager.rs');
   assert.match(manager, /fn manager_delete_profile/, 'delete exists natively');
   assert.match(manager, /_trash/, 'delete moves the profile aside rather than erasing it');
+});
+
+test('row actions are never hidden behind hover', async () => {
+  const load = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const css = await load('../desktop/desktop.css');
+  // Hover may add emphasis; it must never be the only way to reach Rename or Delete.
+  assert.doesNotMatch(css, /account:hover \.account-actions \{[^}]*opacity: 1/, 'hover is not the reveal');
+  assert.match(css, /\.account-actions \{ opacity: 1/, 'actions are drawn by default');
 });

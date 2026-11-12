@@ -377,9 +377,9 @@ html[data-accounts-view="compact"] .account-status {
 }
 html[data-accounts-view="compact"] .account-meta { margin-top: 0; }
 html[data-accounts-view="compact"] .account-title { align-items: baseline; }
-html[data-accounts-view="compact"] .account-actions { opacity: 0; transition: opacity .12s ease; }
-html[data-accounts-view="compact"] .account:hover .account-actions,
-html[data-accounts-view="compact"] .account:focus-within .account-actions { opacity: 1; }
+/* Actions are always drawn: hover may add emphasis, never the only path to Rename or Delete. */
+html[data-accounts-view="compact"] .account-actions { opacity: 1; gap: 6px; }
+html[data-accounts-view="compact"] .account-actions button { padding: 2px 8px; font-size: 12px; }
 html[data-accounts-view="compact"] .account-details { padding: 0 12px 10px; }
 html[data-accounts-view="grid"] .account-row {
   grid-template-columns: 28px minmax(0, 1fr) minmax(180px, 240px) auto;
