@@ -4,7 +4,9 @@
 use serde::Serialize;
 use std::path::Path;
 
-pub(crate) const KINDS: [&str; 3] = ["image", "video", "audio"];
+// Only kinds with a per-account binding can be seeded; audio has none, so it is never offered.
+pub(crate) const KINDS: [&str; 2] = ["image", "video"];
+const FOLDER_KINDS: [&str; 3] = ["image", "video", "audio"];
 const KEYCHAIN_SERVICE: &str = "kh.relay.desktop.extension-worker";
 const CREDENTIAL_VERSION: u8 = 1;
 
@@ -183,5 +185,5 @@ pub(crate) async fn clear_extension_worker(window: tauri::WebviewWindow, kind: S
 /// True when the folder belongs to the kind (used to match Chrome's loaded ids to kinds).
 pub(crate) fn kind_for_dir(directory: &Path) -> Option<&'static str> {
     let parent = directory.parent()?.file_name()?.to_str()?;
-    KINDS.iter().copied().find(|kind| *kind == parent)
+    FOLDER_KINDS.iter().copied().find(|kind| *kind == parent)
 }

@@ -191,7 +191,7 @@
             <div class="edit-grid">
               <label class="field">Memory budget (MB)<input id="memory-budget" type="number" min="1" step="1" placeholder="Measured use"></label>
               <label class="field">Reserve (MB)<input id="memory-reserve" type="number" min="0" step="1"></label>
-              <label class="field">Maximum open accounts<input id="memory-max" type="number" min="1" step="1" placeholder="No cap"></label>
+              <label class="field">Maximum open accounts<input id="memory-max" type="number" min="1" step="1" placeholder="No account cap"></label>
               <label class="field">Pause minimum (seconds)<input id="pause-min" type="number" min="0" step="any"></label>
               <label class="field">Pause maximum (seconds)<input id="pause-max" type="number" min="0" step="any"></label>
             </div>
@@ -199,7 +199,7 @@
             <div class="actions"><button class="primary" id="manager-settings-save" type="submit">Save memory and pacing</button></div>
             <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
             <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
-            <p class="help">Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget or maximum uses measured memory with no arbitrary count cap.</p>
+            <p class="help">Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget uses measured memory; a blank maximum means no account-count cap.</p>
           </form>
         </div>
       </section>

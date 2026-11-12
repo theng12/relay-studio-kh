@@ -19,7 +19,7 @@ function renderFooterStatus(snapshot) {
   const paired = support.manager_paired === true || support.gateway_manager_paired === true
     || support.pairing_paired === true || (typeof support.pairing === 'object' && support.pairing?.paired === true);
   const connected = snapshot.profiles.filter((profile) => profile.gateway?.connection === 'connected').length;
-  $('footer-status').textContent = `${paired ? 'Gateway paired' : 'Gateway not paired'} · ${connected} ${connected === 1 ? 'account' : 'accounts'} connected`;
+  $('footer-status').textContent = `${paired ? 'Paired' : 'Not paired'} · ${connected} connected`;
 }
 accounts.subscribe(renderFooterStatus);
 $('support-link').addEventListener('click', () => invoke('open_support_link').catch(showError));
@@ -28,6 +28,9 @@ $('check-updates').addEventListener('click', async () => {
   catch (error) { showError(error); }
 });
 const shell = mountShell({ onShow: (page) => {
+  // A failure belongs to the page where it happened; moving on clears it.
+  $('app-error').hidden = true;
+  $('app-error').textContent = '';
   if (page === 'accounts' || page === 'browsers') accounts.refresh();
 } });
 mountOverview(accounts, (page) => shell.show(page));

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 const assets = new URL('../desktop-dist/', import.meta.url);
 const bridge = `
-const settings = { settings: { gateway_url: null, start_at_login: false }, autostart_observed: false, autostart_error: null };
+const settings = { settings: { gateway_url: null, start_at_login: false, appearance: 'system' }, autostart_observed: false, autostart_error: null };
 const manager = {
   profiles: [],
   memory: { physical_mb: 32768, available_mb: 12288, budget_mb: 4096, used_mb: 0, per_profile_mb: 1024, queued: 0, reason: 'Fixture measurements only; no real processes are running.' },
@@ -29,6 +29,7 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
       settings.settings.gateway_url = url.origin;
     } else settings.settings.gateway_url = null;
     if (args.accountsView) settings.settings.accounts_view = args.accountsView;
+    if (args.appearance) settings.settings.appearance = args.appearance;
     if (args.startAtLogin != null) { settings.settings.start_at_login = args.startAtLogin; settings.autostart_observed = args.startAtLogin; }
     return null;
   }

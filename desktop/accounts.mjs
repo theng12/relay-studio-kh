@@ -406,6 +406,7 @@ export function memorySummary(memory = {}) {
     parts.push(`room ${formatAmount(Math.max(0, room))} MB after the ${formatAmount(reserve)} MB reserve`);
     if (perProfile) parts.push(`about ${Math.floor(Math.max(0, room) / perProfile)} more account(s) fit at ${formatAmount(perProfile)} MB each`);
   }
+  if (used === 0) parts.push('nothing opened yet');
   if (used === null || used === 0) parts.push('Measured use is not a cap: the first opened account is measured, and that figure governs the next');
   if (physical !== null) parts.push(available === null ? `${formatAmount(physical)} MB physical memory; available not reported` : `${formatAmount(available)} MB available of ${formatAmount(physical)} MB physical`);
   if (number(memory.queued)) parts.push(`${formatAmount(memory.queued)} waiting to open${value(memory.reason) ? `: ${memory.reason}` : ''}`);
@@ -531,7 +532,11 @@ export function mountAccounts(invoke) {
     input.className = 'rename-input';
     input.value = current.label;
     input.setAttribute('aria-label', `Rename account ${current.number}`);
+    let settled = false;
     const finish = async (save) => {
+      // Escape removes the input, which fires blur; that must never turn into a save.
+      if (settled) return;
+      settled = true;
       const value = input.value.trim();
       if (input.isConnected) input.replaceWith(labelEl);
       if (!save || !value || value === current.label) return;
