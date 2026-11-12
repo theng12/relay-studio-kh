@@ -4,22 +4,22 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.18",
-      "source_commit": "88d10f3fb4b131dd0081b2cc0327addf06e7e885",
+      "version": "1.3.19",
+      "source_commit": "6c63ba9f9fcab7e2327999d6a1c0edf3be5336d3",
       "accepted": true,
-      "manifest_sha256": "4a0b6ef44c5f6d394ad84e9bbf3d5a7f6c45263ad06e6023d974fbd0f7056e04",
+      "manifest_sha256": "0065479b64b5dd7a75aa80c4fdf10a9ada480aab14fed0c7cd34c1546431237d",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "2fd0bac2cb6de2e77e4476ef9a43025b54ac469138f1f329fb31fcb64ae0c0a2"
+          "sha256": "8af741b7044439e01a21b437d7b40694dce90f3b8e2a7959358ca570f13f8028"
         },
         {
           "path": "manifest.json",
-          "sha256": "4a0b6ef44c5f6d394ad84e9bbf3d5a7f6c45263ad06e6023d974fbd0f7056e04"
+          "sha256": "0065479b64b5dd7a75aa80c4fdf10a9ada480aab14fed0c7cd34c1546431237d"
         },
         {
           "path": "src/background.js",
-          "sha256": "6b67e7b227b72dd20b7bc3f23468a2300b60df89a69571d4d34110adaf7e365c"
+          "sha256": "7e456fd8c2d526f2c3df27e5fdb6a03558c76e97b1bad167c6f3ac0bce98f5da"
         },
         {
           "path": "src/icons/icon.svg",
@@ -43,7 +43,7 @@
         },
         {
           "path": "src/lib/config.js",
-          "sha256": "39f48aa6aa5dbd5f183cb443cae7aab919d25b603aaeff48dde3889c71f854f4"
+          "sha256": "613ad26e6f2a3d226b6a9eda67d3afcb299f9d20a4a77576134c8e07dc3c9991"
         },
         {
           "path": "src/lib/flow-exec.js",
@@ -87,7 +87,7 @@
         },
         {
           "path": "src/lib/video-rules.js",
-          "sha256": "3de9a9ed9c1ccf70df9e7e8fb0aa14f4344356d0a96b27e272c18ee71d143f7b"
+          "sha256": "9de63de069fc45b475a95b9ba57aa8a645899de6d27f25ac9c8fbc3cfe45525c"
         },
         {
           "path": "src/options/options.css",
@@ -95,11 +95,11 @@
         },
         {
           "path": "src/options/options.html",
-          "sha256": "85fa474158fa33bf0ef71d9c84f8db29b7bba1f3ffa09147a04edbe383f2aa9d"
+          "sha256": "0c9f80142c4bb9e0e41fd0732cfdc14ca2073ff7a5a7135cc9dccdcf1a1dbc7c"
         },
         {
           "path": "src/options/options.js",
-          "sha256": "8e3b44f47cb23bc6c7e8dd0edcde56645419456a046552e6a2290232abb5f8bb"
+          "sha256": "4ccc27bcd36e48872d3701625e5278688ddf0e9637ca790a94a863d32e46e1e1"
         },
         {
           "path": "src/popup/popup.css",
@@ -107,7 +107,7 @@
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "7604cbb4e1d6c963ff66d96613658cb8c81ee588d1e1fb8cf8fac2257a68f01b"
+          "sha256": "883f87b0ef3026d18d116ccb98f241f9c9dca5e2e392006ac29a1389ba454e2b"
         },
         {
           "path": "src/popup/popup.js",
@@ -118,22 +118,22 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.18",
-      "source_commit": "78cec208d10fb6d7d8a6d0affc17f9a2a3e1b7f9",
+      "version": "0.50.21",
+      "source_commit": "70b4316459ef9efed15e983f710adee3202dcc15",
       "accepted": true,
-      "manifest_sha256": "7656af361c1f7a2df789e99c6dcfdd63b2bf04f380f741a935f3367a89e473be",
+      "manifest_sha256": "cb9f738031a6deeb0c8016ddf3f6973e57a4f210ae4e032495a6898e39f34bb0",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "1e6cc92c4943abf5c6bba6f8f60158f9f68eebfe8ade45c24322c36314d2540f"
+          "sha256": "74407bc9676ebf1b32d7019756334a6eb41f4091e2a3152fe109ef02d7a7d2a6"
         },
         {
           "path": "manifest.json",
-          "sha256": "7656af361c1f7a2df789e99c6dcfdd63b2bf04f380f741a935f3367a89e473be"
+          "sha256": "cb9f738031a6deeb0c8016ddf3f6973e57a4f210ae4e032495a6898e39f34bb0"
         },
         {
           "path": "src/background.js",
-          "sha256": "23ac2124fe86d7b4654c3e10fff0099575e339107d7349b8b936d48b31b84d1f"
+          "sha256": "11873d57bcc87adede9984229e928f756320c27b42980110a5c7ba977eb11456"
         },
         {
           "path": "src/content/aistudio-main.js",
@@ -189,7 +189,7 @@
         },
         {
           "path": "src/lib/config.js",
-          "sha256": "03ab61c50e21143b3e5f8838a21685d910412d17c7d1141342ca33e20a509bad"
+          "sha256": "b39d7c4d0142a440f7e8a06fb07f530260b25b14cfbfa4f500dd3c87dbcc57d6"
         },
         {
           "path": "src/lib/enqueue-context.js",
@@ -201,7 +201,7 @@
         },
         {
           "path": "src/lib/failure-policy.js",
-          "sha256": "4032319e75dfe4d5b1b9bbd04be14d40d6c01a74aac217058096ca3957e91cff"
+          "sha256": "227e170e077c345ba3b31da160b66eb3952b11a486d7bb620b160d571e99b47f"
         },
         {
           "path": "src/lib/flow-exec.js",
@@ -241,7 +241,7 @@
         },
         {
           "path": "src/lib/queue-migration.js",
-          "sha256": "e5b657aaa5550faf859af6bcc32a6cd83a9385dc8b18c67f4fe5abbf0d0df777"
+          "sha256": "48585cba935cf7baafe4d3d62544f1f423fd0ccb1d16859427d6e66fdca093b1"
         },
         {
           "path": "src/lib/queue-operations.js",
@@ -281,46 +281,46 @@
         },
         {
           "path": "src/options/options.html",
-          "sha256": "bcdf2d8a7d0ef42ae6061f46e9934344cf27379d16260cad1425128971966f52"
+          "sha256": "1e714ef68f495a3ceb8b57b7707476dba71813d24cdae4e4e82b6028c22c210b"
         },
         {
           "path": "src/options/options.js",
-          "sha256": "1a80f2f23f7443d9daa0992b35a6da4cfc6f6750315cc2fe67ceecacad5b0353"
+          "sha256": "d216ccbde2f6a3efffd2de82e3f7d73d5094bb440a29e73348bd9debb1d55568"
         },
         {
           "path": "src/popup/popup.css",
-          "sha256": "03fe1c48b8d07ac9433d450f7b797ad5992b307dae7c14e372492a7353b062f3"
+          "sha256": "c5398de226acb435a968c40e947dcfbf0ef5831dda1770cb394ca0bab733d4a6"
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "254a5e6cd2c3c7b47b8484bac2c83a09d652747a0d72958cd9752d5b1bc20369"
+          "sha256": "e598d2ff49a80ab336808e49e3c72415a1f876e5553f22b10082c14578395705"
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "59ffbd91cdbcc7853560ea71113ff5a6f5323af362a5a7b8e843df3b9e0f8f8d"
+          "sha256": "8c1588d4e2e2d96ff6a590cc4c3341193800c1daa3b550455306f61f8c161ce3"
         }
       ]
     },
     {
       "id": "audio",
       "name": "Audio generator — not working yet",
-      "version": "0.7.28",
-      "source_commit": "86dab24d549a40c8fecd0895d7e3c0a712d1a4ab",
+      "version": "0.7.29",
+      "source_commit": "c48ec5c32203f691e43e5aa9b684b812c45e7d4a",
       "required": false,
       "accepted": true,
-      "manifest_sha256": "fcd7c4abb02f8f3e6dce47337a7703719e7481c34bba1e803946cb50e943ac6e",
+      "manifest_sha256": "d10eaad7aed1c933e03f641c133f5cb12239151d1b8c7acbbf3b8ff61e3ed397",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "b9704689b01261281a49f9ad48091943e9da35ace14eaa5102dcf4d20c494ea7"
+          "sha256": "827b91772ea6e754edbabaa269f7b0746e07fc4ab5cb1be8b3870ea79649c169"
         },
         {
           "path": "manifest.json",
-          "sha256": "fcd7c4abb02f8f3e6dce47337a7703719e7481c34bba1e803946cb50e943ac6e"
+          "sha256": "d10eaad7aed1c933e03f641c133f5cb12239151d1b8c7acbbf3b8ff61e3ed397"
         },
         {
           "path": "src/background.js",
-          "sha256": "1f136f4b4de372b2aa5f4a8b94f0a448b0ab1ebe7be60b2336b250cd699e0b46"
+          "sha256": "c7459cc1871b3cbcae4ccf017c454ab7ee615d2a9017c12f93af339a59deb9fa"
         },
         {
           "path": "src/content/bridge-isolated.js",
@@ -376,7 +376,7 @@
         },
         {
           "path": "src/lib/config.js",
-          "sha256": "ec59c47ce45cc4962aac3c1569fa2f4f61c26d296c68c2f15dbceb59b88ed9ac"
+          "sha256": "3672285c322f70adc80a0f6dd4b982b287abbbb70c5ff84a38ecd0d3b007abf6"
         },
         {
           "path": "src/lib/gateway-account.js",
@@ -420,11 +420,11 @@
         },
         {
           "path": "src/options/options.html",
-          "sha256": "379ad475d95cc3d26111193c66a7cefd1c2b297c239c92ee80e662ad317a58ba"
+          "sha256": "183ff662e0e956fa0c0e62485fc5dac7daab26e21580d6d8b02535f1dbeec0aa"
         },
         {
           "path": "src/options/options.js",
-          "sha256": "7aa45d831314da8732491ae708d1e9e6220d1a73445d4d84c01f3aa4a43da354"
+          "sha256": "bbb7382dd2f86ec3bed2a88235ee36bcebdb58559424eeb88efa0bf08bf25d9c"
         },
         {
           "path": "src/popup/popup.css",
@@ -432,7 +432,7 @@
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "569ffab0c36b6bca70093d62639e13b6be2f6bf01e5bb20326850a1b69920081"
+          "sha256": "ce023c83a478beff341f8bb1bac282693bfbf7ad6be3386c7e8f04751c4f8171"
         },
         {
           "path": "src/popup/popup.js",

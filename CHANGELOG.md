@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.12 — 2026-11-12
+- Bundle Image 0.50.21, Video 1.3.19 and Audio 0.7.29: Fleet Hub is removed from all three extensions, so it is gone from Relay's browsers too. The image worker's claim tick now starts with the worker and reports when a Flow tab or inventory blocks it.
+
 ## 0.3.11 — 2026-11-12
 - Bundle Image extension 0.50.18: the Gateway claim alarm is recreated on browser startup and extension update, and the side panel says whether the claim loop is ticking or not ticking at all.
 
