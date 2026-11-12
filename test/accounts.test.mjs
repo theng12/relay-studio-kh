@@ -487,7 +487,7 @@ test('force close blocks active or uncertain Gateway work and non-resident rows'
   assert.deepEqual(residentIds(rows, ['id-1', 'id-2', 'id-3']), ['id-1', 'id-2']);
 });
 
-test('accounts page offers rename, recoverable delete and a persisted compact/grid view', async () => {
+test('accounts page offers rename, recoverable delete and a persisted compact/card view', async () => {
   const load = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
   const html = await load('../desktop/index.html');
   const accounts = await load('../desktop/accounts.mjs');
@@ -495,10 +495,12 @@ test('accounts page offers rename, recoverable delete and a persisted compact/gr
   const native = await load('../src-tauri/src/lib.rs');
   // Compact is the default and the choice is a real control, not a fixed layout.
   assert.match(html, /name="accounts-view" value="compact" checked/, 'compact is the default view');
-  assert.match(html, /name="accounts-view" value="grid"/, 'grid is available');
+  assert.match(html, /name="accounts-view" value="card"/, 'Card is available');
+  assert.match(html, /<span>Card<\/span>/, 'the second view is named Card');
   assert.match(app, /accountsView/, 'the chosen view is saved with settings');
   assert.match(native, /accounts_view/, 'the native settings keep the chosen view');
-  assert.match(native, /matches!\(value, "compact" \| "grid"\)/, 'only two views are accepted');
+  assert.match(native, /matches!\(value, "compact" \| "card"\)/, 'only two views are accepted');
+  assert.match(app, /value === 'grid'/, 'a saved grid choice still opens Card');
   // Rename and delete exist and go through the native commands rather than local state.
   assert.match(accounts, /manager_update_profile/, 'rename saves through the native update command');
   assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');
@@ -508,11 +510,21 @@ test('accounts page offers rename, recoverable delete and a persisted compact/gr
   assert.doesNotMatch(accounts, /window\.confirm/, 'delete never waits on a web dialog the macOS webview drops');
   assert.match(html, /id="delete-dialog"/, 'delete asks in Relay\'s own dialog');
   assert.match(accounts, /delete-dialog/, 'the dialog is wired to the row button');
-  assert.match(accounts, /Moved to \$\{moved\}/, 'a successful delete says where the profile folder went');
+  assert.match(accounts, /deleted\.`/, 'a successful delete says the account is gone');
+  assert.doesNotMatch(accounts, /Moved to/, 'the page never talks about a trash folder');
   assert.match(accounts, /rowErrors/, 'a refused delete stays visible on its own account row');
+  // The owner rejected the native disclosure triangle outright (2026-11-12).
+  assert.doesNotMatch(accounts, /createElement\('details'\)/, 'no native disclosure triangle on accounts');
+  assert.match(accounts, /Show details/, 'details open from a visible text button');
+  const pane = await load('../web/app.mjs');
+  assert.doesNotMatch(pane, /element\('details'\)|element\('summary'\)/, 'no native disclosure triangle in the Gateway pane');
+  assert.match(pane, /Show details/, 'the Gateway pane opens details from a visible text button');
+  const design = await load('../DESIGN.md');
+  assert.match(design, /disclosure triangle/, 'the ban is written into the design rules');
   const manager = await load('../src-tauri/src/browser_manager.rs');
   assert.match(manager, /fn manager_delete_profile/, 'delete exists natively');
-  assert.match(manager, /_trash/, 'delete moves the profile aside rather than erasing it');
+  assert.match(manager, /remove_dir_all/, 'delete removes the Chrome profile, as the person asked');
+  assert.doesNotMatch(manager, /Moved to/, 'the page never talks about a trash folder');
 });
 
 test('row actions are never hidden behind hover', async () => {

@@ -492,16 +492,20 @@ export function mountAccounts(invoke) {
   }
 
   async function deleteAccount(id) {
+    if (busy) return;
+    // A list read already in flight must not land a pre-delete snapshot on top of the delete.
+    busy = true;
+    setControls();
     const refs = rows.get(id);
     if (refs) refs.remove.disabled = true;
     rowErrors.delete(id);
     renderList();
     try {
-      const [next, moved] = await invoke('manager_delete_profile', { profileId: id });
+      const next = await invoke('manager_delete_profile', { profileId: id });
       selection.delete(id);
       render(next);
       $('accounts-error').hidden = false;
-      $('accounts-error').textContent = `Moved to ${moved}`;
+      $('accounts-error').textContent = `Account ${current.number} — ${current.label} deleted.`;
     } catch (error) {
       rowErrors.set(id, String(error?.message ?? error));
       // Re-read so a stale list, or an account that no longer exists, cannot outlive the refusal.
@@ -510,7 +514,9 @@ export function mountAccounts(invoke) {
     } finally {
       if (refs) refs.remove.disabled = false;
       deletingId = null;
+      busy = false;
       renderList();
+      setControls();
     }
   }
 
@@ -610,7 +616,6 @@ export function mountAccounts(invoke) {
     remove.addEventListener('click', () => askDelete(id));
     const actionCell = document.createElement('div');
     actionCell.className = 'account-actions';
-    actionCell.append(action, show, remove);
     row.append(pick, identity, status, actionCell);
 
     const message = document.createElement('p');
@@ -618,10 +623,22 @@ export function mountAccounts(invoke) {
     message.setAttribute('role', 'alert');
     message.hidden = true;
 
-    const details = document.createElement('details');
+    // A visible text button owns the disclosure; the native triangle is banned (owner, 2026-11-12).
+    const details = document.createElement('div');
     details.className = 'account-details';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Details';
+    details.id = `account-details-${id}`;
+    details.hidden = true;
+    const detailsButton = document.createElement('button');
+    detailsButton.type = 'button';
+    detailsButton.textContent = 'Show details';
+    detailsButton.setAttribute('aria-expanded', 'false');
+    detailsButton.setAttribute('aria-controls', details.id);
+    detailsButton.addEventListener('click', () => {
+      details.hidden = !details.hidden;
+      detailsButton.textContent = details.hidden ? 'Show details' : 'Hide details';
+      detailsButton.setAttribute('aria-expanded', String(!details.hidden));
+    });
+    actionCell.append(action, show, detailsButton, remove);
     const dl = document.createElement('dl');
     const fields = {};
     const addField = (name, term) => {
@@ -699,7 +716,7 @@ export function mountAccounts(invoke) {
     note.textContent = 'Local enablement only. Gateway account enablement stays off until Gateway authorizes this worker pairing.';
     footer.append(save, labelStatus, note);
     form.append(grid, footer);
-    details.append(summary, dl, form);
+    details.append(dl, form);
 
     li.append(row, message, details);
     return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, fields, labelInput, labelStatus, imageInput, videoInput, enabledInput };

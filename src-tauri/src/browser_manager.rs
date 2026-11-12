@@ -1614,24 +1614,22 @@ pub(crate) fn manager_update_profile(
 }
 
 #[tauri::command]
-/// Delete a saved profile recoverably: the folder moves into the app's own `_trash` with a dated
-/// name and the snapshot reports where it went. Nothing is erased, and an open browser is refused
-/// rather than closed behind the person's back.
+/// Delete a saved profile for real. This is an end-user action, not an internal clean-up: the
+/// person pressed Delete, so the account and its Chrome profile are gone afterwards. An open
+/// browser is refused rather than closed behind their back.
 pub(crate) fn manager_delete_profile(
     window: WebviewWindow,
     manager: State<'_, BrowserManager>,
     profile_id: String,
-) -> Result<(Snapshot, String), String> {
+) -> Result<Snapshot, String> {
     super::local_only(&window)?;
     let shared = &manager.shared;
-    let moved = {
+    {
         let mut guard = locked(shared)?;
-        let mut stored = guard.stored.clone().ok_or_else(|| {
-            guard
-                .load_error
-                .clone()
-                .unwrap_or_else(|| "Saved browser profiles are unavailable.".to_string())
-        })?;
+        let mut stored = guard
+            .stored
+            .clone()
+            .ok_or_else(|| guard.load_error.clone().unwrap_or_else(|| "Saved browser profiles are unavailable.".to_string()))?;
         let index = stored
             .profiles
             .iter()
@@ -1640,34 +1638,16 @@ pub(crate) fn manager_delete_profile(
         if stored.profiles[index].pid.is_some() {
             return Err("Close this browser before deleting the account.".into());
         }
-        let profile = stored.profiles.remove(index);
-        let trash = shared
-            .profiles_dir
-            .parent()
-            .ok_or("Relay's support folder is unavailable.")?
-            .join("_trash")
-            .join(today())
-            .join(format!(
-                "{:02}-{}-{}",
-                profile.number,
-                safe_label(&profile.label),
-                profile.id
-            ));
-        if shared.profiles_dir.join(&profile.id).exists() {
-            std::fs::create_dir_all(
-                trash
-                    .parent()
-                    .ok_or("Could not prepare the trash folder.")?,
-            )
-            .map_err(|_| "Could not prepare the trash folder.")?;
-            std::fs::rename(shared.profiles_dir.join(&profile.id), &trash)
-                .map_err(|_| "Could not move this profile to the trash; nothing was deleted.")?;
-        }
+        let folder = shared.profiles_dir.join(&stored.profiles[index].id);
+        stored.profiles.remove(index);
         save_state(&shared.state_path, &stored)?;
         guard.stored = Some(stored);
-        trash.display().to_string()
-    };
-    Ok((finish(shared)?, moved))
+        if folder.exists() {
+            std::fs::remove_dir_all(&folder)
+                .map_err(|_| "The account was removed from the list, but its Chrome profile could not be deleted.")?;
+        }
+    }
+    finish(shared)
 }
 
 fn today() -> String {
