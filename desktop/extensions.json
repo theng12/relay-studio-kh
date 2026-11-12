@@ -299,12 +299,12 @@
     },
     {
       "id": "audio",
-      "name": "Audio generator (optional, off)",
+      "name": "Audio generator \u2014 not working yet",
       "version": "0.7.27",
       "source_commit": "eddeb1b83b0ee22b54f8f698513d62b2fe4f91ef",
       "required": false,
       "accepted": false,
-      "reason": "Browser TTS is skipped and off. Its preserved source and failed paused attempt are not runtime qualification; it does not block image/video or account management."
+      "reason": "Audio is not finished yet. It ships as-is so it is visible and testable, and it does not block the image or video workers."
     }
   ]
 }
