@@ -418,3 +418,22 @@ html[data-accounts-view="card"] .account-row {
 .worker-credential:first-child { border-top: 0; }
 .worker-credential strong { min-width: 56px; }
 .worker-credential input { width: 220px; }
+
+/* Narrower windows: the compact and card rows cannot keep connection beside the identity.
+   Stack the status under it (left aligned) and truncate the label instead of overlapping. */
+@media (max-width: 1080px) {
+  html[data-accounts-view="compact"] .account-row,
+  html[data-accounts-view="card"] .account-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-areas: "pick identity action" "pick status status";
+    gap: 8px 12px;
+  }
+  html[data-accounts-view="compact"] .account-status {
+    grid-area: status;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+  .account-title { min-width: 0; }
+  .account-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .account-status { min-width: 0; }
+}

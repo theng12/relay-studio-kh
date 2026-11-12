@@ -545,6 +545,8 @@ test('row actions are never hidden behind hover', async () => {
   assert.match(css, /\.sidebar-footer \{[^}]*flex-direction: column/, 'the footer is one tidy column');
   assert.match(css, /\.footer-line \{[^}]*justify-content: center/, 'pill and update control share one centred line');
   assert.match(css, /\.footer-status \{[^}]*text-overflow: ellipsis/, 'the status line stays on one line');
+  assert.match(css, /@media \(max-width: 1080px\)/, 'narrow windows get their own row layout');
+  assert.match(css, /\.account-label \{[^}]*text-overflow: ellipsis/, 'the account label truncates instead of overlapping');
   assert.match(html, /id="support-link"/, 'the Support this app row exists');
   assert.match(html, /id="check-updates"/, 'the Check for Updates control exists');
   assert.match(app, /open_support_link/, 'support opens through the app opener');
