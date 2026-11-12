@@ -1178,6 +1178,10 @@ struct StoredSettings {
     pause_min_seconds: f64,
     #[serde(default = "default_pause_max_seconds")]
     pause_max_seconds: f64,
+    /// Last measured memory cost of one open account. Persisted so the number survives the process
+    /// and can be explained later; the probe still governs, this only remembers what it saw.
+    #[serde(default)]
+    measured_per_profile_mb: Option<u64>,
 }
 
 fn default_reserve_mb() -> u64 {
@@ -1198,6 +1202,7 @@ impl Default for StoredSettings {
             max_active: None,
             pause_min_seconds: default_pause_min_seconds(),
             pause_max_seconds: default_pause_max_seconds(),
+            measured_per_profile_mb: None,
         }
     }
 }
@@ -2004,6 +2009,8 @@ pub(crate) async fn manager_save_settings(
             max_active,
             pause_min_seconds,
             pause_max_seconds,
+            // The measured size is not a user setting: saving pacing must not erase it.
+            measured_per_profile_mb: stored.settings.measured_per_profile_mb,
         };
         Ok(())
     })?;
@@ -2294,7 +2301,9 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     let settings = stored.settings.clone();
     let mut resident = measurement.alive.len() as u32;
     let mut used = measurement.used_mb;
-    let mut estimate = measurement.per_profile_mb;
+    let mut estimate = measurement
+        .per_profile_mb
+        .or(settings.measured_per_profile_mb);
     let mut probe_opened = false;
     let mut launched = false;
     if let Some(chrome_path) = chrome.as_deref() {
@@ -2321,6 +2330,21 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
             };
             match admission_reason(&admission, resident) {
                 Err(reason) => {
+                    // The numbers only exist at the moment of refusal; write them down so the
+                    // question "how much does it need, and how much is there" is answerable
+                    // from a file rather than from a screen nobody can open.
+                    lifecycle_log(
+                        shared,
+                        &format!(
+                            "admission refused for profile {}: {reason} — room {} MB, reserve {} MB, available {} MB, budget {}, measured per profile {} MB",
+                            profile.id,
+                            admission_room_mb(&admission).map_or("unknown".to_string(), |mb| format!("{mb}")),
+                            admission.reserve_mb,
+                            admission.available_mb.map_or("unknown".to_string(), |mb| format!("{mb}")),
+                            admission.budget_mb.map_or("none".to_string(), |mb| format!("{mb} MB")),
+                            admission.per_profile_mb.map_or("not measured yet".to_string(), |mb| format!("{mb}")),
+                        ),
+                    );
                     errors.insert(profile.id.clone(), reason);
                     attention.remove(&profile.id);
                 }
@@ -2363,6 +2387,12 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
         // Re-measure so admission and the snapshot see the new processes. Identity was recorded
         // at launch; it is never adopted later from a possibly reused pid.
         measurement = measure(&stored, chrome.as_deref());
+    }
+    if let Some(measured) = measurement.per_profile_mb {
+        if stored.settings.measured_per_profile_mb != Some(measured) {
+            stored.settings.measured_per_profile_mb = Some(measured);
+            changed = true;
+        }
     }
     let saved = if changed {
         save_state(&shared.state_path, &stored)
@@ -2578,6 +2608,16 @@ struct Admission {
     budget_mb: Option<u64>,
     used_mb: Option<u64>,
     per_profile_mb: Option<u64>,
+}
+
+/// Headroom after the reserve, and inside the budget when one is set: the number the person is
+/// actually asking about when they ask "how much room is there".
+fn admission_room_mb(admission: &Admission) -> Option<u64> {
+    let mut room = admission.available_mb?.saturating_sub(admission.reserve_mb);
+    if let (Some(budget), Some(used)) = (admission.budget_mb, admission.used_mb) {
+        room = room.min(budget.saturating_sub(used));
+    }
+    Some(room)
 }
 
 fn admission_reason(admission: &Admission, resident: u32) -> Result<(), String> {
