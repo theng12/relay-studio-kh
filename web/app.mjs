@@ -59,14 +59,15 @@ function workerRow(kind, worker) {
   const credits = worker?.telemetry?.credits;
   const value = reportedCredit(credits);
   credit.append(element('span', 'credit-label', 'Remaining credits'), element('span', 'credit-value', value === null ? 'Unknown' : new Intl.NumberFormat().format(value)));
-  const action = element('button', '', worker && !worker.revoked ? 'Details' : 'Connect');
+  const action = element('button', '', worker && !worker.revoked ? 'Show details' : 'Connect');
   action.type = 'button';
   row.append(identity, state, credit, action);
   section.append(row);
   if (worker && !worker.revoked) {
-    const more = element('details');
+    // A visible button owns the disclosure; no native <details> triangle (owner, 2026-11-12).
+    const more = element('div', 'worker-details');
     more.hidden = true;
-    const summary = element('summary', '', 'Connection details');
+    more.id = `relay-worker-details-${worker.workerId}`;
     const list = element('dl');
     detail(list, 'Extension', KINDS[kind]);
     detail(list, 'Last reported', timestamp(worker.lastSeen));
@@ -79,7 +80,7 @@ function workerRow(kind, worker) {
     if (worker.heldJobs?.length) detail(list, 'Held outcomes', worker.heldJobs.join(', '));
     const visible = worker.telemetry?.tab?.visible;
     detail(list, 'Provider tab visible', visible === true ? 'Yes' : visible === false ? 'No' : 'Unknown');
-    more.append(summary, list);
+    more.append(list);
     const models = worker.telemetry?.capabilities?.models;
     if (Array.isArray(models)) {
       more.append(element('strong', '', 'Reported models'));
@@ -92,10 +93,10 @@ function workerRow(kind, worker) {
     revoke.type = 'button';
     revoke.addEventListener('click', () => beginRevoke(worker));
     if (canManage) more.append(revoke);
+    action.setAttribute('aria-controls', more.id);
     action.addEventListener('click', () => {
       more.hidden = !more.hidden;
-      more.open = !more.hidden;
-      action.textContent = more.hidden ? 'Details' : 'Hide details';
+      action.textContent = more.hidden ? 'Show details' : 'Hide details';
       action.setAttribute('aria-expanded', String(!more.hidden));
     });
     action.setAttribute('aria-expanded', 'false');

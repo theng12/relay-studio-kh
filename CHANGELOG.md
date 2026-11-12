@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.8 — 2026-11-12
+- The second accounts view is called Card; a previously saved Grid choice still opens Card.
+- Account details open from a Show details button. The disclosure triangle is gone from every screen, including the Gateway worker list.
+- Delete removes the saved account and its Chrome profile for good; a refusal, such as an open browser, stays on that account's row.
+
 ## 0.3.7 — 2026-11-12
 - Delete works. It asks in Relay's own window, moves the account's Chrome profile to Relay's own _trash, reloads the list and says where the folder went.
 - A refused Delete says why on that account's own row, such as a browser that must be closed first.

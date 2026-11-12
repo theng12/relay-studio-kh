@@ -487,7 +487,7 @@ export function mountAccounts(invoke) {
     const current = snapshot?.profiles?.find((entry) => entry.id === id);
     if (!current || busy || busyIds.has(id)) return;
     deletingId = id;
-    $('delete-body').textContent = `Account ${current.number} — ${current.label || 'Untitled account'} will be removed from this list.`;
+    $('delete-body').textContent = `Account ${current.number} — ${current.label || 'Untitled account'} will be deleted with its Chrome profile.`;
     $('delete-dialog').showModal();
   }
 
@@ -497,6 +497,7 @@ export function mountAccounts(invoke) {
     busy = true;
     setControls();
     const refs = rows.get(id);
+    const account = snapshot?.profiles?.find((entry) => entry.id === id);
     if (refs) refs.remove.disabled = true;
     rowErrors.delete(id);
     renderList();
@@ -504,8 +505,9 @@ export function mountAccounts(invoke) {
       const next = await invoke('manager_delete_profile', { profileId: id });
       selection.delete(id);
       render(next);
+      const named = account ? `Account ${account.number} — ${account.label || 'Untitled account'}` : 'Account';
       $('accounts-error').hidden = false;
-      $('accounts-error').textContent = `Account ${current.number} — ${current.label} deleted.`;
+      $('accounts-error').textContent = `${named} deleted.`;
     } catch (error) {
       rowErrors.set(id, String(error?.message ?? error));
       // Re-read so a stale list, or an account that no longer exists, cannot outlive the refusal.

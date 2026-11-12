@@ -33,7 +33,7 @@ struct Settings {
     /// In-app only: system, light, dark or the app's designed look. Never changes macOS.
     #[serde(default = "default_appearance")]
     appearance: String,
-    /// Accounts page layout: compact (default) or grid. In-app only.
+    /// Accounts page layout: compact (default) or card. In-app only.
     #[serde(default = "default_accounts_view")]
     accounts_view: String,
 }
@@ -51,9 +51,13 @@ fn default_accounts_view() -> String {
     "compact".into()
 }
 fn valid_accounts_view(value: &str) -> bool {
-    matches!(value, "compact" | "grid")
+    matches!(value, "compact" | "card")
 }
 fn normalized_accounts_view(value: &str) -> String {
+    // `grid` was this view's stored name before it was renamed to Card.
+    if value == "grid" {
+        return "card".to_string();
+    }
     if valid_accounts_view(value) {
         value.to_string()
     } else {
@@ -187,7 +191,7 @@ fn save_settings(
     let previous = guard.as_ref().map_err(Clone::clone)?;
     if let Some(value) = accounts_view.as_deref() {
         if !valid_accounts_view(value) {
-            return Err("Choose Compact or Grid for the account list.".into());
+            return Err("Choose Compact or Card for the account list.".into());
         }
     }
     if let Some(value) = appearance.as_deref() {
@@ -634,11 +638,13 @@ mod tests {
     }
 
     #[test]
-    fn only_compact_and_grid_are_accepted_and_compact_is_the_default() {
+    fn only_compact_and_card_are_accepted_and_compact_is_the_default() {
         assert_eq!(default_accounts_view(), "compact");
-        assert_eq!(normalized_accounts_view("grid"), "grid");
+        assert_eq!(normalized_accounts_view("card"), "card");
+        // The view was stored as `grid` before it was renamed to Card.
+        assert_eq!(normalized_accounts_view("grid"), "card");
         assert_eq!(normalized_accounts_view("compact"), "compact");
         assert_eq!(normalized_accounts_view("cards"), "compact");
-        assert!(!valid_accounts_view("cards"));
+        assert!(!valid_accounts_view("grid"));
     }
 }

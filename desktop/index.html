@@ -131,7 +131,7 @@
             <span id="selection-state" class="secondary" role="status">0 selected</span>
             <div class="segmented view-toggle" role="radiogroup" aria-label="Account list view">
               <label class="seg"><input type="radio" name="accounts-view" value="compact" checked><span>Compact</span></label>
-              <label class="seg"><input type="radio" name="accounts-view" value="grid"><span>Grid</span></label>
+              <label class="seg"><input type="radio" name="accounts-view" value="card"><span>Card</span></label>
             </div>
           </div>
           <div class="account-bulk">
@@ -304,7 +304,7 @@
     <dialog id="delete-dialog" aria-labelledby="delete-title">
       <h2 id="delete-title">Delete account?</h2>
       <p id="delete-body"></p>
-      <p class="secondary">The Chrome profile folder moves to Relay’s own _trash, so it can be recovered. A browser that is open must be closed first.</p>
+      <p class="secondary">This cannot be undone: the account and its Chrome profile are deleted. A browser that is open must be closed first.</p>
       <div class="dialog-actions">
         <button class="ghost" id="delete-cancel" type="button">Keep account</button>
         <button id="delete-confirm" type="button" class="danger">Delete</button>

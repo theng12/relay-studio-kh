@@ -169,7 +169,7 @@ Settings offers System, Light, Dark and Default. System follows macOS; Default i
 ### Connection List
 - **Container:** Card-radius (8px) border, surface background, overflow hidden. Workers separated by 1px line dividers.
 - **Row:** Four-column grid with generous padding (24px). Identity column carries title (semibold 15px) and subtitle (muted 12px). State column shows a colored dot (6px circle via ::before pseudo-element) plus label. Credits column stacks caption label above tabular-nums value. Action column holds the context-appropriate button.
-- **Expandable Details:** Native `<details>` element. Summary styled as accent-colored semibold text. Definition list uses a two-column grid (144px label column) capped at 720px. Model list uses standard ul with left padding.
+- **Expandable Details:** A visible text button ("Show details" / "Hide details") with `aria-expanded` toggles an inline panel. Never a native `<details>`/`<summary>` triangle. Definition list uses a two-column grid (144px label column) capped at 720px. Model list uses standard ul with left padding.
 
 ### Native Browser Accounts
 - **Register:** Extend the connection list into stable numbered saved profiles. Selection and range tools sit above the list; saved entries and resident browsers remain distinct.
@@ -208,6 +208,7 @@ Settings offers System, Light, Dark and Default. System follows macOS; Default i
 ### Don't:
 - **Don't** add shadows, gradients, or decorative elevation. The surface is intentionally flat; depth comes from color contrast and borders.
 - **Don't** introduce a second accent color. Gateway Blue is the sole interactive color. Charts, illustrations, and multi-color encoding are out of scope.
+- **Don't** use the native disclosure triangle (`<details>`/`<summary>`) anywhere in Relay. The owner rejected it outright on 2026-11-12; use a visible text button that names what it opens, or a chevron inside a real button with a hover state, carrying `aria-expanded`.
 - **Don't** use web fonts or custom typefaces. The system font stack is a deliberate choice for native rendering quality and zero load cost.
 - **Don't** animate beyond the dialog entrance. No hover transitions, no loading spinners, no progress bars. Loading states use text ("Reading connections...") and aria-busy.
 - **Don't** invent token values outside the shared scale. If a spacing or size need falls between existing steps, use the next larger step rather than creating an intermediate value.

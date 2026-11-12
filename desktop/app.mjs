@@ -23,10 +23,11 @@ let currentSettings = null;
 
 // In-app only: colour-scheme is scoped to this document, never to macOS.
 
-// Accounts layout: compact is the default, grid is the opt-in. In-app only, saved with settings.
+// Accounts layout: compact is the default, Card is the opt-in. In-app only, saved with settings.
 const accountViewChoices = [...document.querySelectorAll('input[name="accounts-view"]')];
 function applyAccountsView(value) {
-  const choice = value === 'grid' ? 'grid' : 'compact';
+  // `grid` was this view's stored name before it was renamed to Card.
+  const choice = value === 'card' || value === 'grid' ? 'card' : 'compact';
   document.documentElement.dataset.accountsView = choice;
   for (const input of accountViewChoices) input.checked = input.value === choice;
 }

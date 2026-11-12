@@ -357,7 +357,7 @@ dialog p { margin: 0 0 8px; line-height: 1.6; }
 }
 
 /* Accounts layout. Compact is the default: one line per account, details on expand.
-   Grid keeps the taller card for people who want the facts side by side. */
+   Card keeps the taller layout for people who want the facts side by side. */
 html[data-accounts-view="compact"] .account-row {
   grid-template-columns: 28px minmax(0, 1fr) auto;
   grid-template-areas: "pick identity action";
@@ -381,7 +381,7 @@ html[data-accounts-view="compact"] .account-title { align-items: baseline; }
 html[data-accounts-view="compact"] .account-actions { opacity: 1; gap: 6px; }
 html[data-accounts-view="compact"] .account-actions button { padding: 2px 8px; font-size: 12px; }
 html[data-accounts-view="compact"] .account-details { padding: 0 12px 10px; }
-html[data-accounts-view="grid"] .account-row {
+html[data-accounts-view="card"] .account-row {
   grid-template-columns: 28px minmax(0, 1fr) minmax(180px, 240px) auto;
   grid-template-areas: "pick identity status action";
   gap: 16px;

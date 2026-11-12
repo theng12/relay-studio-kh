@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 const assets = new URL('../desktop-dist/', import.meta.url);
 const bridge = `
 const settings = { settings: { gateway_url: null, start_at_login: false }, autostart_observed: false, autostart_error: null };
-let deletedPath = null;
 const manager = {
   profiles: [],
   memory: { physical_mb: 32768, available_mb: 12288, budget_mb: 4096, used_mb: 0, per_profile_mb: 1024, queued: 0, reason: 'Fixture measurements only; no real processes are running.' },
@@ -29,6 +28,7 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
       if (!['http:','https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw Error('Use a Gateway origin without credentials, path, query or fragment.');
       settings.settings.gateway_url = url.origin;
     } else settings.settings.gateway_url = null;
+    if (args.accountsView) settings.settings.accounts_view = args.accountsView;
     if (args.startAtLogin != null) { settings.settings.start_at_login = args.startAtLogin; settings.autostart_observed = args.startAtLogin; }
     return null;
   }
@@ -42,8 +42,7 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
   if (name === 'manager_add_profiles') add(args.labels);
   else if (name === 'manager_delete_profile') {
     const at = manager.profiles.findIndex(p=>p.id===args.profileId); if(at<0) throw Error('Unknown fixture profile.');
-    const [gone] = manager.profiles.splice(at,1);
-    deletedPath = 'fixture-trash/' + gone.number + '-' + gone.label + '-' + gone.id;
+    manager.profiles.splice(at,1);
   }
   else if (name === 'manager_update_profile') {
     const p=manager.profiles.find(p=>p.id===args.profileId); if(!p) throw Error('Unknown fixture profile.');
@@ -79,7 +78,6 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
   } else if (name !== 'manager_snapshot') throw Error('Unknown fixture command: '+name);
   manager.memory.used_mb=manager.profiles.reduce((sum,p)=>sum+(p.memory_mb??0),0);
   manager.memory.queued=manager.profiles.filter(p=>p.process_state==='queued').length;
-  if (deletedPath) return [structuredClone(manager), deletedPath];
   return structuredClone(manager);
 } } };
 `;
