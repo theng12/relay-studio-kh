@@ -155,13 +155,14 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
 }
 
 #[tauri::command]
-pub(crate) fn extension_worker_status(window: tauri::WebviewWindow) -> Result<Vec<Status>, String> {
+// Async so a slow or prompting Keychain read runs off the main thread and can never freeze the app.
+pub(crate) async fn extension_worker_status(window: tauri::WebviewWindow) -> Result<Vec<Status>, String> {
     super::local_only(&window)?;
     Ok(status_all())
 }
 
 #[tauri::command]
-pub(crate) fn save_extension_worker(
+pub(crate) async fn save_extension_worker(
     window: tauri::WebviewWindow,
     kind: String,
     worker_id: String,
@@ -173,7 +174,7 @@ pub(crate) fn save_extension_worker(
 }
 
 #[tauri::command]
-pub(crate) fn clear_extension_worker(window: tauri::WebviewWindow, kind: String) -> Result<Vec<Status>, String> {
+pub(crate) async fn clear_extension_worker(window: tauri::WebviewWindow, kind: String) -> Result<Vec<Status>, String> {
     super::local_only(&window)?;
     clear(&kind)?;
     Ok(status_all())
