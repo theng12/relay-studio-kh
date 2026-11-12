@@ -66,6 +66,7 @@
     </nav>
 
     <main class="content">
+      <p id="app-error" class="app-error" role="alert" hidden></p>
       <section class="page" id="page-overview" aria-labelledby="overview-title">
         <header class="page-head">
           <h2 id="overview-title">Overview</h2>
@@ -184,6 +185,7 @@
           <h2 id="memory-title">Memory &amp; pacing</h2>
           <p class="page-sub">Measured memory, the open cap and the pause between account jobs.</p>
         </header>
+        <p id="memory-summary-page" class="secondary">Memory measurements have not been read yet.</p>
         <div class="card">
           <form id="manager-settings">
             <div class="edit-grid">
@@ -193,6 +195,7 @@
               <label class="field">Pause minimum (seconds)<input id="pause-min" type="number" min="0" step="any"></label>
               <label class="field">Pause maximum (seconds)<input id="pause-max" type="number" min="0" step="any"></label>
             </div>
+            <p id="memory-error" class="state bad" role="alert" hidden></p>
             <div class="actions"><button class="primary" id="manager-settings-save" type="submit">Save memory and pacing</button></div>
             <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
             <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
@@ -246,13 +249,13 @@
       <section class="page" id="page-extensions" aria-labelledby="extensions-title" hidden>
         <header class="page-head">
           <h2 id="extensions-title">Extensions</h2>
-          <p class="page-sub">Bundled image and video workers, loaded into Chrome by hand.</p>
+          <p class="page-sub">Bundled image, video and audio workers, loaded into browsers Relay opens.</p>
         </header>
         <div class="card">
           <label class="field">Browser<select id="browser" disabled></select></label>
           <button class="primary" id="open-extensions" type="button" disabled>Open extension settings</button>
           <p id="browser-help" class="help">Checking installed browsers...</p>
-          <p class="help">Install each extension yourself using Load unpacked. Relay does not enable Developer mode or silently install extensions.</p>
+          <p class="help">Browsers Relay opens from Accounts load these automatically — no Load unpacked and no Developer mode. Show folder is only for loading one in another browser.</p>
           <ul id="extensions" class="extension-list"></ul>
           <p id="setup-state" class="secondary" role="status">Reading bundled extension availability...</p>
           <p class="help">Before loading a different version, stop or resolve active and uncertain work in Gateway. Preparing a new folder preserves previous versions and does not reload workers. Keep custom extension folders as they are.</p>

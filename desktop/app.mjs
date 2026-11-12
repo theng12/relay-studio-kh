@@ -8,7 +8,8 @@ import { setupExtensions } from './setup.mjs';
 
 const $ = (id) => document.getElementById(id);
 const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
-const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
+// Failures appear where the person is looking, not only on the Accounts page.
+const showError = (error) => { $('app-error').textContent = String(error); $('app-error').hidden = false; };
 const accounts = mountAccounts(invoke);
 mountBrowsers(invoke, accounts);
 // Footer: the only external links Relay opens by itself, and live connection facts.
@@ -18,7 +19,7 @@ function renderFooterStatus(snapshot) {
   const paired = support.manager_paired === true || support.gateway_manager_paired === true
     || support.pairing_paired === true || (typeof support.pairing === 'object' && support.pairing?.paired === true);
   const connected = snapshot.profiles.filter((profile) => profile.gateway?.connection === 'connected').length;
-  $('footer-status').textContent = `${paired ? 'Gateway paired' : 'Gateway not paired'} · ${connected} ${connected === 1 ? 'worker' : 'workers'} connected`;
+  $('footer-status').textContent = `${paired ? 'Gateway paired' : 'Gateway not paired'} · ${connected} ${connected === 1 ? 'account' : 'accounts'} connected`;
 }
 accounts.subscribe(renderFooterStatus);
 $('support-link').addEventListener('click', () => invoke('open_support_link').catch(showError));

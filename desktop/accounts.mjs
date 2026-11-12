@@ -855,7 +855,9 @@ export function mountAccounts(invoke) {
   function renderMemory() {
     if (!snapshot) return;
     const settings = snapshot.settings || {};
-    $('memory-summary').textContent = memorySummary(snapshot.memory || {});
+    const summary = memorySummary(snapshot.memory || {});
+    $('memory-summary').textContent = summary;
+    $('memory-summary-page').textContent = summary;
     setInput($('memory-budget'), settings.memory_budget_mb ?? '');
     setInput($('memory-reserve'), settings.reserve_mb ?? '');
     setInput($('memory-max'), settings.max_active ?? '');
@@ -975,18 +977,24 @@ export function mountAccounts(invoke) {
     if (!ids.length) { setError('Selected accounts are already closed or waiting to close.'); return; }
     runCommand('manager_close_profiles', { profileIds: ids }, ids);
   });
+  // This form lives on Memory & pacing; its errors must be visible there, not on Accounts.
+  const setMemoryError = (message) => {
+    $('memory-error').textContent = message ? String(message) : '';
+    $('memory-error').hidden = !message;
+  };
+  $('manager-settings').addEventListener('input', () => setMemoryError(null));
   $('manager-settings').addEventListener('submit', async (event) => {
     event.preventDefault();
     let payload;
     try { payload = settingsPayload({ memoryBudgetMb: $('memory-budget').value, reserveMb: $('memory-reserve').value, maxActive: $('memory-max').value, pauseMinSeconds: $('pause-min').value, pauseMaxSeconds: $('pause-max').value }); }
-    catch (error) { setError(error); return; }
-    busy = true; setControls(); setError(null);
+    catch (error) { setMemoryError(error); return; }
+    busy = true; setControls(); setMemoryError(null);
     try {
       const next = await readManager('manager_save_settings', payload);
       dirtyForms.delete($('manager-settings'));
       render(next);
       $('settings-state').textContent = 'Saved. Values shown here came back from the native manager.';
-    } catch (error) { setError(error); await reload(); }
+    } catch (error) { setMemoryError(error); await reload(); }
     finally { busy = false; setControls(); }
   });
   $('manager-pair-form').addEventListener('submit', async (event) => {

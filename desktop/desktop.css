@@ -177,7 +177,8 @@ h3 { font-size: 14px; font-weight: 600; line-height: 1.4; }
 p { margin: 0; }
 .secondary { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .window .help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; max-width: 68ch; }
-#error, #accounts-error, #browsers-error, #manager-pair-error { color: var(--bad); }
+#error, #accounts-error, #browsers-error, #manager-pair-error, #app-error, #memory-error { color: var(--bad); }
+.app-error:not([hidden]) { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--bad); border-radius: 8px; }
 
 .card {
   display: flex;
