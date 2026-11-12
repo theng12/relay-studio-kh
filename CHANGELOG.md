@@ -1,5 +1,13 @@
 # What's New
 
+## 0.3.3 — 2026-11-12
+- Rename a saved account in place: click its name, type, and press Enter.
+- Delete an account recoverably: its Chrome profile moves to Relay's own `_trash` and the page tells you where.
+- See accounts in one compact line each, or switch to the grid view; your choice is remembered.
+- Read the memory arithmetic on Memory & pacing: room left after the reserve and how many more accounts fit.
+- Understand a "waiting for memory" refusal: the reason log now records the room, the reserve and the size it measured.
+- Keep the measured per-account memory across restarts instead of measuring from scratch each launch.
+
 ## 0.3.2 — 2026-11-12
 - Start on an Overview dashboard: saved accounts, browsers open, memory used and available, Gateway state and the accounts that need attention.
 - Move between Overview, Accounts, Open windows, Memory & pacing, Gateway, Extensions and Settings; every page keeps its own scroll.
