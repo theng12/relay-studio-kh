@@ -98,9 +98,9 @@ html[data-appearance="system"] .window { color-scheme: light dark; }
 .sidebar-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
 .footer-support { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 28px; padding: 0 12px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
 .footer-support:hover { color: var(--text); }
-.footer-line { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
-.footer-pill { flex: 0 1 auto; min-width: 0; padding: 0 10px; }
-.footer-icon { width: 28px; height: 28px; padding: 0; border-radius: 999px; flex: 0 0 auto; }
+.footer-line { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.footer-pill { flex: 0 1 auto; min-width: 0; padding: 0 8px; gap: 6px; }
+.footer-icon { width: 24px; height: 24px; padding: 0; border-radius: 999px; flex: 0 0 auto; }
 .footer-status { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .footer-pill {
   display: inline-flex;
@@ -137,7 +137,7 @@ html[data-appearance="system"] .window { color-scheme: light dark; }
 .pill-link[aria-current="page"] { color: var(--text); }
 .pill-dot, .pill-version { color: var(--muted); font-weight: 400; }
 .footer-pill .pill-link { flex: 0 0 auto; white-space: nowrap; }
-.pill-version { pointer-events: none; user-select: text; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill-version { pointer-events: none; user-select: text; min-width: 0; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* One button shape everywhere: 32px, tight padding, no full-width bars. */
 .window button {

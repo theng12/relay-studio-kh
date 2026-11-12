@@ -156,8 +156,10 @@ async function loadWorkerCredentials() {
       const title = document.createElement('strong');
       title.textContent = WORKER_KINDS[row.kind] || row.kind;
       const state = document.createElement('span');
-      state.className = `state ${row.has_token ? 'ok' : 'off'}`;
-      state.textContent = row.has_token ? `Saved for worker ${row.worker_id}` : 'No worker token saved';
+      state.className = `state ${row.denied ? 'bad' : row.has_token ? 'ok' : 'off'}`;
+      state.textContent = row.denied
+        ? 'Keychain access was denied — allow Relay when macOS asks, then save again'
+        : row.has_token ? `Saved for worker ${row.worker_id}` : 'No worker token saved';
       const worker = document.createElement('input');
       worker.type = 'text';
       worker.autocomplete = 'off';

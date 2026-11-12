@@ -173,8 +173,10 @@ export function mountBrowsers(invoke, accounts) {
     refs.close.disabled = disabled || Boolean(profile.close_pending) || !['open', 'opening', 'queued'].includes(text(profile.process_state));
     // The dialog names the reason; the native command re-checks ownership and Gateway safety.
     const waitingToExit = profile.close_pending && (seconds ?? 0) < 3;
-    refs.force.disabled = disabled || profile.process_id === null || profile.process_id === undefined || waitingToExit;
-    refs.force.title = forceBlockReason(profile) || (waitingToExit ? 'Force close is available after 3 seconds.' : '');
+    const blocked = forceBlockReason(profile);
+    // An unavailable destructive action is not offered at all; the reason is on the card.
+    refs.force.disabled = disabled || profile.process_id === null || profile.process_id === undefined || waitingToExit || Boolean(blocked);
+    refs.force.title = blocked || (waitingToExit ? 'Force close is available after 3 seconds.' : '');
   }
 
   function paint() {

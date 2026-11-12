@@ -22,6 +22,14 @@ pub(crate) struct Status {
     kind: &'static str,
     worker_id: Option<String>,
     has_token: bool,
+    /// True when macOS refused the read (a prompt was declined, or interaction is blocked).
+    denied: bool,
+}
+
+enum ReadOutcome {
+    Found(Stored),
+    Missing,
+    Denied,
 }
 
 fn label(kind: &str) -> &'static str {
@@ -36,23 +44,38 @@ fn account(kind: &str) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn read(kind: &str) -> Option<Stored> {
-    let bytes = security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, &account(kind)).ok()?;
-    let stored: Stored = serde_json::from_slice(&bytes).ok()?;
-    if stored.version != CREDENTIAL_VERSION || stored.worker_id.is_empty() || stored.token.is_empty() {
-        return None;
+fn read(kind: &str) -> ReadOutcome {
+    match security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, &account(kind)) {
+        Ok(bytes) => match serde_json::from_slice::<Stored>(&bytes) {
+            Ok(stored)
+                if stored.version == CREDENTIAL_VERSION
+                    && !stored.worker_id.is_empty()
+                    && !stored.token.is_empty()
+                    && stored.worker_id.len() <= 160 =>
+            {
+                ReadOutcome::Found(stored)
+            }
+            _ => ReadOutcome::Missing,
+        },
+        // errSecItemNotFound: nothing saved.
+        Err(error) if error.code() == -25300 => ReadOutcome::Missing,
+        // Anything else is a refusal (declined prompt, interaction not allowed, auth failure,
+        // timeout). Say so instead of pretending no token exists.
+        Err(_) => ReadOutcome::Denied,
     }
-    (stored.worker_id.len() <= 160).then_some(stored)
 }
 #[cfg(not(target_os = "macos"))]
-fn read(_: &str) -> Option<Stored> {
-    None
+fn read(_: &str) -> ReadOutcome {
+    ReadOutcome::Missing
 }
 
 #[cfg(target_os = "macos")]
 fn write(kind: &str, worker_id: &str, token: &str) -> Result<(), String> {
     let stored = Stored { version: CREDENTIAL_VERSION, worker_id: worker_id.to_string(), token: token.to_string() };
     let bytes = serde_json::to_vec(&stored).map_err(|_| "Could not encode the worker credential.")?;
+    // Delete + add re-mints the item's ACL for THIS build; security_framework's update would keep
+    // an older ACL that a rebuild may no longer satisfy.
+    let _ = security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, &account(kind));
     security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, &account(kind), &bytes)
         .map_err(|error| format!("Relay could not save this credential in the Keychain (status {}).", error.code()))
 }
@@ -78,15 +101,27 @@ fn remove(_: &str) -> Result<(), String> {
 pub(crate) fn status_all() -> Vec<Status> {
     KINDS
         .iter()
-        .map(|kind| {
-            let stored = read(kind);
-            Status {
-                kind,
-                worker_id: stored.as_ref().map(|value| value.worker_id.clone()),
-                has_token: stored.is_some(),
+        .map(|kind| match read(kind) {
+            ReadOutcome::Found(stored) => {
+                // Self-heal: a token that could be read is rewritten once per launch so its ACL
+                // belongs to this build (macOS may have asked once after an update).
+                if !refreshed(kind) {
+                    let _ = write(kind, &stored.worker_id, &stored.token);
+                }
+                Status { kind, worker_id: Some(stored.worker_id), has_token: true, denied: false }
             }
+            ReadOutcome::Missing => Status { kind, worker_id: None, has_token: false, denied: false },
+            ReadOutcome::Denied => Status { kind, worker_id: None, has_token: false, denied: true },
         })
         .collect()
+}
+
+fn refreshed(kind: &str) -> bool {
+    use std::sync::{Mutex, OnceLock};
+    static REFRESHED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let set = REFRESHED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    let mut guard = set.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    !guard.insert(kind.to_string())
 }
 
 fn valid_kind(kind: &str) -> Result<(), String> {
@@ -141,8 +176,10 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
     let Some(bound) = bound_worker_id.filter(|value| !value.is_empty()) else {
         return format!("{}: not seeded — no worker id is bound to this account", label(kind));
     };
-    let Some(stored) = read(kind) else {
-        return format!("{}: not seeded — no worker token saved in Relay", label(kind));
+    let stored = match read(kind) {
+        ReadOutcome::Found(value) => value,
+        ReadOutcome::Missing => return format!("{}: not seeded — no worker token saved in Relay", label(kind)),
+        ReadOutcome::Denied => return format!("{}: not seeded — Keychain access was denied; allow Relay and retry", label(kind)),
     };
     if stored.worker_id != bound {
         return format!("{}: not seeded — the saved token belongs to worker {}, not {}", label(kind), stored.worker_id, bound);
