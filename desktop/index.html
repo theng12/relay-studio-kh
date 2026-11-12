@@ -201,8 +201,8 @@
         </header>
         <div class="card">
           <form id="settings">
-            <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" aria-describedby="address-help"></label>
-            <p id="address-help" class="help">Use your existing Gateway address. Sign in through Gateway’s own interface; do not put a password or token here.</p>
+            <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8787" aria-describedby="address-help"></label>
+            <p id="address-help" class="help">Use the address of the Mac running Gateway. When Relay and Gateway are on the same Mac the loopback address <code>http://127.0.0.1:8787</code> is right; when Gateway runs on another Mac use its LAN or tailnet address instead. Sign in through Gateway’s own interface; never put a password or token here.</p>
             <div class="actions"><button class="primary" id="save" type="submit">Save settings</button><button class="ghost" id="reconnect" type="button">Reconnect</button></div>
           </form>
           <p id="connection-state" class="secondary" role="status" aria-live="polite">Reading saved settings...</p>
@@ -213,7 +213,9 @@
           <h3 id="manager-pairing-title">Gateway manager token</h3>
           <p id="manager-pairing-state" class="state off" role="status">Not paired</p>
           <p id="manager-pairing-note" class="secondary" role="status">Pairing status comes from the native manager.</p>
-          <p>Create a scoped manager token in Gateway for these image/video worker IDs, then paste it once. Relay keeps it in this Mac’s Keychain.</p>
+          <p>A <strong>manager token</strong> is a credential scoped to the worker IDs Relay controls. Relay uses it to arm dispatch and to set pacing for those workers — it is not the <code>ekw_</code> worker token an extension uses to claim jobs, and it cannot claim or generate anything itself.</p>
+          <p>Mint it in Gateway under <strong>Providers → Browser workers</strong>, for exactly the worker IDs saved here, or with <code>POST /admin/api/extension-workers/manager</code> passing <code>manager_id</code> and <code>worker_ids</code>. It is shown once; Gateway stores only a hash, and Relay keeps its copy in this Mac’s Keychain.</p>
+          <p class="help">Dispatch can also be armed without Relay holding a manager token, from the same Browser workers pane. A worker sitting at <code>204</code> is usually dispatch that was never armed, not a failed pairing.</p>
           <form id="manager-pair-form">
             <label class="field">Manager token<input id="manager-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="manager-pairing-help"></label>
             <p id="manager-pairing-help" class="secondary">The token is never shown again after pairing and is never saved in browser storage.</p>
