@@ -1,5 +1,11 @@
 # What's New
 
+## 0.3.15 — 2026-11-13
+- Relay finds the Gateway on this Mac by itself — no address to type — and keeps its worker tokens in a file only you can read, never the Keychain.
+- An address you do type needs no http:// or port; Relay fills both in and shows what it used, and any failure names the address it actually tried.
+- An extension that is paired but waiting for a signed-in Flow tab says so instead of looking idle.
+- Updates belong to Studio Launcher KH: Relay's update button opens it and Relay never installs its own update.
+
 ## 0.3.14 — 2026-11-12
 - Enter each extension worker's id and token once on the Gateway page. Relay keeps them in this Mac's Keychain, never shows the token again, and seeds them into the matching extension when it opens a browser.
 - Only a worker whose id is bound to that account is seeded; a kind with no token or no binding says so on the account row instead of looking configured.

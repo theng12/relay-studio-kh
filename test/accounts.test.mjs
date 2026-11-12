@@ -551,7 +551,7 @@ test('row actions are never hidden behind hover', async () => {
   assert.match(html, /id="support-link"/, 'the Support this app row exists');
   assert.match(html, /id="check-updates"/, 'the Check for Updates control exists');
   assert.match(app, /open_support_link/, 'support opens through the app opener');
-  assert.match(app, /open_updater/, 'updates open Update Studio KH');
+  assert.match(app, /open_launcher/, 'updates open Studio Launcher KH, never a self-install');
   const native = await load('../src-tauri/src/lib.rs');
   assert.match(native, /nowpayments\.io\/donation\/studiokh/, 'the support URL is allow-listed in Rust');
 });

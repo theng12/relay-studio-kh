@@ -24,7 +24,7 @@ function renderFooterStatus(snapshot) {
 accounts.subscribe(renderFooterStatus);
 $('support-link').addEventListener('click', () => invoke('open_support_link').catch(showError));
 $('check-updates').addEventListener('click', async () => {
-  try { await invoke('open_updater'); $('footer-status').textContent = 'Update Studio KH opened — it checks and installs updates.'; }
+  try { await invoke('open_launcher'); $('footer-status').textContent = 'Studio Launcher KH opened — updates install there, never in Relay.'; }
   catch (error) { showError(error); }
 });
 const shell = mountShell({ onShow: (page) => {
