@@ -1609,6 +1609,106 @@ pub(crate) fn manager_update_profile(
 }
 
 #[tauri::command]
+/// Delete a saved profile recoverably: the folder moves into the app's own `_trash` with a dated
+/// name and the snapshot reports where it went. Nothing is erased, and an open browser is refused
+/// rather than closed behind the person's back.
+pub(crate) fn manager_delete_profile(
+    window: WebviewWindow,
+    manager: State<'_, BrowserManager>,
+    profile_id: String,
+) -> Result<(Snapshot, String), String> {
+    super::local_only(&window)?;
+    let shared = &manager.shared;
+    let moved = {
+        let mut guard = locked(shared)?;
+        let mut stored = guard.stored.clone().ok_or_else(|| {
+            guard
+                .load_error
+                .clone()
+                .unwrap_or_else(|| "Saved browser profiles are unavailable.".to_string())
+        })?;
+        let index = stored
+            .profiles
+            .iter()
+            .position(|profile| profile.id == profile_id)
+            .ok_or("That saved account no longer exists.")?;
+        if stored.profiles[index].pid.is_some() {
+            return Err("Close this browser before deleting the account.".into());
+        }
+        let profile = stored.profiles.remove(index);
+        let trash = shared
+            .profiles_dir
+            .parent()
+            .ok_or("Relay's support folder is unavailable.")?
+            .join("_trash")
+            .join(today())
+            .join(format!(
+                "{:02}-{}-{}",
+                profile.number,
+                safe_label(&profile.label),
+                profile.id
+            ));
+        if shared.profiles_dir.join(&profile.id).exists() {
+            std::fs::create_dir_all(
+                trash
+                    .parent()
+                    .ok_or("Could not prepare the trash folder.")?,
+            )
+            .map_err(|_| "Could not prepare the trash folder.")?;
+            std::fs::rename(shared.profiles_dir.join(&profile.id), &trash)
+                .map_err(|_| "Could not move this profile to the trash; nothing was deleted.")?;
+        }
+        save_state(&shared.state_path, &stored)?;
+        guard.stored = Some(stored);
+        trash.display().to_string()
+    };
+    Ok((finish(shared)?, moved))
+}
+
+fn today() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // 2026-11-12 style date without pulling in a date crate: days since the epoch to civil date.
+    let days = (seconds / 86_400) as i64;
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn safe_label(label: &str) -> String {
+    let cleaned: String = label
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '@' || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(40)
+        .collect();
+    if cleaned.is_empty() {
+        "account".to_string()
+    } else {
+        cleaned
+    }
+}
+
+#[tauri::command]
 pub(crate) fn manager_open_profiles(
     window: WebviewWindow,
     manager: State<'_, BrowserManager>,

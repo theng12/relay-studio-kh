@@ -129,6 +129,10 @@
             <button id="select-none" type="button">None</button>
             <label class="check"><input id="attention-only" type="checkbox"> Attention only</label>
             <span id="selection-state" class="secondary" role="status">0 selected</span>
+            <div class="segmented view-toggle" role="radiogroup" aria-label="Account list view">
+              <label class="seg"><input type="radio" name="accounts-view" value="compact" checked><span>Compact</span></label>
+              <label class="seg"><input type="radio" name="accounts-view" value="grid"><span>Grid</span></label>
+            </div>
           </div>
           <div class="account-bulk">
             <button class="primary" id="open-selected" type="button" disabled>Open selected</button>

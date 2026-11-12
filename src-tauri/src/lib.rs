@@ -32,6 +32,9 @@ struct Settings {
     /// In-app only: system, light, dark or the app's designed look. Never changes macOS.
     #[serde(default = "default_appearance")]
     appearance: String,
+    /// Accounts page layout: compact (default) or grid. In-app only.
+    #[serde(default = "default_accounts_view")]
+    accounts_view: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -39,7 +42,21 @@ impl Default for Settings {
             gateway_url: None,
             start_at_login: true,
             appearance: default_appearance(),
+            accounts_view: default_accounts_view(),
         }
+    }
+}
+fn default_accounts_view() -> String {
+    "compact".into()
+}
+fn valid_accounts_view(value: &str) -> bool {
+    matches!(value, "compact" | "grid")
+}
+fn normalized_accounts_view(value: &str) -> String {
+    if valid_accounts_view(value) {
+        value.to_string()
+    } else {
+        default_accounts_view()
     }
 }
 struct NativeState {
@@ -115,6 +132,7 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
                 .map_err(|_| "Saved settings are unreadable. The file has not been reset.")?;
             settings.gateway_url = origin(settings.gateway_url.as_deref().unwrap_or(""))?;
             settings.appearance = normalized_appearance(&settings.appearance);
+            settings.accounts_view = normalized_accounts_view(&settings.accounts_view);
             Ok((settings, false))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -160,11 +178,17 @@ fn save_settings(
     gateway_url: String,
     start_at_login: Option<bool>,
     appearance: Option<String>,
+    accounts_view: Option<String>,
 ) -> Result<(), String> {
     local_only(&window)?;
     let state = app.state::<NativeState>();
     let mut guard = state.settings.lock().map_err(|_| "Settings are busy.")?;
     let previous = guard.as_ref().map_err(Clone::clone)?;
+    if let Some(value) = accounts_view.as_deref() {
+        if !valid_accounts_view(value) {
+            return Err("Choose Compact or Grid for the account list.".into());
+        }
+    }
     if let Some(value) = appearance.as_deref() {
         if !valid_appearance(value) {
             return Err("Choose System, Light or Dark for appearance.".into());
@@ -174,6 +198,9 @@ fn save_settings(
         gateway_url: origin(&gateway_url)?,
         start_at_login: start_at_login.unwrap_or(previous.start_at_login),
         appearance: appearance.unwrap_or_else(|| previous.appearance.clone()),
+        accounts_view: accounts_view
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| previous.accounts_view.clone()),
     };
     persist(&state.path, &settings)?;
     *guard = Ok(settings.clone());
@@ -454,7 +481,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { report_second_launch(app); }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
+        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
         .setup(|app| {
             app.manage(browser_manager::init(app.handle())?);
             let path = app.path().app_config_dir()?.join("settings.json");
@@ -587,5 +614,14 @@ mod tests {
         let registered_elsewhere = "<string>/Users/x/Applications/Relay Studio KH.app/Contents/MacOS/Relay Studio KH</string>";
         assert!(login_item_is_stale(registered_elsewhere, mine));
         assert!(login_item_is_stale("", mine));
+    }
+
+    #[test]
+    fn only_compact_and_grid_are_accepted_and_compact_is_the_default() {
+        assert_eq!(default_accounts_view(), "compact");
+        assert_eq!(normalized_accounts_view("grid"), "grid");
+        assert_eq!(normalized_accounts_view("compact"), "compact");
+        assert_eq!(normalized_accounts_view("cards"), "compact");
+        assert!(!valid_accounts_view("cards"));
     }
 }

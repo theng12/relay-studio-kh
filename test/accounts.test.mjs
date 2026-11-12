@@ -486,3 +486,24 @@ test('force close blocks active or uncertain Gateway work and non-resident rows'
   ];
   assert.deepEqual(residentIds(rows, ['id-1', 'id-2', 'id-3']), ['id-1', 'id-2']);
 });
+
+test('accounts page offers rename, recoverable delete and a persisted compact/grid view', async () => {
+  const load = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const html = await load('../desktop/index.html');
+  const accounts = await load('../desktop/accounts.mjs');
+  const app = await load('../desktop/app.mjs');
+  const native = await load('../src-tauri/src/lib.rs');
+  // Compact is the default and the choice is a real control, not a fixed layout.
+  assert.match(html, /name="accounts-view" value="compact" checked/, 'compact is the default view');
+  assert.match(html, /name="accounts-view" value="grid"/, 'grid is available');
+  assert.match(app, /accountsView/, 'the chosen view is saved with settings');
+  assert.match(native, /accounts_view/, 'the native settings keep the chosen view');
+  assert.match(native, /matches!\(value, "compact" \| "grid"\)/, 'only two views are accepted');
+  // Rename and delete exist and go through the native commands rather than local state.
+  assert.match(accounts, /manager_update_profile/, 'rename saves through the native update command');
+  assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');
+  assert.match(accounts, /startRename/, 'the label can be edited in place');
+  const manager = await load('../src-tauri/src/browser_manager.rs');
+  assert.match(manager, /fn manager_delete_profile/, 'delete exists natively');
+  assert.match(manager, /_trash/, 'delete moves the profile aside rather than erasing it');
+});

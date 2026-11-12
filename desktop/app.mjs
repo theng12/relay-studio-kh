@@ -22,6 +22,27 @@ const APPEARANCE = new Set(['system', 'light', 'dark']);
 let currentSettings = null;
 
 // In-app only: colour-scheme is scoped to this document, never to macOS.
+
+// Accounts layout: compact is the default, grid is the opt-in. In-app only, saved with settings.
+const accountViewChoices = [...document.querySelectorAll('input[name="accounts-view"]')];
+function applyAccountsView(value) {
+  const choice = value === 'grid' ? 'grid' : 'compact';
+  document.documentElement.dataset.accountsView = choice;
+  for (const input of accountViewChoices) input.checked = input.value === choice;
+}
+for (const input of accountViewChoices) {
+  input.addEventListener('change', async () => {
+    if (!input.checked) return;
+    applyAccountsView(input.value);
+    try { await saveSettings({ accountsView: input.value }); }
+    catch (error) {
+      try { await loadSettings(); } catch { /* keep the shown choice */ }
+      $('accounts-error').hidden = false;
+      $('accounts-error').textContent = `The account list view was not saved. ${String(error)}`;
+    }
+  });
+}
+
 function applyAppearance(value) {
   // A stored `default` came from a build that offered a fourth option; it now means System.
   const choice = value === 'default' || !APPEARANCE.has(value) ? 'system' : value;
@@ -42,6 +63,7 @@ const tick = createRecovery({
 async function loadSettings() {
   const snapshot = await invoke('get_settings');
   currentSettings = snapshot.settings || {};
+  applyAccountsView(currentSettings.accounts_view || 'compact');
   $('gateway-url').value = currentSettings.gateway_url || '';
   $('start-at-login').checked = Boolean(currentSettings.start_at_login);
   $('start-at-login').disabled = false;

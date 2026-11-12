@@ -468,6 +468,32 @@ export function mountAccounts(invoke) {
     $('profiles-empty').hidden = !message;
   }
 
+  function startRename(id, labelEl, titleEl) {
+    if (busy) return;
+    const current = snapshot?.profiles?.find((entry) => entry.id === id);
+    if (!current) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'rename-input';
+    input.value = current.label;
+    input.setAttribute('aria-label', `Rename account ${current.number}`);
+    const finish = async (save) => {
+      const value = input.value.trim();
+      if (input.isConnected) input.replaceWith(labelEl);
+      if (!save || !value || value === current.label) return;
+      await runCommand('manager_update_profile', { profileId: id, label: value }, [id]);
+    };
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+    void titleEl;
+  }
+
   function createRow(profile) {
     const id = profile.id;
     const li = document.createElement('li');
@@ -492,7 +518,11 @@ export function mountAccounts(invoke) {
     title.className = 'account-title';
     const ordinal = document.createElement('span');
     ordinal.className = 'ordinal';
-    const label = document.createElement('span');
+    const label = document.createElement('button');
+    label.type = 'button';
+    label.className = 'account-label';
+    label.title = 'Rename this account';
+    label.addEventListener('click', () => startRename(id, label, title));
     title.append(ordinal, label);
     const meta = document.createElement('span');
     meta.className = 'account-meta';
@@ -527,9 +557,27 @@ export function mountAccounts(invoke) {
     show.type = 'button';
     show.textContent = 'Show profile';
     show.addEventListener('click', () => runCommand('manager_show_profiles', { profileIds: [id] }, [id]));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'ghost danger';
+    remove.textContent = 'Delete';
+    remove.addEventListener('click', async () => {
+      const current = snapshot?.profiles?.find((entry) => entry.id === id);
+      if (!current) return;
+      if (!window.confirm(`Delete account ${current.number} — ${current.label}?\n\nThe profile folder moves to Relay's own _trash, so it can be recovered.`)) return;
+      try {
+        const [next, moved] = await invoke('manager_delete_profile', { profileId: id });
+        selection.delete(id);
+        render(next);
+        $('accounts-error').hidden = false;
+        $('accounts-error').textContent = `Moved to ${moved}`;
+      } catch (error) {
+        setError(error);
+      }
+    });
     const actionCell = document.createElement('div');
     actionCell.className = 'account-actions';
-    actionCell.append(action, show);
+    actionCell.append(action, show, remove);
     row.append(pick, identity, status, actionCell);
 
     const details = document.createElement('details');
