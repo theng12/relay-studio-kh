@@ -44,6 +44,13 @@ Desktop asset preparation also generates the Mac icon set from the versioned art
 
 The native qualification window additionally needs the Tauri 2 CLI, Rust toolchain and Apple build tools. Cargo dependency resolution/lock, compilation, WKWebView rendering/session persistence, login registration and opt-out/restart/single-instance/Quit behavior have NOT been verified. Native bundling stays disabled until the normal coordinated packaging step; it must use the existing KH Studio Local Signing identity, approved app assets and normal release/update discipline. Do not infer a working native app or Windows compatibility from static checks or mocked recovery tests. No native build/package/install is permitted in the current source-preparation window.
 
+## Removing Relay
+
+Run `scripts/uninstall.sh`. It quits Relay, removes the Start at Login item and moves the app to the
+Trash, and it leaves `~/Library/Application Support/kh.relay.desktop` alone so your saved accounts,
+Chrome profiles, extension folders and settings survive a reinstall. Delete that folder yourself if
+you want the data gone too. The app cannot reliably delete itself, which is why this is a script.
+
 ## Distribution and browser setup
 
 Owner2026-11-10 requests the normal signed `Relay Studio KH.app` through Studio Launcher KH and the existing Updater feed. No end-user Node/Python or custom updater/server is added. Existing generic `app-dmg` support needs no bespoke Launcher registry or code. After native qualification, Stack coordinates the exact signed DMG and normal feed/catalogue data with original Developer; distribution and delivered-app acceptance remain pending. The shell's bundle identifier is `kh.relay.desktop`, product name `Relay Studio KH`, executable `relay-studio-kh`, and signing identity remains `KH Studio Local Signing`. Feed metadata and What's New follow the existing shared release contract; do not invent a second distribution mechanism.

@@ -314,6 +314,53 @@ fn show_settings(app: &tauri::AppHandle) {
         let _ = window.set_focus();
     }
 }
+/// A second launch must not take the desktop. Record it and stay behind; the window is only
+/// brought forward when the person asks for it.
+fn report_second_launch(app: &tauri::AppHandle) {
+    let line = format!(
+        "{} another Relay launch was ignored; the running instance kept the screen\n",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    );
+    if let Ok(dir) = app.path().app_config_dir() {
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("second-launch.log");
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = std::io::Write::write_all(&mut file, line.as_bytes());
+        }
+    }
+}
+/// True when the plist names a different bundle than the one now running.
+fn login_item_is_stale(registered: &str, exe_path: &str) -> bool {
+    // Compare the plist's own entries exactly: a substring test would accept another copy whose
+    // path merely ends with the same bundle name.
+    let entries = registered.split("<string>").skip(1).filter_map(|part| part.split("</string>").next());
+    !entries.into_iter().any(|entry| entry.trim() == exe_path)
+}
+/// The LaunchAgent plist is written with the executable path of whichever copy registered it, so
+/// moving or reinstalling the app leaves it pointing at a bundle that no longer exists — and that
+/// fails silently at the next login. Rewrite it whenever the saved choice is on and the path is
+/// stale. A missing plist is an OS-level opt-out and is left alone.
+fn heal_login_item(app: &tauri::AppHandle, start_at_login: bool) {
+    if !start_at_login {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(home) = app.path().home_dir() else { return };
+    let plist = home.join("Library/LaunchAgents/Relay Studio KH.plist");
+    let Ok(registered) = fs::read_to_string(&plist) else { return };
+    if login_item_is_stale(&registered, &exe.to_string_lossy()) && app.autolaunch().enable().is_err() {
+        if let Some(state) = app.try_state::<NativeState>() {
+            if let Ok(mut error) = state.login_error.lock() {
+                *error = Some(
+                    "Start at Login pointed at an old copy of Relay and could not be repaired. Your saved choice is retained; check it in System Settings.".into(),
+                );
+            }
+        }
+    }
+}
 fn connect(app: &tauri::AppHandle) -> Result<(), String> {
     let address = current(app)?
         .gateway_url
@@ -388,7 +435,7 @@ fn quit_app(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> 
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| { show_settings(app); }))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| { report_second_launch(app); }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
         .setup(|app| {
@@ -401,6 +448,10 @@ pub fn run() {
                 client: reqwest::Client::builder().timeout(Duration::from_secs(4))
                     .redirect(reqwest::redirect::Policy::none()).build()?,
             });
+            if let Ok((settings, _)) = &loaded {
+                // A moved or reinstalled app leaves the login item pointing at the old bundle.
+                heal_login_item(app.handle(), settings.start_at_login);
+            }
             if let Ok((settings, true)) = loaded {
                 // Only first launch supplies the default. Later OS opt-outs are left alone.
                 let saved = persist(&path, &settings);
@@ -504,5 +555,15 @@ mod tests {
         assert!(!valid_appearance("default"));
         assert!(appearance_theme("default").is_none());
         assert_eq!(appearance_theme("system"), None);
+    }
+
+    #[test]
+    fn a_login_item_naming_another_bundle_is_stale_and_one_naming_this_bundle_is_not() {
+        let mine = "/Applications/Relay Studio KH.app/Contents/MacOS/Relay Studio KH";
+        let registered_here = format!("<string>{mine}</string>");
+        assert!(!login_item_is_stale(&registered_here, mine));
+        let registered_elsewhere = "<string>/Users/x/Applications/Relay Studio KH.app/Contents/MacOS/Relay Studio KH</string>";
+        assert!(login_item_is_stale(registered_elsewhere, mine));
+        assert!(login_item_is_stale("", mine));
     }
 }
