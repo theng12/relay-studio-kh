@@ -46,6 +46,9 @@ async function verifyOutput(f) {
   assert.ok(preview.includes(fragment));
   assert.match(preview, /src="\.\/relay-pane\.js"/);
   assert.equal(await readFile(join(f.root, 'dist/bootstrap.mjs'), 'utf8'), await readFile(join(source, 'web/bootstrap.mjs'), 'utf8'));
+  const tokens = await readFile(join(f.root, 'dist/tokens.css'), 'utf8');
+  assert.match(tokens, /^:root\{--space-xs:\d+px;/);
+  assert.match(tokens, /--space-page:\d+px;.*--type-body:\d+px/);
 }
 
 test('real shared tools build from sibling checkout with spaces, arbitrary cwd and Unicode', async () => {

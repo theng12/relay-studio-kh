@@ -31,6 +31,7 @@ const scopedCSS = `.relay-connector { ${declarations.join(';')};\n${css.replace(
 const markup = html.match(/<body>([\s\S]*)<\/body>/)[1].trim();
 const fragment = `<style>\n${scopedCSS}\n</style>\n${markup}\n`;
 const bundle = `(() => {\n${api}\n${app}\nwindow.mountRelayConnector = (root, options = {}) => mountRelayConnector(root, { ...options, appInfo: ${JSON.stringify(info)} });\n})();\n`;
+await writeFile(resolve(dist, 'tokens.css'), `:root{${declarations.join(';')}}\n`);
 await writeFile(resolve(dist, 'relay-pane.html'), fragment);
 await writeFile(resolve(dist, 'relay-pane.js'), bundle);
 await copyFile(resolve(root, 'web/bootstrap.mjs'), resolve(dist, 'bootstrap.mjs'));
