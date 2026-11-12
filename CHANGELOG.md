@@ -4,6 +4,7 @@
 - Enter each extension worker's id and token once on the Gateway page. Relay keeps them in this Mac's Keychain, never shows the token again, and seeds them into the matching extension when it opens a browser.
 - Only a worker whose id is bound to that account is seeded; a kind with no token or no binding says so on the account row instead of looking configured.
 - Audio has no per-account worker binding yet, so it is left unseeded and says so.
+- The sidebar footer is one tidy line with equal insets; the version truncates instead of wrapping.
 
 ## 0.3.13 — 2026-11-12
 - Bundle Image 0.50.24, Video 1.3.20 and Audio 0.7.30: every options page now shows only real choices — the mode, the Gateway Studio block, and the Story Studio connection only outside Gateway mode. The Google Flow address is fixed to https://flow.google.com and its section is gone.

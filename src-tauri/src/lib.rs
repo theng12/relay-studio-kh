@@ -330,6 +330,40 @@ fn data_folder(window: WebviewWindow, app: tauri::AppHandle) -> Result<String, S
         .to_string_lossy()
         .into_owned())
 }
+// The only external links Relay opens by itself. Anything else is refused.
+const SUPPORT_URL: &str = "https://nowpayments.io/donation/studiokh";
+const UPDATER_APP: &str = "/Applications/Update Studio KH.app";
+
+#[tauri::command]
+fn open_support_link(window: WebviewWindow) -> Result<(), String> {
+    local_only(&window)?;
+    let status = Command::new("/usr/bin/open")
+        .arg(SUPPORT_URL)
+        .status()
+        .map_err(|_| "Could not open the support page.".to_string())?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "The support page did not open.".to_string())
+}
+
+/// Updates belong to Update Studio KH; Relay opens it rather than duplicating its feed logic.
+#[tauri::command]
+fn open_updater(window: WebviewWindow) -> Result<(), String> {
+    local_only(&window)?;
+    if !std::path::Path::new(UPDATER_APP).is_dir() {
+        return Err("Update Studio KH is not installed on this Mac.".into());
+    }
+    let status = Command::new("/usr/bin/open")
+        .args(["-a", UPDATER_APP])
+        .status()
+        .map_err(|_| "Could not open Update Studio KH.".to_string())?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Update Studio KH did not open.".to_string())
+}
+
 #[tauri::command]
 fn open_data_folder(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     local_only(&window)?;
@@ -488,7 +522,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { report_second_launch(app); }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::set_extension_enabled, seeding::extension_worker_status, seeding::save_extension_worker, seeding::clear_extension_worker, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_loaded_extensions, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
+        .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, open_support_link, open_updater, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::set_extension_enabled, seeding::extension_worker_status, seeding::save_extension_worker, seeding::clear_extension_worker, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_loaded_extensions, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings])
         .setup(|app| {
             app.manage(browser_manager::init(app.handle())?);
             let path = app.path().app_config_dir()?.join("settings.json");

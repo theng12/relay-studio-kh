@@ -11,6 +11,21 @@ const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
 const showError = (error) => { $('error').textContent = String(error); $('error').hidden = false; };
 const accounts = mountAccounts(invoke);
 mountBrowsers(invoke, accounts);
+// Footer: the only external links Relay opens by itself, and live connection facts.
+function renderFooterStatus(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.profiles)) return;
+  const support = snapshot.support || {};
+  const paired = support.manager_paired === true || support.gateway_manager_paired === true
+    || support.pairing_paired === true || (typeof support.pairing === 'object' && support.pairing?.paired === true);
+  const connected = snapshot.profiles.filter((profile) => profile.gateway?.connection === 'connected').length;
+  $('footer-status').textContent = `${paired ? 'Gateway paired' : 'Gateway not paired'} · ${connected} ${connected === 1 ? 'worker' : 'workers'} connected`;
+}
+accounts.subscribe(renderFooterStatus);
+$('support-link').addEventListener('click', () => invoke('open_support_link').catch(showError));
+$('check-updates').addEventListener('click', async () => {
+  try { await invoke('open_updater'); $('footer-status').textContent = 'Update Studio KH opened — it checks and installs updates.'; }
+  catch (error) { showError(error); }
+});
 const shell = mountShell({ onShow: (page) => {
   if (page === 'accounts' || page === 'browsers') accounts.refresh();
 } });

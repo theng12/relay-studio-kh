@@ -530,7 +530,22 @@ test('accounts page offers rename, recoverable delete and a persisted compact/ca
 test('row actions are never hidden behind hover', async () => {
   const load = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
   const css = await load('../desktop/desktop.css');
+  const html = await load('../desktop/index.html');
+  const app = await load('../desktop/app.mjs');
   // Hover may add emphasis; it must never be the only way to reach Rename or Delete.
   assert.doesNotMatch(css, /account:hover \.account-actions \{[^}]*opacity: 1/, 'hover is not the reveal');
   assert.match(css, /\.account-actions \{ opacity: 1/, 'actions are drawn by default');
+  // Footer: one tidy line, equal insets, the version truncates instead of wrapping.
+  assert.match(css, /\.sidebar-footer \{[^}]*padding: 12px/, 'equal footer insets');
+  assert.match(css, /\.footer-pill \{[^}]*white-space: nowrap/, 'the pill stays on one line');
+  assert.match(css, /\.pill-version \{[^}]*text-overflow: ellipsis/, 'the version truncates rather than wraps');
+  assert.match(css, /\.sidebar-footer \{[^}]*flex-direction: column/, 'the footer is one tidy column');
+  assert.match(css, /\.footer-line \{[^}]*justify-content: center/, 'pill and update control share one centred line');
+  assert.match(css, /\.footer-status \{[^}]*text-overflow: ellipsis/, 'the status line stays on one line');
+  assert.match(html, /id="support-link"/, 'the Support this app row exists');
+  assert.match(html, /id="check-updates"/, 'the Check for Updates control exists');
+  assert.match(app, /open_support_link/, 'support opens through the app opener');
+  assert.match(app, /open_updater/, 'updates open Update Studio KH');
+  const native = await load('../src-tauri/src/lib.rs');
+  assert.match(native, /nowpayments\.io\/donation\/studiokh/, 'the support URL is allow-listed in Rust');
 });
