@@ -214,14 +214,18 @@
           <p id="manager-pairing-state" class="state off" role="status">Not paired</p>
           <p id="manager-pairing-note" class="secondary" role="status">Pairing status comes from the native manager.</p>
           <p>A <strong>manager token</strong> is a credential scoped to the worker IDs Relay controls. Relay uses it to arm dispatch and to set pacing for those workers — it is not the <code>ekw_</code> worker token an extension uses to claim jobs, and it cannot claim or generate anything itself.</p>
-          <p>Mint it in Gateway under <strong>Providers → Browser workers</strong>, for exactly the worker IDs saved here, or with <code>POST /admin/api/extension-workers/manager</code> passing <code>manager_id</code> and <code>worker_ids</code>. It is shown once; Gateway stores only a hash, and Relay keeps its copy in this Mac’s Keychain.</p>
+          <p>Mint it in <strong>Gateway → Providers → Browser workers</strong>, for exactly the worker IDs saved here, or with <code>POST /admin/api/extension-workers/manager</code> passing <code>manager_id</code> and <code>worker_ids</code>. It is shown once; Gateway stores only a hash, and Relay keeps its copy in this Mac’s Keychain.</p>
           <p class="help">Dispatch can also be armed without Relay holding a manager token, from the same Browser workers pane. A worker sitting at <code>204</code> is usually dispatch that was never armed, not a failed pairing.</p>
           <form id="manager-pair-form">
             <label class="field">Manager token<input id="manager-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="manager-pairing-help"></label>
             <p id="manager-pairing-help" class="secondary">The token is never shown again after pairing and is never saved in browser storage.</p>
-            <div class="actions"><button class="primary" id="manager-pair" type="submit">Pair Gateway</button><button class="ghost" id="manager-open" type="button">Open Gateway interface</button></div>
+            <div class="actions"><button class="primary" id="manager-pair" type="submit">Pair Gateway</button></div>
             <p id="manager-pair-error" class="secondary" role="alert" hidden></p>
           </form>
+          <div class="actions">
+            <button class="ghost" id="manager-open" type="button" title="Opens Gateway's own web pages. They ask for the browser password you set in the Gateway app — this is for admin pages only, never for pairing or claiming work." aria-describedby="manager-open-help">Open Gateway admin pages…</button>
+          </div>
+          <p id="manager-open-help" class="help">Gateway's admin pages ask for the <strong>browser password set in the Gateway app</strong>. They are for watching or changing Gateway itself — never needed to pair Relay or to claim work, and never affect a paired worker.</p>
         </div>
       </section>
 

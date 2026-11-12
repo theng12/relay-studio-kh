@@ -17,7 +17,7 @@ export function createRecovery({ probe, report }) {
         // A typed address that works must never open a sign-in window on its own: opening
         // Gateway's own pages is an explicit action, not a side effect of saving.
         connectedOrigin = state.origin;
-        report('Gateway responded. Open Gateway interface when you need its own pages.');
+        report('Gateway responded. Gateway\'s own admin pages are opened separately, and they are not part of pairing.');
       }
     } catch {
       connectedOrigin = undefined;
