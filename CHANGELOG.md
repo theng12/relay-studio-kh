@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.11 — 2026-11-12
+- Bundle Image extension 0.50.18: the Gateway claim alarm is recreated on browser startup and extension update, and the side panel says whether the claim loop is ticking or not ticking at all.
+
 ## 0.3.10 — 2026-11-12
 - Bundle Image extension 0.50.17: an armed Gateway worker opens the Flow tab it needs and reports "waiting" instead of looking idle, so Gateway no longer withdraws an image job unsent. Video 1.3.18 and Audio 0.7.28 are unchanged.
 
