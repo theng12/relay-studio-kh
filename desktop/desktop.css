@@ -401,3 +401,8 @@ html[data-accounts-view="card"] .account-row {
 .account-label:hover, .account-label:focus-visible { background: var(--accent-soft); }
 .rename-input { font: inherit; font-weight: 600; padding: 1px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--surface); color: inherit; min-width: 8ch; }
 .view-toggle { margin-left: auto; }
+
+.worker-credential { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.worker-credential:first-child { border-top: 0; }
+.worker-credential strong { min-width: 56px; }
+.worker-credential input { width: 220px; }

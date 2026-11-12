@@ -124,6 +124,63 @@ $('start-at-login').addEventListener('change', async () => {
   }
 });
 
+const WORKER_KINDS = { image: 'Image', video: 'Video', audio: 'Audio' };
+async function loadWorkerCredentials() {
+  const list = $('extension-workers');
+  if (!list) return;
+  try {
+    const rows = await invoke('extension_worker_status');
+    list.replaceChildren();
+    for (const row of rows) {
+      const wrap = document.createElement('div');
+      wrap.className = 'worker-credential';
+      const title = document.createElement('strong');
+      title.textContent = WORKER_KINDS[row.kind] || row.kind;
+      const state = document.createElement('span');
+      state.className = `state ${row.has_token ? 'ok' : 'off'}`;
+      state.textContent = row.has_token ? `Saved for worker ${row.worker_id}` : 'No worker token saved';
+      const worker = document.createElement('input');
+      worker.type = 'text';
+      worker.autocomplete = 'off';
+      worker.spellcheck = false;
+      worker.placeholder = 'Worker id';
+      worker.value = row.worker_id || '';
+      worker.setAttribute('aria-label', `${title.textContent} worker id`);
+      const token = document.createElement('input');
+      token.type = 'password';
+      token.autocomplete = 'new-password';
+      token.spellcheck = false;
+      token.placeholder = 'Worker token from Gateway';
+      token.setAttribute('aria-label', `${title.textContent} worker token`);
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.textContent = 'Save';
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try {
+          await invoke('save_extension_worker', { kind: row.kind, workerId: worker.value.trim(), token: token.value });
+          token.value = '';
+          $('extension-workers-state').textContent = `${title.textContent} worker saved in the Keychain. The token is never shown again.`;
+          await loadWorkerCredentials();
+        } catch (error) { $('extension-workers-state').textContent = String(error); }
+        finally { save.disabled = false; }
+      });
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'ghost';
+      clear.textContent = 'Remove';
+      clear.addEventListener('click', async () => {
+        try {
+          await invoke('clear_extension_worker', { kind: row.kind });
+          $('extension-workers-state').textContent = `${title.textContent} worker token removed.`;
+          await loadWorkerCredentials();
+        } catch (error) { $('extension-workers-state').textContent = String(error); }
+      });
+      wrap.append(title, state, worker, token, save, clear);
+      list.append(wrap);
+    }
+  } catch (error) { $('extension-workers-state').textContent = `Worker credentials could not be read. ${String(error)}`; }
+}
 async function loadDataFolder() {
   try {
     const path = await invoke('data_folder');
@@ -156,6 +213,7 @@ try {
   await tick();
   await accounts.refresh();
   await loadDataFolder();
+  await loadWorkerCredentials();
   setInterval(tick, 15000);
   setInterval(() => accounts.refresh(), 5000);
 } catch (error) {

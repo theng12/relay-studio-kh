@@ -56,34 +56,26 @@ impl Devtools {
         self.child_ends = None;
     }
 
-    /// Loads each directory and returns one honest line per failure; Chrome stays open regardless.
-    pub(crate) fn load_unpacked(&mut self, directories: &[PathBuf]) -> Vec<String> {
+    /// Loads each directory and returns one honest line per failure plus the Chrome extension id
+    /// for each loaded folder; Chrome stays open regardless.
+    pub(crate) fn load_unpacked(&mut self, directories: &[PathBuf]) -> (Vec<String>, Vec<(PathBuf, String)>) {
         let mut problems = Vec::new();
+        let mut loaded = Vec::new();
         for directory in directories {
-            self.next_id += 1;
-            let id = self.next_id;
-            let message = serde_json::json!({
-                "id": id,
-                "method": "Extensions.loadUnpacked",
-                "params": { "path": directory.to_string_lossy() }
-            });
-            let sent = self
-                .to_chrome
-                .write_all(message.to_string().as_bytes())
-                .and_then(|_| self.to_chrome.write_all(b"\0"))
-                .is_ok();
-            if !sent {
-                problems.push("Chrome's control pipe closed before the extensions could load.".into());
-                break;
-            }
-            match self.wait_reply(id, Duration::from_secs(10)) {
+            let reply = self.call(
+                "Extensions.loadUnpacked",
+                serde_json::json!({ "path": directory.to_string_lossy() }),
+                None,
+                Duration::from_secs(10),
+            );
+            match reply {
                 Ok(value) => {
-                    if let Some(error) = value
-                        .get("error")
-                        .and_then(|error| error.get("message"))
-                        .and_then(Value::as_str)
-                    {
+                    if let Some(error) = value.get("error").and_then(|error| error.get("message")).and_then(Value::as_str) {
                         problems.push(format!("{}: {error}", directory.display()));
+                    } else if let Some(id) = value.get("result").and_then(|result| result.get("id")).and_then(Value::as_str) {
+                        loaded.push((directory.clone(), id.to_string()));
+                    } else {
+                        problems.push(format!("{}: Chrome returned no extension id", directory.display()));
                     }
                 }
                 Err(error) => {
@@ -92,7 +84,68 @@ impl Devtools {
                 }
             }
         }
-        problems
+        (problems, loaded)
+    }
+
+    /// Runs an expression inside one loaded extension's service worker, which is the only
+    /// context allowed to write its storage while its own pages are unavailable.
+    pub(crate) fn eval_in_extension(&mut self, extension_id: &str, expression: &str) -> Result<Value, String> {
+        let targets = self.call("Target.getTargets", serde_json::json!({}), None, Duration::from_secs(5))?;
+        let prefix = format!("chrome-extension://{extension_id}/");
+        let target_id = targets
+            .get("result")
+            .and_then(|result| result.get("targetInfos"))
+            .and_then(Value::as_array)
+            .and_then(|infos| {
+                infos.iter().find_map(|info| {
+                    let kind = info.get("type").and_then(Value::as_str);
+                    let url = info.get("url").and_then(Value::as_str).unwrap_or("");
+                    (kind == Some("service_worker") && url.starts_with(&prefix))
+                        .then(|| info.get("targetId").and_then(Value::as_str).map(str::to_string))
+                        .flatten()
+                })
+            })
+            .ok_or("The extension's worker is not running in this browser.")?;
+        let attached = self.call(
+            "Target.attachToTarget",
+            serde_json::json!({ "targetId": target_id, "flatten": true }),
+            None,
+            Duration::from_secs(5),
+        )?;
+        let session = attached
+            .get("result")
+            .and_then(|result| result.get("sessionId"))
+            .and_then(Value::as_str)
+            .ok_or("Chrome refused to attach to the extension's worker.")?
+            .to_string();
+        let reply = self.call(
+            "Runtime.evaluate",
+            serde_json::json!({ "expression": expression, "awaitPromise": true, "returnByValue": true }),
+            Some(&session),
+            Duration::from_secs(10),
+        )?;
+        if let Some(exception) = reply.get("result").and_then(|result| result.get("exceptionDetails")) {
+            return Err(format!("The extension rejected its settings: {}", exception.get("text").and_then(Value::as_str).unwrap_or("unknown error")));
+        }
+        Ok(reply)
+    }
+
+    fn call(&mut self, method: &str, params: Value, session: Option<&str>, timeout: Duration) -> Result<Value, String> {
+        self.next_id += 1;
+        let id = self.next_id;
+        let mut message = serde_json::json!({ "id": id, "method": method, "params": params });
+        if let Some(session) = session {
+            message["sessionId"] = Value::String(session.to_string());
+        }
+        let sent = self
+            .to_chrome
+            .write_all(message.to_string().as_bytes())
+            .and_then(|_| self.to_chrome.write_all(b"\0"))
+            .is_ok();
+        if !sent {
+            return Err("Chrome's control pipe closed before it could answer.".into());
+        }
+        self.wait_reply(id, timeout)
     }
 
     /// Chrome's own registry for this window: what is loaded, with versions.

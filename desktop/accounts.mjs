@@ -652,7 +652,7 @@ export function mountAccounts(invoke) {
       ['desired', 'Local profile'], ['process', 'Process'], ['processId', 'Process ID'], ['close', 'Close'],
       ['error', 'Error'], ['provider', 'Provider'], ['gatewayAccount', 'Gateway account'], ['gatewaySpend', 'Gateway spending'],
       ['imageWorker', 'Image worker ID'], ['videoWorker', 'Video worker ID'], ['nextEligible', 'Next eligible'],
-      ['credits', 'Credits'], ['memory', 'Measured memory'],
+      ['credits', 'Credits'], ['memory', 'Measured memory'], ['seeding', 'Extension seeding'],
     ]) addField(name, term);
 
     const form = document.createElement('form');
@@ -798,6 +798,7 @@ export function mountAccounts(invoke) {
       }
     }
     refs.fields.memory.textContent = profile.memory_mb === null || profile.memory_mb === undefined ? 'Not measured' : `${fmt(profile.memory_mb)} MB`;
+    refs.fields.seeding.textContent = value(profile.seeding) || 'Not checked yet — open this account from Relay to seed its extensions.';
   }
 
   function renderList() {

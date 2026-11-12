@@ -1263,6 +1263,7 @@ struct ProfileSnapshot {
     close_requested_at: Option<f64>,
     error: Option<String>,
     attention: bool,
+    seeding: Option<String>,
     gateway: GatewaySnapshot,
 }
 
@@ -1349,6 +1350,8 @@ struct Inner {
     errors: HashMap<String, String>,
     attention: HashSet<String>,
     measurement: Measurement,
+    // Last launch's per-extension seeding lines, keyed by profile id.
+    seeding: HashMap<String, String>,
 }
 
 impl Default for Inner {
@@ -1356,6 +1359,7 @@ impl Default for Inner {
         Self {
             stored: None,
             load_error: None,
+            seeding: HashMap::new(),
             errors: HashMap::new(),
             attention: HashSet::new(),
             measurement: Measurement::default(),
@@ -2039,7 +2043,7 @@ pub(crate) async fn manager_save_settings(
 // ---------------------------------------------------------------------------
 
 fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
-    let (stored, errors, attention, measurement) = {
+    let (stored, errors, attention, measurement, seeding) = {
         let inner = locked(shared)?;
         let stored = stored_or_error(&inner)?.clone();
         (
@@ -2047,6 +2051,7 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
             inner.errors.clone(),
             inner.attention.clone(),
             inner.measurement.clone(),
+            inner.seeding.clone(),
         )
     };
     let gateway_profiles = gateway_profiles(&stored);
@@ -2072,6 +2077,7 @@ fn build_snapshot(shared: &Shared) -> Result<Snapshot, String> {
                 number: profile.number,
                 label: profile.label.clone(),
                 enabled: profile.enabled,
+                seeding: seeding.get(&profile.id).cloned(),
                 desired_open: profile.desired_open,
                 process_state: state,
                 process_id: if alive { profile.pid } else { None },
@@ -2313,6 +2319,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     }
 
     let settings = stored.settings.clone();
+    let mut seeding_rows: HashMap<String, String> = HashMap::new();
     let mut resident = measurement.alive.len() as u32;
     let mut used = measurement.used_mb;
     let mut estimate = measurement
@@ -2365,11 +2372,14 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 Ok(()) => {
                     let id = profile.id.clone();
                     match launch(shared, &mut stored.profiles[index], chrome_path) {
-                        Ok(problems) => {
+                        Ok((problems, seeding)) => {
                             changed = true;
                             launched = true;
                             errors.remove(&id);
                             attention.remove(&id);
+                            if !seeding.is_empty() {
+                                seeding_rows.insert(id.clone(), seeding.join(" · "));
+                            }
                             if let Some(first) = problems.first() {
                                 lifecycle_log(
                                     shared,
@@ -2427,6 +2437,9 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     guard.measurement = measurement;
     guard.errors = errors;
     guard.attention = attention;
+    for (id, line) in seeding_rows {
+        guard.seeding.insert(id, line);
+    }
     saved
 }
 
@@ -2878,7 +2891,7 @@ fn forget_process(profile: &mut StoredProfile) {
     profile.binary = None;
 }
 
-fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result<Vec<String>, String> {
+fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result<(Vec<String>, Vec<String>), String> {
     let directory = profile_dir(shared, &profile.id)?;
     let (extension_directories, mut problems) = super::extensions::loadable_extensions(&shared.app);
     let mut command = Command::new(chrome);
@@ -2893,9 +2906,24 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
     let child = command
         .spawn()
         .map_err(|_| "Could not start Google Chrome for this profile.".to_string())?;
+    let mut seeding = Vec::new();
     if let Some(attached) = devtools.as_mut() {
         attached.spawned();
-        problems.extend(attached.load_unpacked(&extension_directories));
+        let (load_problems, loaded) = attached.load_unpacked(&extension_directories);
+        problems.extend(load_problems);
+        // Seed only a worker whose id is bound to this account and whose token Relay holds.
+        for (directory, extension_id) in &loaded {
+            let Some(kind) = super::seeding::kind_for_dir(directory) else { continue };
+            let bound = match kind {
+                "image" => profile.image_worker_id.as_deref(),
+                "video" => profile.video_worker_id.as_deref(),
+                _ => None,
+            };
+            match profile.binding_origin.as_deref() {
+                Some(origin) => seeding.push(super::seeding::seed_extension(attached, kind, extension_id, bound, origin)),
+                None => seeding.push(format!("{}: not seeded — no Gateway origin is bound", kind)),
+            }
+        }
     }
     let pid = child.id();
     let binary = chrome.to_string_lossy().into_owned();
@@ -2917,7 +2945,7 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
         );
     }
     profile.pid_started = capture_identity(shared, pid, &binary);
-    Ok(problems)
+    Ok((problems, seeding))
 }
 
 /// Exact start time of the retained spawn, confirmed by the live Child and our binary. A failed
