@@ -300,6 +300,16 @@
         <button id="force-confirm" type="button" class="danger">Force close</button>
       </div>
     </dialog>
+
+    <dialog id="delete-dialog" aria-labelledby="delete-title">
+      <h2 id="delete-title">Delete account?</h2>
+      <p id="delete-body"></p>
+      <p class="secondary">The Chrome profile folder moves to Relay’s own _trash, so it can be recovered. A browser that is open must be closed first.</p>
+      <div class="dialog-actions">
+        <button class="ghost" id="delete-cancel" type="button">Keep account</button>
+        <button id="delete-confirm" type="button" class="danger">Delete</button>
+      </div>
+    </dialog>
   </div>
 </body>
 </html>

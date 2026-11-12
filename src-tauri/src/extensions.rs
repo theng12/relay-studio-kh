@@ -295,15 +295,24 @@ pub(crate) async fn open_extension_settings(
         )
     }
 }
-#[tauri::command]
-pub(crate) async fn prepare_extension(
-    window: tauri::WebviewWindow,
-    app: tauri::AppHandle,
-    extension_id: String,
-) -> Result<String, String> {
-    super::local_only(&window)?;
-    let (extension, source) = selected(&app, &extension_id)?;
-    let target = folder(&app, &extension)?;
+#[cfg(test)]
+mod tests {
+    use super::is_newer;
+
+    #[test]
+    fn bundled_versions_compare_by_number_not_text() {
+        assert!(is_newer("1.3.18", "1.3.5"));
+        assert!(is_newer("0.50.16", "0.50.15"));
+        assert!(is_newer("2", "1.9.9"));
+        assert!(!is_newer("0.7.28", "0.7.28"));
+        assert!(!is_newer("0.7.9", "0.7.28"));
+        assert!(!is_newer("1.0.0", "1.0.1"));
+    }
+}
+// Copies one verified bundled payload into Relay's support folder. Version/hash folders are
+// immutable: an existing folder is verified and left alone, never rewritten.
+fn prepare_copy(app: &tauri::AppHandle, extension: &Extension, source: &Path) -> Result<String, String> {
+    let target = folder(app, extension)?;
     let parent = target
         .parent()
         .ok_or("Relay extension folder is unavailable.")?;
@@ -338,7 +347,7 @@ pub(crate) async fn prepare_extension(
         {
             return Err("Existing extension folder is a symbolic link; it was not changed.".into());
         }
-        verify_folder(&target, &extension)?;
+        verify_folder(&target, extension)?;
         return Ok(target.to_string_lossy().into_owned());
     }
     let nonce = SystemTime::now()
@@ -348,7 +357,7 @@ pub(crate) async fn prepare_extension(
     let staging = parent.join(format!(".pending-{}-{nonce}", std::process::id()));
     fs::create_dir(&staging).map_err(|_| "Could not stage extension files.")?;
     for file in &extension.files {
-        let bytes = verified_file(&source, file)?;
+        let bytes = verified_file(source, file)?;
         let output = staging.join(relative(&file.path)?);
         fs::create_dir_all(output.parent().ok_or("Invalid payload path.")?)
             .map_err(|_| "Could not stage extension folder.")?;
@@ -359,6 +368,91 @@ pub(crate) async fn prepare_extension(
         .map_err(|_| "Could not finish extension folder. Existing versions were not changed.")?;
     // New version/hash folders only. Never mutate/reload installed workers, even when their state is unknown.
     Ok(target.to_string_lossy().into_owned())
+}
+#[tauri::command]
+pub(crate) async fn prepare_extension(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    extension_id: String,
+) -> Result<String, String> {
+    super::local_only(&window)?;
+    let (extension, source) = selected(&app, &extension_id)?;
+    prepare_copy(&app, &extension, &source)
+}
+
+fn version_parts(value: &str) -> Option<Vec<u64>> {
+    value.split('.').map(|part| part.parse().ok()).collect()
+}
+fn is_newer(candidate: &str, installed: &str) -> bool {
+    let (Some(left), Some(right)) = (version_parts(candidate), version_parts(installed)) else {
+        return false;
+    };
+    for index in 0..left.len().max(right.len()) {
+        let a = left.get(index).copied().unwrap_or(0);
+        let b = right.get(index).copied().unwrap_or(0);
+        if a != b {
+            return a > b;
+        }
+    }
+    false
+}
+// Versions already present in Relay's support folder for one extension.
+fn installed_versions(app: &tauri::AppHandle, id: &str) -> Vec<String> {
+    let Ok(support) = app.path().app_data_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(support.join("extensions").join(id)) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let (version, hash) = name.to_str()?.split_once('-')?;
+            let plain_hash = hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit());
+            (plain_hash && version_parts(version).is_some()).then(|| version.to_string())
+        })
+        .collect()
+}
+/// On launch, copy the bundled payload into Relay's support folder when the app carries a
+/// newer version than the newest copy already there. Existing folders are never changed and
+/// no browser is reloaded. Problems are returned so the page can report them.
+pub(crate) fn refresh_bundled_copies(app: &tauri::AppHandle) -> Vec<String> {
+    let mut problems = Vec::new();
+    let (catalog, _) = match catalog(app) {
+        Ok(value) => value,
+        Err(error) => return vec![error],
+    };
+    for entry in catalog.extensions.iter().filter(|entry| entry.available) {
+        let (extension, source) = match selected(app, &entry.id) {
+            Ok(value) => value,
+            Err(error) => {
+                problems.push(format!("{}: {error}", entry.id));
+                continue;
+            }
+        };
+        let target = match folder(app, &extension) {
+            Ok(path) => path,
+            Err(error) => {
+                problems.push(format!("{}: {error}", entry.id));
+                continue;
+            }
+        };
+        if target.exists() {
+            continue;
+        }
+        let bundled = extension.version.clone().unwrap_or_default();
+        if installed_versions(app, &extension.id)
+            .into_iter()
+            .any(|installed| !is_newer(&bundled, &installed))
+        {
+            continue;
+        }
+        if let Err(error) = prepare_copy(app, &extension, &source) {
+            problems.push(format!("{}: {error}", extension.id));
+        }
+    }
+    problems
 }
 #[tauri::command]
 pub(crate) async fn show_extension_folder(

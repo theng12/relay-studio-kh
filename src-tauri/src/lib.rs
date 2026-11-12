@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, process::Command, sync::Mutex, time::Duration};
 use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
+    webview::PageLoadEvent,
     Emitter, Manager, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -510,6 +511,7 @@ pub fn run() {
                 }
             }
             let frame = read_frame(app.handle());
+            let refresh_handle = app.handle().clone();
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Relay Studio KH")
                 .inner_size(frame.as_ref().map_or(1100.0, |f| f.width), frame.as_ref().map_or(760.0, |f| f.height))
@@ -521,7 +523,22 @@ pub fn run() {
                         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost")))
                         && url.port().is_none() && url.username().is_empty() && url.password().is_none()
                 })
-                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                // A newer bundled extension reaches Relay's support folder on launch, without
+                // touching existing version folders or any browser.
+                .on_page_load(move |window, payload| {
+                    if payload.event() == PageLoadEvent::Finished {
+                        let handle = refresh_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let problems = extensions::refresh_bundled_copies(&handle);
+                            if !problems.is_empty() {
+                                let _ = window.emit("relay-error", format!(
+                                    "Bundled extension copies were not refreshed: {}", problems.join(" · ")
+                                ));
+                            }
+                        });
+                    }
+                });
             if let Some(frame) = frame {
                 builder = builder.position(frame.x, frame.y);
             }

@@ -421,7 +421,10 @@ export function mountAccounts(invoke) {
   let attentionOnly = false;
   let busy = false;
   let refreshing = false;
+  let deletingId = null;
   const busyIds = new Set();
+  // A refused delete stays on its own row until the next attempt, not just in the page banner.
+  const rowErrors = new Map();
   const listeners = new Set();
   const dirtyForms = new WeakSet();
   const markDirty = (event) => { if (event.target.form) dirtyForms.add(event.target.form); };
@@ -476,6 +479,39 @@ export function mountAccounts(invoke) {
   function empty(message) {
     $('profiles-empty').textContent = message;
     $('profiles-empty').hidden = !message;
+  }
+
+  // A web confirm dialog never appears in this app's webview, so it silently cancelled
+  // Delete. The confirmation is Relay's own dialog, like Force close.
+  function askDelete(id) {
+    const current = snapshot?.profiles?.find((entry) => entry.id === id);
+    if (!current || busy || busyIds.has(id)) return;
+    deletingId = id;
+    $('delete-body').textContent = `Account ${current.number} — ${current.label || 'Untitled account'} will be removed from this list.`;
+    $('delete-dialog').showModal();
+  }
+
+  async function deleteAccount(id) {
+    const refs = rows.get(id);
+    if (refs) refs.remove.disabled = true;
+    rowErrors.delete(id);
+    renderList();
+    try {
+      const [next, moved] = await invoke('manager_delete_profile', { profileId: id });
+      selection.delete(id);
+      render(next);
+      $('accounts-error').hidden = false;
+      $('accounts-error').textContent = `Moved to ${moved}`;
+    } catch (error) {
+      rowErrors.set(id, String(error?.message ?? error));
+      // Re-read so a stale list, or an account that no longer exists, cannot outlive the refusal.
+      try { render(await readManager('manager_snapshot', {})); }
+      catch { renderList(); }
+    } finally {
+      if (refs) refs.remove.disabled = false;
+      deletingId = null;
+      renderList();
+    }
   }
 
   function startRename(id, labelEl, titleEl) {
@@ -571,24 +607,16 @@ export function mountAccounts(invoke) {
     remove.type = 'button';
     remove.className = 'ghost danger';
     remove.textContent = 'Delete';
-    remove.addEventListener('click', async () => {
-      const current = snapshot?.profiles?.find((entry) => entry.id === id);
-      if (!current) return;
-      if (!window.confirm(`Delete account ${current.number} — ${current.label}?\n\nThe profile folder moves to Relay's own _trash, so it can be recovered.`)) return;
-      try {
-        const [next, moved] = await invoke('manager_delete_profile', { profileId: id });
-        selection.delete(id);
-        render(next);
-        $('accounts-error').hidden = false;
-        $('accounts-error').textContent = `Moved to ${moved}`;
-      } catch (error) {
-        setError(error);
-      }
-    });
+    remove.addEventListener('click', () => askDelete(id));
     const actionCell = document.createElement('div');
     actionCell.className = 'account-actions';
     actionCell.append(action, show, remove);
     row.append(pick, identity, status, actionCell);
+
+    const message = document.createElement('p');
+    message.className = 'state bad';
+    message.setAttribute('role', 'alert');
+    message.hidden = true;
 
     const details = document.createElement('details');
     details.className = 'account-details';
@@ -673,8 +701,8 @@ export function mountAccounts(invoke) {
     form.append(grid, footer);
     details.append(summary, dl, form);
 
-    li.append(row, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, fields, labelInput, labelStatus, imageInput, videoInput, enabledInput };
+    li.append(row, message, details);
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, fields, labelInput, labelStatus, imageInput, videoInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -704,6 +732,10 @@ export function mountAccounts(invoke) {
     refs.show.setAttribute('aria-label', `Show profile for account #${profile.number} ${label}`);
     refs.show.hidden = !show.visible;
     refs.show.disabled = show.disabled || busyIds.has(profile.id) || busy;
+    const refusal = rowErrors.get(profile.id);
+    refs.message.textContent = refusal ? `Delete failed: ${refusal}` : '';
+    refs.message.hidden = !refusal;
+    refs.remove.disabled = busy;
     refs.li.hidden = attentionOnly && !needsAttention(profile);
 
     const gateway = profile.gateway || {};
@@ -755,7 +787,7 @@ export function mountAccounts(invoke) {
     const current = new Set(profiles.map((profile) => profile.id));
     for (const [id, refs] of rows) {
       if (current.has(id)) continue;
-      refs.li.remove(); rows.delete(id); selection.delete(id); autosave.forget(id);
+      refs.li.remove(); rows.delete(id); selection.delete(id); autosave.forget(id); rowErrors.delete(id);
     }
     let cursor = list.firstElementChild;
     for (const profile of profiles) {
@@ -954,6 +986,12 @@ export function mountAccounts(invoke) {
   });
   $('manager-open').addEventListener('click', () => invoke('open_gateway').catch((error) => setPairError(error)));
   $('manager-token').addEventListener('input', () => setPairError(null));
+  $('delete-cancel').addEventListener('click', () => $('delete-dialog').close());
+  $('delete-confirm').addEventListener('click', () => {
+    const id = deletingId;
+    $('delete-dialog').close();
+    if (id) deleteAccount(id);
+  });
 
   return {
     refresh,

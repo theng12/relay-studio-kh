@@ -504,6 +504,12 @@ test('accounts page offers rename, recoverable delete and a persisted compact/gr
   assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');
   assert.match(accounts, /remove.textContent = 'Delete'/, 'a delete button is always drawn on the row');
   assert.match(accounts, /startRename/, 'the label can be edited in place');
+  // The macOS webview never shows window.confirm; relying on it silently cancelled every delete.
+  assert.doesNotMatch(accounts, /window\.confirm/, 'delete never waits on a web dialog the macOS webview drops');
+  assert.match(html, /id="delete-dialog"/, 'delete asks in Relay\'s own dialog');
+  assert.match(accounts, /delete-dialog/, 'the dialog is wired to the row button');
+  assert.match(accounts, /Moved to \$\{moved\}/, 'a successful delete says where the profile folder went');
+  assert.match(accounts, /rowErrors/, 'a refused delete stays visible on its own account row');
   const manager = await load('../src-tauri/src/browser_manager.rs');
   assert.match(manager, /fn manager_delete_profile/, 'delete exists natively');
   assert.match(manager, /_trash/, 'delete moves the profile aside rather than erasing it');

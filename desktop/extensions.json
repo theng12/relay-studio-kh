@@ -4,22 +4,22 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.5",
-      "source_commit": "7a4950cf5060495f22d04ce93b1788c7a053fed8",
+      "version": "1.3.18",
+      "source_commit": "88d10f3fb4b131dd0081b2cc0327addf06e7e885",
       "accepted": true,
-      "manifest_sha256": "625685e8615a150501c8d03445607f17ce634f71a08bffdd769c72fde585ea5d",
+      "manifest_sha256": "4a0b6ef44c5f6d394ad84e9bbf3d5a7f6c45263ad06e6023d974fbd0f7056e04",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "dbb27aee2963c11aad606cae23a38d5ccb1dd85a8a5b7f7f48ab6533b937113e"
+          "sha256": "2fd0bac2cb6de2e77e4476ef9a43025b54ac469138f1f329fb31fcb64ae0c0a2"
         },
         {
           "path": "manifest.json",
-          "sha256": "625685e8615a150501c8d03445607f17ce634f71a08bffdd769c72fde585ea5d"
+          "sha256": "4a0b6ef44c5f6d394ad84e9bbf3d5a7f6c45263ad06e6023d974fbd0f7056e04"
         },
         {
           "path": "src/background.js",
-          "sha256": "18a2cf492f84c53e0f3fdb5e5391a893e3043f114acc32cee126637d92c09c30"
+          "sha256": "6b67e7b227b72dd20b7bc3f23468a2300b60df89a69571d4d34110adaf7e365c"
         },
         {
           "path": "src/icons/icon.svg",
@@ -47,7 +47,7 @@
         },
         {
           "path": "src/lib/flow-exec.js",
-          "sha256": "4802f0e9e5b54bc524bf7cc3db147ef6b463766f060f50c7c636fdf27c03f2b6"
+          "sha256": "ede7c5a12a73099f845c6d290e46c63088e960339e36f82de5e7d5ed3c057339"
         },
         {
           "path": "src/lib/gateway-artifacts.js",
@@ -63,7 +63,7 @@
         },
         {
           "path": "src/lib/gateway-worker.js",
-          "sha256": "f95f61e1362bc1427347cb0affee8c775af6f3b5e722d7f9e3a481558d90b2f0"
+          "sha256": "6844154c097b07c8fbea37ff58fa99e93bfce1e838b7b14ef884bb75d4c741ad"
         },
         {
           "path": "src/lib/story-studio.js",
@@ -118,22 +118,22 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.15",
-      "source_commit": "541ec8ebff2b1e49a93d9ddef91037d8bb888f20",
+      "version": "0.50.16",
+      "source_commit": "58eb89dfc8b37c7951cdfb23ee64440b3d729e51",
       "accepted": true,
-      "manifest_sha256": "0deb330ee4e600c81a035585931cc238c568472990c25ee4e3080574caf2d7f1",
+      "manifest_sha256": "1fd9911012ad8a4828c56af3493c09a1466b8c6ef81f863dbf8d52667e45d148",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "04ff63b62a0324d3402ddd3d71295586485fe1cb79c62821221b68432c846822"
+          "sha256": "320b9c28e22e62d33af7895db54f791abc669147843f4a0c5f5db279bc725809"
         },
         {
           "path": "manifest.json",
-          "sha256": "0deb330ee4e600c81a035585931cc238c568472990c25ee4e3080574caf2d7f1"
+          "sha256": "1fd9911012ad8a4828c56af3493c09a1466b8c6ef81f863dbf8d52667e45d148"
         },
         {
           "path": "src/background.js",
-          "sha256": "945a2728f85af78c54e1a414bec50598edbdb13498715f7785d4d80626efc3d3"
+          "sha256": "6f472ade6658746f6ebc90fdd107a51f2b78c9051c9e59a3a05d5561fd40770d"
         },
         {
           "path": "src/content/aistudio-main.js",
@@ -189,7 +189,7 @@
         },
         {
           "path": "src/lib/config.js",
-          "sha256": "e6d54f702feb31d698e8de86aa400e6b170f18016cdf12bd83ad27fdc0021f89"
+          "sha256": "03ab61c50e21143b3e5f8838a21685d910412d17c7d1141342ca33e20a509bad"
         },
         {
           "path": "src/lib/enqueue-context.js",
@@ -205,7 +205,11 @@
         },
         {
           "path": "src/lib/flow-exec.js",
-          "sha256": "d63e200436c1d52f83790a4605451705211765cfdbf002f49912cf0275f1e222"
+          "sha256": "68ed4c6cc1c2252a454a4e63fa003296adc2b7047272e2f364c55ed06b0bc37d"
+        },
+        {
+          "path": "src/lib/gateway-account.js",
+          "sha256": "c4c25e2fc6f832de4f4dd0714721d28227aa2fb6a21bb941bfe2a7b81f93e242"
         },
         {
           "path": "src/lib/gateway-artifacts.js",
@@ -213,19 +217,19 @@
         },
         {
           "path": "src/lib/gateway-client.js",
-          "sha256": "94809084ebb07cb92a6bd76d9598ef15a28050b8d24eb388e4ec8c0cefd8cf48"
+          "sha256": "88865a21d0c73891b59231968c78f1c05a7a5ba4c7bdb9a7663e39638a08ff10"
         },
         {
           "path": "src/lib/gateway-worker.js",
-          "sha256": "cd467795eead0b0aecad89cb0257119621441db772c2220349591e828a5f825f"
+          "sha256": "8bd2e41a361260e50cd899db8f4c2206d88a2ced42ac9a9105040df4c7442f6c"
         },
         {
           "path": "src/lib/model-identity.js",
-          "sha256": "a9d719df8b78bc6af5cd5c7f2e5b2a02f977f12da3c02dd85b09e5c89be76192"
+          "sha256": "43665a43fbb96694733c5b35aa3a22f7e3a3818a934e6cb8784db764af1293b9"
         },
         {
           "path": "src/lib/providers.js",
-          "sha256": "88e599aa284229b3d7ff8258586822a39ece811e54208ada555c2ee1a62c1bbf"
+          "sha256": "a8568cf4aec8d1405144d341380da48e8bbf6062cab324e3abad283d4e49fab5"
         },
         {
           "path": "src/lib/queue-all.js",
@@ -277,11 +281,11 @@
         },
         {
           "path": "src/options/options.html",
-          "sha256": "aa237a64a46dc1911d992f67c81bda969bae894ae63ec721651fb5dee58f8621"
+          "sha256": "bcdf2d8a7d0ef42ae6061f46e9934344cf27379d16260cad1425128971966f52"
         },
         {
           "path": "src/options/options.js",
-          "sha256": "6d1989d4c46c73c231481d66d7e2043866bfa0b26148b56ad8690ae0e2dfc7ee"
+          "sha256": "1a80f2f23f7443d9daa0992b35a6da4cfc6f6750315cc2fe67ceecacad5b0353"
         },
         {
           "path": "src/popup/popup.css",
@@ -289,22 +293,152 @@
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "5670652019c3ff8a1d2dcf724306b7f45044087e3b48446d5677f11cd6ca736e"
+          "sha256": "254a5e6cd2c3c7b47b8484bac2c83a09d652747a0d72958cd9752d5b1bc20369"
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "d7f78e864b5db51651bd77cd5c8593d5e651c0e3f4e8a7cf16adc6daa39c1d8d"
+          "sha256": "5f418bcb23778903048919156bcdb7edd1272e16078bdf598ade693f332ef761"
         }
       ]
     },
     {
       "id": "audio",
-      "name": "Audio generator \u2014 not working yet",
-      "version": "0.7.27",
-      "source_commit": "eddeb1b83b0ee22b54f8f698513d62b2fe4f91ef",
+      "name": "Audio generator — not working yet",
+      "version": "0.7.28",
+      "source_commit": "86dab24d549a40c8fecd0895d7e3c0a712d1a4ab",
       "required": false,
-      "accepted": false,
-      "reason": "Audio is not finished yet. It ships as-is so it is visible and testable, and it does not block the image or video workers."
+      "accepted": true,
+      "manifest_sha256": "fcd7c4abb02f8f3e6dce47337a7703719e7481c34bba1e803946cb50e943ac6e",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "b9704689b01261281a49f9ad48091943e9da35ace14eaa5102dcf4d20c494ea7"
+        },
+        {
+          "path": "manifest.json",
+          "sha256": "fcd7c4abb02f8f3e6dce47337a7703719e7481c34bba1e803946cb50e943ac6e"
+        },
+        {
+          "path": "src/background.js",
+          "sha256": "1f136f4b4de372b2aa5f4a8b94f0a448b0ab1ebe7be60b2336b250cd699e0b46"
+        },
+        {
+          "path": "src/content/bridge-isolated.js",
+          "sha256": "6989d4b08415003ce30a8acccd2caa49df79013cf530778eeb323bfd07d6be2d"
+        },
+        {
+          "path": "src/content/bridge-main.js",
+          "sha256": "c5466c8af4109237c9069526e161442159884b8e1686c86a275432a189128ce3"
+        },
+        {
+          "path": "src/content/bridge.js",
+          "sha256": "aa72f924678b006d56ce9b1cf7e32588dc0724125d0824b552b6badc9615ba70"
+        },
+        {
+          "path": "src/content/eleven-main.js",
+          "sha256": "6ba5cd13e182307a1264d08e66c0ba39901df8e9d278960a6c188824446783fe"
+        },
+        {
+          "path": "src/content/eleven.js",
+          "sha256": "30b4a106e5e9fa40b356ef04a0004624207dfb7a0d6d9f9ecbb398539032d2ed"
+        },
+        {
+          "path": "src/content/fish-main.js",
+          "sha256": "cdbae816a3ec3ffd5f3a30aa50ca18f520b1092a4718e48db00cfe72a0cbef50"
+        },
+        {
+          "path": "src/content/fish.js",
+          "sha256": "60d42779d1aaaa344a70dd0711e2c0ffedd1ecf7dca61090b7556be4eefd0c14"
+        },
+        {
+          "path": "src/icons/icon.svg",
+          "sha256": "ee55bceb7e8db9472f907d7f838dc79debf7b256e138a120ba30dc9cf8927522"
+        },
+        {
+          "path": "src/icons/icon128.png",
+          "sha256": "5e97662cbceb004122169fa0239f597ffd65aa28c3669384afad4668322579fb"
+        },
+        {
+          "path": "src/icons/icon16.png",
+          "sha256": "ef5bbed96b57ab2465676c06954ff2070bfad7bd03f8164d3c33cdb9e4ea3220"
+        },
+        {
+          "path": "src/icons/icon32.png",
+          "sha256": "f015ef4c9557905bc55489377ddef4a14c0aee6106ae51aeb1c9abccd549e94a"
+        },
+        {
+          "path": "src/icons/icon48.png",
+          "sha256": "8359ca12c3ce32ed9f3cff3734043c16e4aaae02528b070b5e1ff8387cf6ee59"
+        },
+        {
+          "path": "src/lib/audio-artifacts.js",
+          "sha256": "18fa3e993fd8f1342bdd45108ff1ba7d7a6e8f2378b880036dc67db86ab9895f"
+        },
+        {
+          "path": "src/lib/config.js",
+          "sha256": "ec59c47ce45cc4962aac3c1569fa2f4f61c26d296c68c2f15dbceb59b88ed9ac"
+        },
+        {
+          "path": "src/lib/gateway-account.js",
+          "sha256": "52fa707df3c1ea980eda16d8b864a9cc5f22a89a744627bea900406aaa6f7470"
+        },
+        {
+          "path": "src/lib/gateway-client.js",
+          "sha256": "c2dc8c110ee309a407682ab48380e68139a68559508099c9d5102962d0aae9e4"
+        },
+        {
+          "path": "src/lib/naming.js",
+          "sha256": "f97b974887bd3b0b80314e03e805745b29daa16e6cf30fbb590365d28c437244"
+        },
+        {
+          "path": "src/lib/providers.js",
+          "sha256": "a68b5b149b8db6e579f44bbb93cafb240183a29848b09029ddd43b753423664e"
+        },
+        {
+          "path": "src/lib/queue-recovery.js",
+          "sha256": "c253e4443d294ba9ad739eccf360772bef18485afa1e9163e17a5f4a52380253"
+        },
+        {
+          "path": "src/lib/section-contracts.js",
+          "sha256": "b1cbe9d54c3821a3df0aecf99617fc3455449d11bce3f47542026b2f04fffd97"
+        },
+        {
+          "path": "src/lib/story-studio.js",
+          "sha256": "e9fd85facfef1404b6bd80eff44c10d4a4dc5af54ed4412ba6c90f7cbf9288d1"
+        },
+        {
+          "path": "src/lib/theme-preload.js",
+          "sha256": "f618944d2640f958e8dd7ee13dab068d47f4a559a61909c35398c007c5641cd1"
+        },
+        {
+          "path": "src/lib/theme.js",
+          "sha256": "d0fe12c1b42e0efe8c75f239bfe82dae2f0ce11644eb1b0063a5859c8a7804da"
+        },
+        {
+          "path": "src/options/options.css",
+          "sha256": "16fa84f9c2a0794cf26ba786443e6905ed76cd0c0c18a47555f2b28a2a13a4ef"
+        },
+        {
+          "path": "src/options/options.html",
+          "sha256": "379ad475d95cc3d26111193c66a7cefd1c2b297c239c92ee80e662ad317a58ba"
+        },
+        {
+          "path": "src/options/options.js",
+          "sha256": "7aa45d831314da8732491ae708d1e9e6220d1a73445d4d84c01f3aa4a43da354"
+        },
+        {
+          "path": "src/popup/popup.css",
+          "sha256": "da6fdef9a9e03ceefefc9ec5e33cfbd6623b041a5f389651cf1fb4d8f9590b30"
+        },
+        {
+          "path": "src/popup/popup.html",
+          "sha256": "569ffab0c36b6bca70093d62639e13b6be2f6bf01e5bb20326850a1b69920081"
+        },
+        {
+          "path": "src/popup/popup.js",
+          "sha256": "94b3dc5f5301fa5746f35c23d5e3235314400e6b3870cacd5bfeba94f2caac48"
+        }
+      ]
     }
   ]
 }

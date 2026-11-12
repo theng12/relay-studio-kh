@@ -1,6 +1,7 @@
 // Local web assets only; this does not invoke Rust, a native packager or OS services.
 import { readFile, writeFile, mkdir, copyFile, mkdtemp, rename } from 'node:fs/promises';
 import { prepareExtensionResources } from './extension-resources.mjs';
+import { guardBundleAgainstRepos, stagePinnedPayloads } from './extension-sources.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -15,9 +16,15 @@ const python = process.env.RELAY_PYTHON || (process.platform === 'win32' ? 'pyth
 const releases = JSON.parse(execFileSync(python, ['-I', '-X', 'utf8', resolve(shared, 'whats-new.py'), resolve(root, 'CHANGELOG.md')], { encoding: 'utf8' }));
 const style = (await readFile(resolve(root, 'dist/relay-pane.html'), 'utf8')).match(/^<style>[\s\S]*?<\/style>/)?.[0];
 if (!style) throw new Error('Shared Relay styles are unavailable.');
+const catalogPath = resolve(root, 'desktop/extensions.json');
+// A bundle that is behind its extension repo, or would drop the Gateway account module,
+// fails the build instead of shipping quietly.
+guardBundleAgainstRepos({ catalogPath, root });
 const staging = await mkdtemp(resolve(root, '.desktop-resources-'));
 const resources = resolve(staging, 'prepared');
-await prepareExtensionResources({ catalogPath: resolve(root, 'desktop/extensions.json'), outputRoot: resources, payloadRoot: process.env.RELAY_EXTENSION_PAYLOADS, requireComplete: process.argv.includes('--require-complete') });
+const payloadRoot = process.env.RELAY_EXTENSION_PAYLOADS ? resolve(process.env.RELAY_EXTENSION_PAYLOADS) : resolve(staging, 'payloads');
+if (!process.env.RELAY_EXTENSION_PAYLOADS) stagePinnedPayloads({ catalogPath, root, outputRoot: payloadRoot });
+await prepareExtensionResources({ catalogPath, outputRoot: resources, payloadRoot, requireComplete: process.argv.includes('--require-complete') });
 const resourceIndex = JSON.parse(await readFile(resolve(resources, 'extensions/index.json'), 'utf8'));
 try { await rename(resolve(root, 'desktop-resources'), resolve(staging, 'previous')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 await rename(resources, resolve(root, 'desktop-resources'));
