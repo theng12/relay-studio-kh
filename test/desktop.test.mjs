@@ -4,31 +4,33 @@ import { readFile } from 'node:fs/promises';
 import { createRecovery } from '../desktop/recovery.mjs';
 
 const state = (reachable = true, origin = 'http://fixture.invalid') => ({ configured: true, reachable, origin });
-test('recovery only opens an existing page on first connection or recovery', async () => {
-  let value = { configured: false }; let opens = 0;
+test('a working address is reported and never opens a sign-in window by itself', async () => {
+  let value = { configured: false };
   const messages = [];
-  const tick = createRecovery({ probe: async () => value, openGateway: async () => { opens++; }, report: text => messages.push(text) });
-  await tick(); assert.equal(opens, 0);
-  value = state(false); await tick(); assert.equal(opens, 0);
-  value = state(); await tick(); await tick(); assert.equal(opens, 1);
-  value = state(false); await tick(); value = state(); await tick(); assert.equal(opens, 2);
-  value = state(true, 'http://different.invalid'); await tick(); assert.equal(opens, 3);
+  const tick = createRecovery({ probe: async () => value, report: text => messages.push(text) });
+  await tick();
+  value = state(false); await tick();
+  value = state(); await tick(); await tick();
+  value = state(true, 'http://different.invalid'); await tick();
+  // Saving or health-checking an address must not put Gateway's sign-in on screen.
+  assert.ok(messages.some(text => text.includes('Gateway responded')), messages.join(' | '));
+  assert.ok(!messages.some(text => /sign-in and worker interface/.test(text)), 'no window is opened by the check');
   assert.ok(messages.some(text => text.includes('no work is resubmitted')));
 });
 
-test('uncertain page opening retries navigation only, never claims a successful connection', async () => {
-  let attempts = 0; let message;
-  const tick = createRecovery({ probe: async () => state(), openGateway: async () => { if (++attempts === 1) throw new Error('unavailable'); }, report: text => { message = text; } });
+test('an unreachable Gateway is reported honestly and never claims a connection', async () => {
+  let message;
+  const tick = createRecovery({ probe: async () => { throw new Error('unavailable'); }, report: text => { message = text; } });
   await tick(); assert.match(message, /Could not check/);
-  await tick(); assert.equal(attempts, 2); assert.match(message, /sign-in and worker interface/);
+  await tick(); assert.match(message, /Could not check/);
 });
 
-test('overlapping recovery ticks do not create competing probes or windows', async () => {
-  let release; let probes = 0; let opens = 0;
+test('overlapping recovery ticks do not create competing probes', async () => {
+  let release; let probes = 0;
   const barrier = new Promise(resolve => { release = resolve; });
-  const tick = createRecovery({ probe: async () => { probes++; await barrier; return state(); }, openGateway: async () => { opens++; }, report() {} });
+  const tick = createRecovery({ probe: async () => { probes++; await barrier; return state(); }, report() {} });
   const first = tick(); await tick(); assert.equal(probes, 1);
-  release(); await first; assert.equal(opens, 1);
+  release(); await first;
 });
 
 test('local-only native capability and release metadata stay explicit', async () => {

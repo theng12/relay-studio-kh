@@ -56,7 +56,6 @@ function applyAppearance(value) {
 
 const tick = createRecovery({
   probe: () => invoke('gateway_health'),
-  openGateway: () => invoke('open_gateway'),
   report: (message) => { $('connection-state').textContent = message; },
 });
 
