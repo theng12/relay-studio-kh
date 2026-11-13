@@ -455,8 +455,9 @@ html[data-accounts-view="table"] .account-status {
   gap: 2px 12px;
   min-width: 0;
 }
+/* Long status lines wrap inside their cell at narrow widths instead of running past it. */
 html[data-accounts-view="table"] .account-status .state,
-html[data-accounts-view="table"] .account-credits { white-space: nowrap; }
+html[data-accounts-view="table"] .account-credits { white-space: normal; overflow-wrap: anywhere; }
 html[data-accounts-view="table"] .account-actions { flex-wrap: nowrap; }
 
 /* Row overflow holds Details and Delete; the row's face keeps one primary action. */

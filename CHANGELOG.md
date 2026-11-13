@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.26 — 2026-11-14
+- In the Table layout, long connection and next-step lines wrap inside their column at narrow widths instead of running past the row edge.
+
 ## 0.3.25 — 2026-11-14
 - The grouped warning above Accounts reads as a sentence for any count ("5 accounts need a worker ID", "1 account needs a worker ID"), and the row's next step points at the ⋯ → Show details menu where the form now lives.
 
