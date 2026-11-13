@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.27 — 2026-11-14
+- Below 1080 px the Table layout stacks the same way Compact does, so the status column can never extend past the row on a narrow window.
+
 ## 0.3.26 — 2026-11-14
 - In the Table layout, long connection and next-step lines wrap inside their column at narrow widths instead of running past the row edge.
 
