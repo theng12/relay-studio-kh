@@ -1,7 +1,7 @@
 /* Relay's iris identity replaces the shared Gateway blue; semantic colours stay shared.
    html and body sit outside the shared scope, so they repeat the documented ground hexes. */
-html { color-scheme: light dark; background: light-dark(#f5f3fa, #14121c); }
-body { margin: 0; overflow: hidden; background: light-dark(#f5f3fa, #14121c); font-size: 13px; line-height: 1.6; }
+html { color-scheme: light dark; background: light-dark(#f3f0f9, #14121c); }
+body { margin: 0; overflow: hidden; background: light-dark(#f3f0f9, #14121c); font-size: 13px; line-height: 1.6; }
 /* The shared scope declares light dark; the in-app choice overrides it here. */
 html[data-appearance="light"] .window, html[data-appearance="default"] .window { color-scheme: light; }
 html[data-appearance="dark"] .window { color-scheme: dark; }
@@ -9,11 +9,11 @@ html[data-appearance="system"] .window { color-scheme: light dark; }
 
 /* Full-bleed shell: 220px rail and a pane with 28px page padding, never a centred column. */
 .window {
-  --ground: light-dark(#f5f3fa, #14121c);
-  --surface: light-dark(#ffffff, #1e1b2a);
+  --ground: light-dark(#f3f0f9, #14121c);
+  --surface: light-dark(#ffffff, #201d2d);
   --text: light-dark(#1f1b2e, #ece9f5);
   --muted: light-dark(#5f5a70, #b3aec4);
-  --line: light-dark(#ddd8e8, #3a3450);
+  --line: light-dark(#d5cfe3, #403a58);
   --accent: light-dark(#6d28d9, #c4b5fd);
   --accent-soft: light-dark(#f1eafe, #2b2440);
   --accent-contrast: light-dark(#ffffff, #1c1430);
