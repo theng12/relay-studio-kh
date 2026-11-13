@@ -746,7 +746,7 @@ export function mountAccounts(invoke) {
     details.append(dl, form);
 
     li.append(row, message, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, nextAction, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -793,8 +793,10 @@ export function mountAccounts(invoke) {
     } else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
       nextStep = 'Closed — click to open; no jobs are claimed until it opens.';
     }
-    refs.nextAction.textContent = nextStep || '';
-    refs.nextAction.hidden = !nextStep;
+    if (refs.nextAction) {
+      refs.nextAction.textContent = nextStep || '';
+      refs.nextAction.hidden = !nextStep;
+    }
     refs.li.hidden = attentionOnly && !needsAttention(profile);
 
     const gateway = profile.gateway || {};
@@ -935,7 +937,13 @@ export function mountAccounts(invoke) {
     renderSummary();
     renderMemory();
     renderPairing();
-    renderList();
+    try {
+      renderList();
+    } catch (error) {
+      // Keep the page usable and say what actually failed; never leave "Reading…" up.
+      setError(`The account list could not be drawn. ${String(error?.message ?? error)}`);
+      empty('The saved accounts could not be shown; the rest of the page still works.');
+    }
     setControls();
     // Other panes (Browsers) read the same snapshot instead of asking the native manager again.
     for (const notify of listeners) notify(next);

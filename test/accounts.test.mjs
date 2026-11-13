@@ -558,3 +558,11 @@ test('row actions are never hidden behind hover', async () => {
   const native = await load('../src-tauri/src/lib.rs');
   assert.match(native, /nowpayments\.io\/donation\/studiokh/, 'the support URL is allow-listed in Rust');
 });
+
+test('every account row template exposes nextAction and a render failure is reported', async () => {
+  const accounts = await (await import('node:fs/promises')).readFile(new URL('../desktop/accounts.mjs', import.meta.url), 'utf8');
+  // The crash was a span created but never put into refs; this fails if it comes back.
+  assert.match(accounts, /return \{ li, checkbox[^}]*nextAction/, 'nextAction is part of the row refs');
+  assert.match(accounts, /if \(refs\.nextAction\)/, 'the write is guarded for templates without it');
+  assert.match(accounts, /account list could not be drawn/, 'a render failure is surfaced, not left loading');
+});
