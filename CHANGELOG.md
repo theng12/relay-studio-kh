@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.17 — 2026-11-13
+- Dispatch is turned on for a worker when it pairs and when its browser opens — image, video and audio alike — and the account row says Dispatch on, or off with the reason jobs will not be claimed. Gateway starts every worker with dispatch off, so this is what makes a freshly paired account claim work.
+- Bundle Image 0.50.25 and Video 1.3.21: a signed-in Flow project whose account probe fails now claims with an unknown balance instead of being treated as signed out, and the panel says whether Flow is missing or could not be read.
+- Carries the 0.3.16 interaction patch: click a row to open or focus, Focus instead of dead actions, non-overlapping compact rows, Card as the default view, and the same worker-id → seed → dispatch path for audio as image and video.
+
 ## 0.3.16 — 2026-11-13
 - An account row is clickable: it opens the browser, or focuses it when already open, and its primary button reads Focus.
 - "Open selected" becomes "Focus selected" when the selection is already open, instead of looking live and doing nothing.
