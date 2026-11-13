@@ -122,18 +122,18 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.31",
-      "source_commit": "9a0d94896df223825b2f724240b32456e9cde5c0",
+      "version": "0.50.32",
+      "source_commit": "04ed245abc5d2b5ba30fc2a631d770776aa4a1b8",
       "accepted": true,
-      "manifest_sha256": "1cff1810d7a0e68bb25c0771bba1a53e834e9851d48e95a0eb0e167915fda7f8",
+      "manifest_sha256": "8f82cf486673aef0d481c4b87c988ca54a25f7371381b6406880c01154495701",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "9a0e724146ec0846b577cd37aa9f7bf41ccd5d550483a9c028e87e3d6b0aa89a"
+          "sha256": "4a341d7aee9df3e9dbc37c9c3833929af2f9debc608dc696866e3238b20e2042"
         },
         {
           "path": "manifest.json",
-          "sha256": "1cff1810d7a0e68bb25c0771bba1a53e834e9851d48e95a0eb0e167915fda7f8"
+          "sha256": "8f82cf486673aef0d481c4b87c988ca54a25f7371381b6406880c01154495701"
         },
         {
           "path": "src/background.js",
@@ -249,7 +249,7 @@
         },
         {
           "path": "src/lib/rpc-ids.js",
-          "sha256": "13ae4a9994a959055cd132ef1b39bce0f71ceef592ffc2dbb4f1daf94aa3c3be"
+          "sha256": "d7e05f90c50d0dd15788831cc1d22006160316507e7474a48ed9ae4a3f84bed7"
         },
         {
           "path": "src/lib/settings-store.js",
