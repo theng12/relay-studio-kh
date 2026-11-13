@@ -85,7 +85,7 @@ const tick = createRecovery({
 async function loadSettings() {
   const snapshot = await invoke('get_settings');
   currentSettings = snapshot.settings || {};
-  applyAccountsView(currentSettings.accounts_view || 'compact');
+  applyAccountsView(currentSettings.accounts_view || 'card');
   $('gateway-url').value = currentSettings.gateway_url || '';
   $('start-at-login').checked = Boolean(currentSettings.start_at_login);
   $('start-at-login').disabled = false;
