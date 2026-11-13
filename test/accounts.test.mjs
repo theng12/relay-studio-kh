@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   activityTier, closableIds, connectionTier, createLabelAutosave, creditsLine, creditsView, gatewaySpend, LABEL_AUTOSAVE_MS,
   labelAutosavePayload, memorySummary, needsAttention, openableIds,
-  closeAction, pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
+  closeAction, connectionStateLabel, pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
 import { browserProfiles, browserSummary, closeElapsedSeconds, elapsedLabel, forceBlockReason, residentIds } from '../desktop/browsers.mjs';
@@ -589,4 +589,11 @@ test('the app surface keeps one search, no duplicate nav card, and diagnostics b
   assert.doesNotMatch(overview, /overview-browsers-link|overview-gateway-link/, 'no dead handlers for removed links');
   assert.match(browsers, /Show details/, 'Open windows diagnostics sit behind a visible button');
   assert.match(browsers, /meta\.hidden = true/, 'the card face does not show the diagnostic line by default');
+});
+
+test('G1 connection state is the row label, with no invented values', () => {
+  assert.equal(connectionStateLabel('connected'), 'Connected');
+  assert.equal(connectionStateLabel('no_project'), 'No Flow project');
+  assert.equal(connectionStateLabel('needs_review'), 'Needs review');
+  assert.equal(connectionStateLabel('something-new'), null, 'an unknown state falls back to the tier label');
 });

@@ -51,6 +51,7 @@ pub(crate) struct GatewayProfile {
 #[derive(Clone, Default)]
 pub(crate) struct GatewayReading {
     pub connection: Option<String>,
+    pub connection_state: Option<String>,
     pub sign_in: Option<String>,
     pub readiness: Option<String>,
     pub activity: Option<String>,
@@ -1112,8 +1113,24 @@ fn reading_for_at(
             .any(|row| row.provider != first.provider || row.account_id != first.account_id)
     });
     let account = rows.first().copied().filter(|_| !mismatched);
+    // G1 reports one word per worker; agreement across bound kinds is the profile's label.
+    let connection_state = {
+        let mut values: Vec<String> = ids
+            .iter()
+            .filter_map(|id| {
+                view.workers
+                    .iter()
+                    .find(|worker| &worker.worker_id == id && worker.fresh)
+                    .and_then(|worker| worker.connection_state.clone())
+            })
+            .collect();
+        values.sort();
+        values.dedup();
+        (values.len() == 1).then(|| values.remove(0))
+    };
     GatewayReading {
         connection: agreed_state(&states, |state| state.connection.clone()),
+        connection_state,
         sign_in: agreed_state(&states, |state| state.sign_in.clone()),
         readiness: agreed_state(&states, |state| state.readiness.clone()),
         activity: agreed_state(&states, |state| state.activity.clone()),
@@ -1288,6 +1305,7 @@ struct ProfileSnapshot {
 #[derive(Serialize)]
 struct GatewaySnapshot {
     connection: String,
+    connection_state: Option<String>,
     sign_in: String,
     readiness: String,
     activity: String,
@@ -2435,6 +2453,7 @@ fn gateway_snapshot(profile: &StoredProfile, reading: Option<&GatewayReading>) -
     let reading = reading.cloned().unwrap_or_default();
     GatewaySnapshot {
         connection: reading.connection.unwrap_or_else(|| "unknown".into()),
+        connection_state: reading.connection_state,
         sign_in: reading.sign_in.unwrap_or_else(|| "unknown".into()),
         readiness: reading.readiness.unwrap_or_else(|| "unknown".into()),
         activity: reading.activity.unwrap_or_else(|| "unknown".into()),

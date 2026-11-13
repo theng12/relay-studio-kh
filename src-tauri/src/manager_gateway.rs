@@ -186,6 +186,9 @@ pub(crate) struct WorkerControl {
 pub(crate) struct ManagerWorker {
     pub worker_id: String,
     pub kind: Option<String>,
+    /// G1's one-word connection state; the row label reads this, not a Relay composition.
+    #[serde(rename = "connectionState", default)]
+    pub connection_state: Option<String>,
     pub has_live_token: bool,
     pub control: WorkerControl,
     pub state: Option<WorkerState>,

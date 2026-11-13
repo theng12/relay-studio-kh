@@ -187,6 +187,23 @@ export function closableIds(profiles = [], ids = []) {
     .map((profile) => profile.id);
 }
 
+// G1's one-word connection state is the row's label; the detail line stays separate.
+const CONNECTION_STATE_LABELS = {
+  not_paired: 'Not paired',
+  not_connected: 'Not connected',
+  offline: 'Offline',
+  no_flow_tab: 'No Flow tab',
+  no_project: 'No Flow project',
+  paused: 'Paused',
+  needs_review: 'Needs review',
+  waiting_turn: 'Waiting',
+  working: 'Working',
+  connected: 'Connected',
+};
+export function connectionStateLabel(value) {
+  return CONNECTION_STATE_LABELS[String(value || '')] || null;
+}
+
 export function rowAction(profile = {}) {
   const state = value(profile.process_state);
   if (profile.close_pending) return { kind: 'close', label: 'Waiting to close', disabled: true };
@@ -775,7 +792,12 @@ export function mountAccounts(invoke) {
     refs.processState.textContent = process.label;
     const memory = profile.memory_mb === null || profile.memory_mb === undefined ? '' : ` · ${fmt(profile.memory_mb)} MB`;
     refs.metaText.textContent = `${profile.enabled ? 'Local enabled' : 'Local disabled'} · ${profile.desired_open ? 'open requested' : 'open not requested'}${memory}`;
+    const sharedLabel = connectionStateLabel(profile.gateway?.connection_state);
     const connection = connectionTier(profile.gateway);
+    if (sharedLabel) {
+      connection.label = sharedLabel;
+      connection.tone = sharedLabel === 'Connected' ? 'ok' : sharedLabel === 'Working' || sharedLabel === 'Waiting' ? 'info' : 'warn';
+    }
     refs.connectionState.className = `state ${connection.tone}`;
     refs.connectionState.textContent = connection.label;
     refs.connectionDetail.textContent = connection.detail;
