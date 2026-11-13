@@ -680,6 +680,15 @@ export function mountAccounts(invoke) {
       if (event.target.closest('button, input, label, a, select, textarea')) return;
       primary();
     });
+    // Keyboard users get the same primary action as a click, without stealing keys from controls.
+    row.tabIndex = 0;
+    row.addEventListener('keydown', (event) => {
+      if (event.target !== row) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        primary();
+      }
+    });
     const action = document.createElement('button');
     action.type = 'button';
     action.addEventListener('click', primary);

@@ -50,6 +50,8 @@ Present:
   in a ⋯ menu that closes on Escape or outside click (HIG: menus, one default action).
 - Checkbox selection for bulk actions, with counts; status text carries state, not colour
   alone; contrast measured at ≥4.5:1 body text in both appearances.
+- Rows are in the tab order; Enter or Space runs the row's primary action, and keys inside
+  the row's controls are never intercepted.
 - Warnings grouped with counts instead of repeated per row.
 
 Deliberately absent:
@@ -62,6 +64,6 @@ Deliberately absent:
 Missing (known, backlog):
 - A true per-field column table (Account / State / Connection / Credits / Memory as
   separate cells); today's Table is an aligned dense layout over the same row.
-- Keyboard row-to-row navigation across table cells.
+- Cell-to-cell keyboard navigation inside the table (rows themselves are reachable and act).
 - `browsers.mjs` still derives its own tones instead of rendering the snapshot's
   `process_state`.

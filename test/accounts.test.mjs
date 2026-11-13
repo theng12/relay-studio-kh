@@ -600,3 +600,10 @@ test('G1 connection state is the row label, with no invented values', () => {
   assert.equal(connectionStateLabel('needs_review'), 'Needs review');
   assert.equal(connectionStateLabel('something-new'), null, 'an unknown state falls back to the tier label');
 });
+
+test('rows are keyboard reachable and run their primary action', async () => {
+  const accounts = await readFile(new URL('../desktop/accounts.mjs', import.meta.url), 'utf8');
+  assert.match(accounts, /row\.tabIndex = 0/, 'each row joins the tab order');
+  assert.match(accounts, /event\.key === 'Enter' \|\| event\.key === ' '/, 'Enter and Space run the row primary');
+  assert.match(accounts, /event\.target !== row/, 'keys inside the row controls are never stolen');
+});
