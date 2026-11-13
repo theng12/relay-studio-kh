@@ -2493,20 +2493,65 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 } else {
                     close_authorization(&input)
                 };
-                match close_action(true, authorization) {
-                    CloseAction::Terminate => match terminate(profile.pid.unwrap_or_default()) {
+                let authorized = matches!(authorization, CloseAuthorization::Safe);
+                // Explicit paid work still blocks every escalation, exactly like Force close.
+                let paid = paid_work_block(&input);
+                let age = profile
+                    .close_requested_at
+                    .map(|at| (epoch_now() - at).max(0.0))
+                    .unwrap_or(0.0);
+                let pid = profile.pid.unwrap_or_default();
+                match close_step(age, paid.is_some(), authorized) {
+                    CloseStep::Wait => {
+                        let reason = paid
+                            .or_else(|| match &authorization {
+                                CloseAuthorization::NotAcknowledged(reason) => Some(reason.clone()),
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| {
+                                "Waiting for Gateway to confirm this close is safe.".into()
+                            });
+                        errors.insert(profile.id.clone(), reason);
+                    }
+                    CloseStep::Term => match terminate(pid) {
                         Ok(()) => {
                             errors.insert(
                                 profile.id.clone(),
-                                "Waiting for Chrome to finish its graceful close.".into(),
+                                if age < CLOSE_GRACE_SECONDS {
+                                    "Waiting for Chrome to finish its graceful close.".into()
+                                } else {
+                                    "Chrome did not quit in time; Relay asked it again to close.".into()
+                                },
                             );
                         }
                         Err(reason) => {
                             errors.insert(profile.id.clone(), reason);
                         }
                     },
-                    CloseAction::Wait(reason) => {
-                        errors.insert(profile.id.clone(), reason);
+                    CloseStep::Force => match force_terminate(pid) {
+                        Ok(()) => {
+                            errors.insert(
+                                profile.id.clone(),
+                                "Chrome ignored the close request; Relay is forcing this account closed.".into(),
+                            );
+                        }
+                        Err(reason) => {
+                            errors.insert(profile.id.clone(), reason);
+                        }
+                    },
+                    CloseStep::GiveUp => {
+                        // Never leave a row stuck on a close that will not happen: say what
+                        // happened and keep Open/Delete usable.
+                        clear_close(profile);
+                        changed = true;
+                        shared.gateway.cache().closes.remove(&profile.id);
+                        errors.insert(
+                            profile.id.clone(),
+                            format!(
+                                "Chrome pid {pid} did not exit after a forced close. Quit Chrome yourself, then Open this account again."
+                            ),
+                        );
+                        attention.insert(profile.id.clone());
                     }
                 }
             }
@@ -2638,9 +2683,34 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     saved
 }
 
-enum CloseAction {
-    Wait(String),
-    Terminate,
+const CLOSE_GRACE_SECONDS: f64 = 10.0;
+const CLOSE_KILL_AFTER_SECONDS: f64 = 15.0;
+const CLOSE_GIVE_UP_SECONDS: f64 = 20.0;
+
+/// A close is bounded: graceful first, then one SIGTERM window, then SIGKILL, then an
+/// honest give-up. Paid work blocks every step, exactly as it blocks Force close.
+#[derive(Debug, PartialEq)]
+pub(crate) enum CloseStep {
+    Wait,
+    Term,
+    Force,
+    GiveUp,
+}
+
+pub(crate) fn close_step(age: f64, paid_blocked: bool, authorized: bool) -> CloseStep {
+    if paid_blocked {
+        return CloseStep::Wait;
+    }
+    if age >= CLOSE_GIVE_UP_SECONDS {
+        return CloseStep::GiveUp;
+    }
+    if age >= CLOSE_KILL_AFTER_SECONDS {
+        return CloseStep::Force;
+    }
+    if authorized || age >= CLOSE_GRACE_SECONDS {
+        return CloseStep::Term;
+    }
+    CloseStep::Wait
 }
 
 /// Records a deliberate close: pending only while a process is resident, with its request time.
@@ -2769,19 +2839,6 @@ pub(crate) fn shutdown(manager: &BrowserManager) {
     }
     for pid in stopping {
         children.remove(&pid);
-    }
-}
-
-fn close_action(owned_process: bool, authorization: CloseAuthorization) -> CloseAction {
-    if !owned_process {
-        return CloseAction::Wait(
-            "The recorded Chrome process could not be verified as Relay's own; it was not stopped."
-                .into(),
-        );
-    }
-    match authorization {
-        CloseAuthorization::Safe => CloseAction::Terminate,
-        CloseAuthorization::NotAcknowledged(reason) => CloseAction::Wait(reason),
     }
 }
 
@@ -3653,19 +3710,13 @@ mod tests {
     }
 
     #[test]
-    fn closing_never_terminates_without_owned_process_and_fresh_safety() {
-        assert!(matches!(
-            close_action(true, CloseAuthorization::NotAcknowledged("waiting".into())),
-            CloseAction::Wait(_)
-        ));
-        assert!(matches!(
-            close_action(false, CloseAuthorization::Safe),
-            CloseAction::Wait(_)
-        ));
-        assert!(matches!(
-            close_action(true, CloseAuthorization::Safe),
-            CloseAction::Terminate
-        ));
+    fn a_close_escalates_on_a_deadline_but_never_through_paid_work() {
+        assert_eq!(close_step(0.0, false, true), CloseStep::Term, "a safe close is graceful at once");
+        assert_eq!(close_step(0.0, false, false), CloseStep::Wait, "an unacknowledged close waits first");
+        assert_eq!(close_step(10.0, false, false), CloseStep::Term, "after the grace it is asked again");
+        assert_eq!(close_step(15.0, false, false), CloseStep::Force, "then it is forced");
+        assert_eq!(close_step(20.0, false, false), CloseStep::GiveUp, "a survivor is reported, not hidden");
+        assert_eq!(close_step(30.0, true, true), CloseStep::Wait, "paid work blocks every escalation");
     }
 
     #[test]
