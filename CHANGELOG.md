@@ -7,6 +7,9 @@
 - Bundle Image 0.50.33, Video 1.3.27, Audio 0.7.35: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
 - Video and Audio panels say "Connected through Relay · <machine>" when Relay seeded them and show the readiness reason when blocked.
 - Contrast and layering pass, measured not eyeballed: body text 13.8–16.7:1, secondary 5.9–8.6:1, primary buttons 7.1–11.0:1, status text 6.3–11.3:1, in light and dark; the border ramp now separates cards from the ground (≥1.5:1). A test fails if any of these pairs drops below 4.5:1.
+- Accounts has a third, remembered layout: Table, with aligned columns and a fixed header; it joins Compact and Card and the choice survives restarts.
+- Each account row keeps one primary action; Show details and Delete moved into a ⋯ overflow menu that closes on Escape or a click outside.
+- Repeated warnings are grouped above the list with counts ("2 accounts missing a worker ID") instead of repeated on every row.
 - The Accounts page refreshes once a second, so an open, close or seed result is not five seconds stale.
 - Start at Login is a proper macOS login item now, not a raw LaunchAgent that macOS can list as a nameless entry. The old agent is retired only after the new registration succeeds, and moved to a recoverable trash rather than deleted.
 

@@ -438,3 +438,71 @@ html[data-accounts-view="card"] .account-row {
   .account-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   .account-status { min-width: 0; }
 }
+
+/* Table view: the same rows with aligned columns, a fixed header and one primary action. */
+html[data-accounts-view="table"] .account-head,
+html[data-accounts-view="table"] .account-row {
+  grid-template-columns: 28px minmax(220px, 1.6fr) minmax(240px, 1.4fr) auto;
+  grid-template-areas: "pick identity status action";
+  gap: 12px;
+}
+html[data-accounts-view="table"] .account-head { padding: 8px 12px 4px; }
+html[data-accounts-view="table"] .account-row { min-height: 44px; padding: 6px 12px; }
+html[data-accounts-view="table"] .account-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-width: 0;
+}
+html[data-accounts-view="table"] .account-status .state,
+html[data-accounts-view="table"] .account-credits { white-space: nowrap; }
+html[data-accounts-view="table"] .account-actions { flex-wrap: nowrap; }
+
+/* Row overflow holds Details and Delete; the row's face keeps one primary action. */
+.account-actions { position: relative; }
+.menu-trigger {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+}
+.menu-trigger:hover, .menu-trigger[aria-expanded="true"] { color: var(--text); background: var(--surface); }
+.row-menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 20;
+  display: grid;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(12, 8, 24, .18);
+}
+.row-menu[hidden] { display: none; }
+.row-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+/* Warnings are grouped with counts above the list, never repeated per row. */
+.warning-groups { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.warning-group {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+}

@@ -204,6 +204,35 @@ export function connectionStateLabel(value) {
   return CONNECTION_STATE_LABELS[String(value || '')] || null;
 }
 
+let closeAllMenus = () => {};
+function installMenuCloser() {
+  closeAllMenus = () => {
+    for (const menu of document.querySelectorAll('.row-menu:not([hidden])')) {
+      menu.hidden = true;
+      const trigger = menu.parentElement?.querySelector('.menu-trigger');
+      trigger?.setAttribute('aria-expanded', 'false');
+    }
+  };
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.row-menu, .menu-trigger')) closeAllMenus();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeAllMenus();
+  });
+}
+
+/// The one next step that finishes pairing or explains a closed browser; null when settled.
+export function nextStepFor(profile = {}) {
+  const gatewayFields = profile.gateway || {};
+  const seedingNote = String(profile.seeding || '');
+  if (!value(gatewayFields.image_worker_id) && !value(gatewayFields.video_worker_id) && !value(gatewayFields.audio_worker_id)) {
+    return 'needs a worker ID';
+  }
+  if (/not seeded .*no worker token/.test(seedingNote)) return 'needs a worker token in Relay';
+  if (/not seeded .*could not be read/.test(seedingNote)) return 'needs its worker token saved again';
+  return null;
+}
+
 export function rowAction(profile = {}) {
   const state = value(profile.process_state);
   if (profile.close_pending) return { kind: 'close', label: 'Waiting to close', disabled: true };
@@ -443,6 +472,7 @@ export function memorySummary(memory = {}) {
 }
 
 export function mountAccounts(invoke) {
+  installMenuCloser();
   const $ = (id) => document.getElementById(id);
   const list = $('profiles');
   const rows = new Map();
@@ -692,7 +722,26 @@ export function mountAccounts(invoke) {
       detailsButton.textContent = details.hidden ? 'Show details' : 'Hide details';
       detailsButton.setAttribute('aria-expanded', String(!details.hidden));
     });
-    actionCell.append(action, close, show, detailsButton, remove);
+    const menuTrigger = document.createElement('button');
+    menuTrigger.type = 'button';
+    menuTrigger.className = 'menu-trigger';
+    menuTrigger.textContent = '⋯';
+    menuTrigger.setAttribute('aria-haspopup', 'menu');
+    menuTrigger.setAttribute('aria-expanded', 'false');
+    menuTrigger.setAttribute('aria-label', `More actions for account #${profile.number}`);
+    const menu = document.createElement('div');
+    menu.className = 'row-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    menu.append(detailsButton, remove);
+    menuTrigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const open = menu.hidden;
+      closeAllMenus();
+      menu.hidden = !open;
+      menuTrigger.setAttribute('aria-expanded', String(open));
+    });
+    actionCell.append(action, close, show, menuTrigger, menu);
     const dl = document.createElement('dl');
     const fields = {};
     const addField = (name, term) => {
@@ -823,16 +872,12 @@ export function mountAccounts(invoke) {
     refs.message.hidden = !refusal;
     refs.remove.disabled = busy;
     // The row names the one next step that finishes pairing, instead of leaving it to a legend.
-    const gatewayFields = profile.gateway || {};
-    const seedingNote = value(profile.seeding) || '';
+    const nextStepReason = nextStepFor(profile);
     let nextStep = null;
-    if (!value(gatewayFields.image_worker_id) && !value(gatewayFields.video_worker_id) && !value(gatewayFields.audio_worker_id)) {
-      nextStep = 'Next: type a worker ID in Details, then save.';
-    } else if (/not seeded .*no worker token/.test(seedingNote)) {
-      nextStep = 'Next: open the Gateway page to finish pairing.';
-    } else if (/not seeded .*could not be read/.test(seedingNote)) {
-      nextStep = 'Next: save this worker token again on the Gateway page.';
-    } else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
+    if (nextStepReason === 'needs a worker ID') nextStep = 'Next: type a worker ID in Details, then save.';
+    else if (nextStepReason === 'needs a worker token in Relay') nextStep = 'Next: open the Gateway page to finish pairing.';
+    else if (nextStepReason === 'needs its worker token saved again') nextStep = 'Next: save this worker token again on the Gateway page.';
+    else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
       nextStep = 'Closed — click to open; no jobs are claimed until it opens.';
     }
     if (refs.nextAction) {
@@ -908,6 +953,7 @@ export function mountAccounts(invoke) {
       else list.insertBefore(refs.li, cursor);
     }
     for (const id of selection) if (!current.has(id)) selection.delete(id);
+    renderWarnings(profiles);
     const visibleCount = attentionOnly ? profiles.filter(needsAttention).length : profiles.length;
     list.hidden = visibleCount === 0;
     $('account-head').hidden = visibleCount === 0;
@@ -916,6 +962,26 @@ export function mountAccounts(invoke) {
     else if (attentionOnly && !visibleCount) empty('No saved account needs attention.');
     else empty(null);
     renderSelection();
+  }
+
+  // Warnings are grouped with counts instead of repeating the same line on every row.
+  function renderWarnings(profiles) {
+    const el = $('accounts-warnings');
+    const groups = new Map();
+    for (const profile of profiles) {
+      const reason = rowErrors.get(profile.id) || value(profile.error) || nextStepFor(profile);
+      if (!reason) continue;
+      const label = reason.startsWith('needs ') ? reason.replace(/^needs /, '') : reason;
+      groups.set(label, (groups.get(label) || 0) + 1);
+    }
+    el.replaceChildren();
+    for (const [label, count] of groups) {
+      const chip = document.createElement('span');
+      chip.className = 'warning-group';
+      chip.textContent = `${count} ${count === 1 ? 'account' : 'accounts'} ${label}`;
+      el.append(chip);
+    }
+    el.hidden = groups.size === 0;
   }
 
   function renderSelection() {

@@ -515,8 +515,11 @@ test('accounts page offers rename, recoverable delete and a persisted compact/ca
   assert.match(html, /<span>Card<\/span>/, 'the second view is named Card');
   assert.match(app, /accountsView/, 'the chosen view is saved with settings');
   assert.match(native, /accounts_view/, 'the native settings keep the chosen view');
-  assert.match(native, /matches!\(value, "compact" \| "card"\)/, 'only two views are accepted');
-  assert.match(app, /value === 'compact' \? 'compact' : 'card'/, 'Compact is opt-in; every other saved value, including grid, opens Card');
+  assert.match(native, /matches!\(value, "compact" \| "card" \| "table"\)/, 'Compact, Card and Table are accepted');
+  assert.match(app, /value === 'compact' \? 'compact' : value === 'table' \? 'table' : 'card'/, 'the saved view is applied; every unknown value, including grid, opens Card');
+  assert.match(html, /name="accounts-view" value="table"/, 'Table is available and remembered');
+  assert.match(accounts, /row-menu/, 'Details and Delete live in the row overflow');
+  assert.match(accounts, /warning-group/, 'warnings are grouped with counts');
   // Rename and delete exist and go through the native commands rather than local state.
   assert.match(accounts, /manager_update_profile/, 'rename saves through the native update command');
   assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');

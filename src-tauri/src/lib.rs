@@ -56,7 +56,7 @@ fn default_accounts_view() -> String {
     "card".into()
 }
 fn valid_accounts_view(value: &str) -> bool {
-    matches!(value, "compact" | "card")
+    matches!(value, "compact" | "card" | "table")
 }
 fn normalized_accounts_view(value: &str) -> String {
     // `grid` was this view's stored name before it was renamed to Card.
@@ -219,7 +219,7 @@ fn save_settings(
     let previous = guard.as_ref().map_err(Clone::clone)?;
     if let Some(value) = accounts_view.as_deref() {
         if !valid_accounts_view(value) {
-            return Err("Choose Compact or Card for the account list.".into());
+            return Err("Choose Compact, Card or Table for the account list.".into());
         }
     }
     if let Some(value) = appearance.as_deref() {
@@ -748,12 +748,13 @@ mod tests {
     }
 
     #[test]
-    fn only_compact_and_card_are_accepted_and_card_is_the_default() {
+    fn compact_card_and_table_are_accepted_and_card_is_the_default() {
         assert_eq!(default_accounts_view(), "card");
         assert_eq!(normalized_accounts_view("card"), "card");
         // The view was stored as `grid` before it was renamed to Card.
         assert_eq!(normalized_accounts_view("grid"), "card");
         assert_eq!(normalized_accounts_view("compact"), "compact");
+        assert_eq!(normalized_accounts_view("table"), "table");
         assert_eq!(normalized_accounts_view("cards"), "card");
         assert!(!valid_accounts_view("grid"));
     }

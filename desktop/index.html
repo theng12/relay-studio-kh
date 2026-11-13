@@ -134,6 +134,7 @@
             <div class="segmented view-toggle" role="radiogroup" aria-label="Account list view">
               <label class="seg"><input type="radio" name="accounts-view" value="compact"><span>Compact</span></label>
               <label class="seg"><input type="radio" name="accounts-view" value="card" checked><span>Card</span></label>
+              <label class="seg"><input type="radio" name="accounts-view" value="table"><span>Table</span></label>
             </div>
           </div>
           <div class="account-bulk">
@@ -142,6 +143,7 @@
             <span class="secondary">Open and close follow measured memory and Gateway safe-stop acknowledgement.</span>
           </div>
           <p id="memory-summary" class="secondary">Memory measurements have not been read yet.</p>
+          <div id="accounts-warnings" class="warning-groups" role="status" aria-live="polite" hidden></div>
 
           <div id="account-head" class="account-head" aria-hidden="true" hidden><span></span><span>Account</span><span>Connection · Activity</span><span></span></div>
           <ul id="profiles" class="account-list" aria-label="Saved browser accounts" hidden></ul>
