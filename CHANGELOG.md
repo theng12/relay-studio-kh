@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.21 — 2026-11-13
+- Seeding no longer waits for a close-safety binding: a saved, validated Gateway address is enough, so an account that binds only image (or only video) now connects when it opens instead of staying on Standalone with no connection.
+- The generation check is per bound kind: an image-only account verifies its image worker instead of being asked for a video sibling it never had. The close safeguards keep the same rules.
+- Read-back reads Chrome's actual reply level, so a seed that landed reports verified instead of falsely failing; covered by tests on the real nested shape.
+
 ## 0.3.20 — 2026-11-13
 - Opening an account now seeds its extension on every open, reads the connection back out of the extension over Chrome's own control pipe and retries once — the panel no longer opens with an empty Gateway form, and the account row carries the verified result or the exact reason.
 - Image extension 0.50.28 puts the connection in one place: one Mode control, one primary Connect, address/token/worker ID behind Details, "Connected through Relay" naming this Mac, a 32 px icon button for Open workspace, and one spacing scale at 360 and 375 in light and dark.

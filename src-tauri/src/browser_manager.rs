@@ -947,19 +947,16 @@ fn response_revisions(
 }
 
 /// Deliberate pairing or Save captures generations only from a fresh authenticated response that
-/// shows both physical siblings live, of the matching kind, with a nonempty generation.
+/// shows each bound kind live, of the matching kind, with a nonempty generation. An account that
+/// binds only one kind verifies only that kind; a bound kind that cannot be verified fails the
+/// whole capture rather than quietly weakening close safety for it.
 fn verified_generations(
     view: &manager_gateway::ManagerView,
     image_worker_id: Option<&str>,
     video_worker_id: Option<&str>,
     now: f64,
-) -> Option<(String, String)> {
+) -> Option<(Option<String>, Option<String>)> {
     if !view.is_fresh(now) {
-        return None;
-    }
-    let image = image_worker_id.filter(|id| !id.is_empty())?;
-    let video = video_worker_id.filter(|id| !id.is_empty())?;
-    if image == video {
         return None;
     }
     let generation = |id: &str, kind: &str| {
@@ -983,13 +980,24 @@ fn verified_generations(
             .filter(|generation| !generation.is_empty())
             .map(ToString::to_string)
     };
-    Some((generation(image, "image")?, generation(video, "video")?))
+    let image = match image_worker_id.filter(|id| !id.is_empty()) {
+        Some(id) => Some(generation(id, "image")?),
+        None => None,
+    };
+    let video = match video_worker_id.filter(|id| !id.is_empty()) {
+        Some(id) => Some(generation(id, "video")?),
+        None => None,
+    };
+    if image.is_none() && video.is_none() {
+        return None;
+    }
+    Some((image, video))
 }
 
 fn complete_binding(profile: &StoredProfile) -> bool {
     profile.binding_origin.is_some()
-        && profile.image_worker_generation.is_some()
-        && profile.video_worker_generation.is_some()
+        && (profile.image_worker_id.is_none() || profile.image_worker_generation.is_some())
+        && (profile.video_worker_id.is_none() || profile.video_worker_generation.is_some())
 }
 
 /// Pairing is a reconciliation point only for a missing initial binding. A recorded binding,
@@ -1012,8 +1020,8 @@ fn fill_initial_bindings(
         ) else {
             continue;
         };
-        profile.image_worker_generation = Some(image);
-        profile.video_worker_generation = Some(video);
+        profile.image_worker_generation = image;
+        profile.video_worker_generation = video;
         profile.binding_origin = Some(origin.to_string());
     }
 }
@@ -1619,8 +1627,8 @@ pub(crate) fn manager_update_profile(
             });
             match captured {
                 Some((origin, (image, video))) => {
-                    profile.image_worker_generation = Some(image);
-                    profile.video_worker_generation = Some(video);
+                    profile.image_worker_generation = image;
+                    profile.video_worker_generation = video;
                     profile.binding_origin = Some(origin);
                 }
                 None => {
@@ -1726,9 +1734,14 @@ pub(crate) fn seed_open_profile(shared: &Shared, profile_id: &str) {
             .profiles
             .iter()
             .find(|profile| profile.id == profile_id)?;
+        // Seed to the saved Gateway address even without a close-safety binding origin;
+        // the binding gates close controls, not the connection.
         Some((
             profile.pid?,
-            profile.binding_origin.clone()?,
+            profile
+                .binding_origin
+                .clone()
+                .or_else(|| gateway_origin(&shared.app))?,
             [
                 ("image", profile.image_worker_id.clone()),
                 ("video", profile.video_worker_id.clone()),
@@ -3107,9 +3120,13 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
                 "audio" => profile.audio_worker_id.as_deref(),
                 _ => None,
             };
-            match profile.binding_origin.as_deref() {
+            // A saved, validated Gateway address is enough to seed. The binding origin is the
+            // stricter close-safety record; a one-kind account never earns one, and gating
+            // the connection on it left the extension unseeded.
+            let origin = profile.binding_origin.clone().or_else(|| gateway_origin(&shared.app));
+            match origin.as_deref() {
                 Some(origin) => seeding.push(super::seeding::seed_extension(attached, kind, extension_id, bound, origin, &machine)),
-                None => seeding.push(format!("{}: not seeded — no Gateway origin is bound", kind)),
+                None => seeding.push(format!("{}: not seeded — no Gateway address is saved", kind)),
             }
         }
     }
@@ -4273,19 +4290,20 @@ mod tests {
     }
 
     #[test]
-    fn only_a_complete_matching_live_pair_captures_generations() {
+    fn a_bound_kind_captures_its_generation_and_an_unbound_kind_stays_none() {
         let view = pair_view();
         assert_eq!(
             verified_generations(&view, Some("image-1"), Some("video-1"), NOW),
-            Some(("gen-image".into(), "gen-video".into()))
+            Some((Some("gen-image".into()), Some("gen-video".into())))
         );
         assert!(
             verified_generations(&view, Some("image-1"), Some("image-1"), NOW).is_none(),
             "one worker cannot fill both kinds"
         );
-        assert!(
-            verified_generations(&view, Some("image-1"), None, NOW).is_none(),
-            "a missing sibling stays unknown"
+        assert_eq!(
+            verified_generations(&view, Some("image-1"), None, NOW),
+            Some((Some("gen-image".into()), None)),
+            "an image-only account verifies only its image worker"
         );
 
         let wrong_kind = manager_view(

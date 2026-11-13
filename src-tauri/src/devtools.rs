@@ -127,7 +127,7 @@ impl Devtools {
         if let Some(exception) = reply.get("result").and_then(|result| result.get("exceptionDetails")) {
             return Err(format!("The extension rejected its settings: {}", exception.get("text").and_then(Value::as_str).unwrap_or("unknown error")));
         }
-        Ok(reply)
+        Ok(evaluated_value(&reply))
     }
 
     fn call(&mut self, method: &str, params: Value, session: Option<&str>, timeout: Duration) -> Result<Value, String> {
@@ -216,5 +216,41 @@ impl Devtools {
                 Err(_) => return Err("Chrome's extension control pipe failed.".into()),
             }
         }
+    }
+}
+
+/// Runtime.evaluate nests the value twice: reply.result is the CDP command result, and
+/// reply.result.result.value is the value the expression returned.
+fn evaluated_value(reply: &Value) -> Value {
+    reply
+        .pointer("/result/result/value")
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::evaluated_value;
+    use serde_json::json;
+
+    #[test]
+    fn the_evaluated_value_is_read_from_the_nested_cdp_shape() {
+        let reply = json!({
+            "id": 7,
+            "result": {
+                "result": {
+                    "type": "object",
+                    "value": { "mode": true, "url": true, "worker": true, "token": true }
+                }
+            }
+        });
+        let value = evaluated_value(&reply);
+        assert_eq!(value.get("token").and_then(serde_json::Value::as_bool), Some(true));
+    }
+
+    #[test]
+    fn a_missing_value_is_null_not_an_outer_object() {
+        let reply = json!({ "id": 7, "result": { "result": { "type": "undefined" } } });
+        assert!(evaluated_value(&reply).is_null());
     }
 }
