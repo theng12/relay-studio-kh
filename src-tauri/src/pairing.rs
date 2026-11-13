@@ -183,6 +183,22 @@ pub(crate) async fn enable_dispatch_for(worker_ids: &[String]) -> Result<(), Str
         .map_err(|error| error.to_string())
 }
 
+/// Closing an account tells Gateway to stop dispatching at once; the close never waits for this.
+pub(crate) async fn disable_dispatch_for(worker_ids: &[String]) -> Result<(), String> {
+    let ids: Vec<String> = worker_ids.iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let Some(endpoint) = read_endpoint()? else { return Ok(()) };
+    if !crate::manager_gateway::paired(&endpoint.url).unwrap_or(false) {
+        return Ok(());
+    }
+    crate::manager_gateway::control(&endpoint.url, &ids, false, None, None)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 /// At launch: record the pairing for the UI, and ensure a worker token exists for every kind that
 /// has a bound worker id. Failure is reported as a note, never fatal.
 pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {

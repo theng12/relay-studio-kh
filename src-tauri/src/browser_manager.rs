@@ -1795,13 +1795,29 @@ fn seed_open_profile_once(
     bindings: &[(&str, Option<String>)],
     machine: &str,
 ) -> Result<(Vec<(bool, String)>, Option<String>), String> {
-    let mut children = shared
+    let lease = shared
         .children
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let Some(lease) = children.get_mut(&pid) else {
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&pid);
+    let Some(mut lease) = lease else {
         return Err("not seeded — Relay no longer controls this browser; open it again".into());
     };
+    let result = seed_through_lease(&mut lease, origin, bindings, machine);
+    shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(pid, lease);
+    result
+}
+
+fn seed_through_lease(
+    lease: &mut SpawnLease,
+    origin: &str,
+    bindings: &[(&str, Option<String>)],
+    machine: &str,
+) -> Result<(Vec<(bool, String)>, Option<String>), String> {
     let Some(devtools) = lease.devtools.as_mut() else {
         return Err("not seeded — Relay cannot control this browser's extensions; open it again".into());
     };
@@ -2129,6 +2145,34 @@ pub(crate) fn manager_close_profiles(
         }
         Ok(())
     })?;
+    // Tell Gateway to stop dispatching now; the deadline below never waits for the answer.
+    {
+        let targets: Vec<Vec<String>> = {
+            let inner = locked(&manager.shared)?;
+            let stored = stored_or_error(&inner)?;
+            profile_ids
+                .iter()
+                .filter_map(|id| {
+                    let profile = stored.profiles.iter().find(|profile| &profile.id == id)?;
+                    let ids: Vec<String> = [
+                        profile.image_worker_id.clone(),
+                        profile.video_worker_id.clone(),
+                        profile.audio_worker_id.clone(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .filter(|id| !id.trim().is_empty())
+                    .collect();
+                    (!ids.is_empty()).then_some(ids)
+                })
+                .collect()
+        };
+        for ids in targets {
+            tauri::async_runtime::spawn(async move {
+                let _ = crate::pairing::disable_dispatch_for(&ids).await;
+            });
+        }
+    }
     finish(&manager.shared)
 }
 
@@ -2511,6 +2555,27 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 changed = true;
                 shared.gateway.cache().closes.remove(&profile.id);
                 errors.remove(&profile.id);
+            } else if leased_running(shared, profile.pid.unwrap_or_default()) {
+                // ps has not confirmed it yet, but the retained child proves this exact process
+                // is the one Relay started. Close it through the lease instead of waiting forever.
+                let pid = profile.pid.unwrap_or_default();
+                if let Some(mut lease) = shared
+                    .children
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .remove(&pid)
+                {
+                    let _ = lease.child.kill();
+                    shared
+                        .children
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .insert(pid, lease);
+                    errors.insert(
+                        profile.id.clone(),
+                        "Relay is closing a Chrome it started; process confirmation had not arrived yet.".into(),
+                    );
+                }
             } else if owned {
                 let input = GatewayProfile {
                     id: profile.id.clone(),
@@ -2535,7 +2600,13 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                             .unwrap_or_else(|| "Chrome is still closing.".into());
                         errors.insert(profile.id.clone(), reason);
                     }
-                    CloseStep::Term => match terminate(pid) {
+                    CloseStep::Term => match {
+                        if age < 2.0 && close_browser_via_lease(shared, pid) {
+                            Ok(())
+                        } else {
+                            terminate(pid)
+                        }
+                    } {
                         Ok(()) => {
                             errors.insert(
                                 profile.id.clone(),
@@ -2570,7 +2641,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                         errors.insert(
                             profile.id.clone(),
                             format!(
-                                "Chrome pid {pid} did not exit after a forced close. Quit Chrome yourself, then Open this account again."
+                                "Chrome pid {pid} did not exit after a forced close; Relay keeps the account usable — Open again to retry the close."
                             ),
                         );
                         attention.insert(profile.id.clone());
@@ -2765,14 +2836,10 @@ fn force_close_action(owned: bool, paid_work: Option<String>) -> Result<(), Stri
 fn paid_work_block(profile: &GatewayProfile) -> Option<String> {
     let mut readings = authority()?.read(std::slice::from_ref(profile));
     let activity = readings.remove(&profile.id)?.activity?;
-    let activity = activity.to_ascii_lowercase();
-    matches!(
-        activity.as_str(),
-        "generating" | "recovering" | "active" | "uncertain"
-    )
-    .then(|| {
-        "Gateway reports active or uncertain work for this account. Relay will not force it."
-            .to_string()
+    // Only an explicit current generation blocks a close. "Uncertain" or a stale reading is
+    // exactly what used to leave a close waiting forever.
+    (activity.to_ascii_lowercase() == "generating").then(|| {
+        "Gateway reports an image generating for this account; Relay will close as soon as it finishes.".to_string()
     })
 }
 
@@ -2883,6 +2950,28 @@ fn signal_process(pid: u32, signal: libc::c_int) -> bool {
         let _ = signal;
         false
     }
+}
+
+/// Asks Chrome to close itself over its own pipe. The lease is held only for the call, so
+/// no state lock waits on Chrome.
+fn close_browser_via_lease(shared: &Shared, pid: u32) -> bool {
+    let lease = shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&pid);
+    let Some(mut lease) = lease else { return false };
+    let ok = lease
+        .devtools
+        .as_mut()
+        .map(|devtools| devtools.close_browser().is_ok())
+        .unwrap_or(false);
+    shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(pid, lease);
+    ok
 }
 
 fn terminate(pid: u32) -> Result<(), String> {
@@ -3178,6 +3267,12 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
     let (extension_directories, mut problems) = super::extensions::loadable_extensions(&shared.app);
     let mut command = Command::new(chrome);
     command.arg(user_data_arg(&directory));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // Its own group: helpers live with the browser, and Relay signals only this pid's group.
+        command.process_group(0);
+    }
     let mut devtools = None;
     if !extension_directories.is_empty() {
         match super::devtools::attach(&mut command) {

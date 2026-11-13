@@ -148,6 +148,15 @@ impl Devtools {
         self.wait_reply(id, timeout)
     }
 
+    /// Asks Chrome to close itself over the control pipe: a clean shutdown before signals.
+    pub(crate) fn close_browser(&mut self) -> Result<(), String> {
+        let reply = self.call("Browser.close", serde_json::json!({}), None, Duration::from_secs(3))?;
+        if let Some(error) = reply.get("error").and_then(|error| error.get("message")).and_then(Value::as_str) {
+            return Err(error.to_string());
+        }
+        Ok(())
+    }
+
     /// Chrome's storage API for an extension, without waking or evaluating its worker.
     pub(crate) fn get_storage_items(&mut self, extension_id: &str, area: &str, keys: Option<Vec<String>>) -> Result<Value, String> {
         let mut params = serde_json::json!({ "id": extension_id, "storageArea": area });
