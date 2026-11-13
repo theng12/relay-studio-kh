@@ -126,7 +126,7 @@
             <label class="field">New account labels<textarea id="add-labels" rows="2" placeholder="One label per line" spellcheck="false"></textarea></label>
             <button class="primary" id="add-submit" type="submit">Add account</button>
           </form>
-          <p class="help">Each saved account gets its own fresh Chrome profile inside Relay. Cookies and passwords stay in Chrome; Relay never copies, reads or extracts them.</p>
+          <p class="help">Each saved account gets its own fresh Chrome profile inside Relay. Clicking an account opens that browser, or focuses it if it is already open. Closing the window stops that browser; clicking the account opens the same profile again — same cookies, same extension — and no jobs are claimed while it is closed. Relay never copies, reads or extracts cookies or passwords.</p>
         </div>
 
         <div class="card">
@@ -138,8 +138,8 @@
             <label class="check"><input id="attention-only" type="checkbox"> Attention only</label>
             <span id="selection-state" class="secondary" role="status">0 selected</span>
             <div class="segmented view-toggle" role="radiogroup" aria-label="Account list view">
-              <label class="seg"><input type="radio" name="accounts-view" value="compact" checked><span>Compact</span></label>
-              <label class="seg"><input type="radio" name="accounts-view" value="card"><span>Card</span></label>
+              <label class="seg"><input type="radio" name="accounts-view" value="compact"><span>Compact</span></label>
+              <label class="seg"><input type="radio" name="accounts-view" value="card" checked><span>Card</span></label>
             </div>
           </div>
           <div class="account-bulk">

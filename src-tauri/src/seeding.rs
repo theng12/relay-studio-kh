@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 // Only kinds with a per-account binding can be seeded; audio has none, so it is never offered.
-pub(crate) const KINDS: [&str; 2] = ["image", "video"];
+pub(crate) const KINDS: [&str; 3] = ["image", "video", "audio"];
 const FOLDER_KINDS: [&str; 3] = ["image", "video", "audio"];
 const FILE_VERSION: u8 = 1;
 

@@ -52,7 +52,7 @@ impl Default for Settings {
     }
 }
 fn default_accounts_view() -> String {
-    "compact".into()
+    "card".into()
 }
 fn valid_accounts_view(value: &str) -> bool {
     matches!(value, "compact" | "card")
@@ -729,13 +729,13 @@ mod tests {
     }
 
     #[test]
-    fn only_compact_and_card_are_accepted_and_compact_is_the_default() {
-        assert_eq!(default_accounts_view(), "compact");
+    fn only_compact_and_card_are_accepted_and_card_is_the_default() {
+        assert_eq!(default_accounts_view(), "card");
         assert_eq!(normalized_accounts_view("card"), "card");
         // The view was stored as `grid` before it was renamed to Card.
         assert_eq!(normalized_accounts_view("grid"), "card");
         assert_eq!(normalized_accounts_view("compact"), "compact");
-        assert_eq!(normalized_accounts_view("cards"), "compact");
+        assert_eq!(normalized_accounts_view("cards"), "card");
         assert!(!valid_accounts_view("grid"));
     }
 }

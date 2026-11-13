@@ -166,6 +166,23 @@ pub(crate) async fn worker_token_accepted(endpoint: &Endpoint, token: &str) -> R
     }
 }
 
+/// Turns dispatch on for the bound worker ids through the manager control the extension obeys.
+/// Pairing only mints tokens; dispatch is a separate switch and Gateway starts it off.
+pub(crate) async fn enable_dispatch_for(worker_ids: &[String]) -> Result<(), String> {
+    let ids: Vec<String> = worker_ids.iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect();
+    if ids.is_empty() {
+        return Err("no worker id is bound".into());
+    }
+    let endpoint = read_endpoint()?.ok_or_else(|| "no local pairing file on this Mac".to_string())?;
+    if !crate::manager_gateway::paired(&endpoint.url).unwrap_or(false) {
+        return Err("Relay has no Gateway manager token yet".into());
+    }
+    crate::manager_gateway::control(&endpoint.url, &ids, true, Some(false), None)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 /// At launch: record the pairing for the UI, and ensure a worker token exists for every kind that
 /// has a bound worker id. Failure is reported as a note, never fatal.
 pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
@@ -201,7 +218,11 @@ pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
         if let Some((stored_id, token)) = &stored {
             if stored_id == &worker_id {
                 match worker_token_accepted(&endpoint, token).await {
-                    Ok(true) => continue,
+                    Ok(true) => {
+                        // Keep the switch on even when the token is unchanged.
+                        let _ = enable_dispatch_for(std::slice::from_ref(&worker_id)).await;
+                        continue;
+                    }
                     Ok(false) => messages.push(format!("{kind}: its worker token was revoked; minting a new one")),
                     Err(_) => continue,
                 }
@@ -209,7 +230,13 @@ pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
         }
         match mint(&endpoint, &worker_id, kind).await {
             Ok(token) => match crate::seeding::store_credential(kind, &worker_id, &token) {
-                Ok(()) => messages.push(format!("{kind}: paired automatically for {worker_id}")),
+                Ok(()) => {
+                    let dispatch = match enable_dispatch_for(std::slice::from_ref(&worker_id)).await {
+                        Ok(()) => "dispatch on".to_string(),
+                        Err(error) => format!("dispatch off — {error}; jobs will not be claimed"),
+                    };
+                    messages.push(format!("{kind}: paired automatically for {worker_id} · {dispatch}"));
+                }
                 Err(error) => messages.push(format!("{kind}: minted a token but could not save it — {error}")),
             },
             Err(error) => messages.push(format!("{kind}: automatic pairing failed — {error}")),

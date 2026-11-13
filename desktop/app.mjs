@@ -48,7 +48,8 @@ let currentSettings = null;
 const accountViewChoices = [...document.querySelectorAll('input[name="accounts-view"]')];
 function applyAccountsView(value) {
   // `grid` was this view's stored name before it was renamed to Card.
-  const choice = value === 'card' || value === 'grid' ? 'card' : 'compact';
+  // Card carries the per-account actions most clearly; Compact stays a choice.
+  const choice = value === 'compact' ? 'compact' : 'card';
   document.documentElement.dataset.accountsView = choice;
   for (const input of accountViewChoices) input.checked = input.value === choice;
 }

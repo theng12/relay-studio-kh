@@ -40,6 +40,7 @@ pub(crate) struct GatewayProfile {
     pub id: String,
     pub image_worker_id: Option<String>,
     pub video_worker_id: Option<String>,
+    pub audio_worker_id: Option<String>,
     /// Exact normalized Gateway origin the worker generations were captured under.
     pub binding_origin: Option<String>,
     pub image_worker_generation: Option<String>,
@@ -614,6 +615,7 @@ fn gateway_profiles(stored: &Stored) -> Vec<GatewayProfile> {
             id: profile.id.clone(),
             image_worker_id: profile.image_worker_id.clone(),
             video_worker_id: profile.video_worker_id.clone(),
+            audio_worker_id: profile.audio_worker_id.clone(),
             binding_origin: profile.binding_origin.clone(),
             image_worker_generation: profile.image_worker_generation.clone(),
             video_worker_generation: profile.video_worker_generation.clone(),
@@ -1143,6 +1145,8 @@ struct StoredProfile {
     desired_open: bool,
     image_worker_id: Option<String>,
     video_worker_id: Option<String>,
+    #[serde(default)]
+    audio_worker_id: Option<String>,
     /// Exact normalized Gateway origin and per-worker credential generations captured by a
     /// deliberate pairing or explicit account Save. Label-only saves never change them.
     #[serde(default)]
@@ -1277,6 +1281,7 @@ struct GatewaySnapshot {
     account_id: Option<String>,
     image_worker_id: Option<String>,
     video_worker_id: Option<String>,
+    audio_worker_id: Option<String>,
     observed_at: Option<String>,
     credits: Option<serde_json::Value>,
     next_eligible_at: Option<String>,
@@ -1555,11 +1560,12 @@ pub(crate) fn manager_update_profile(
     enabled: Option<bool>,
     image_worker_id: Option<String>,
     video_worker_id: Option<String>,
+    audio_worker_id: Option<String>,
 ) -> Result<Snapshot, String> {
     super::local_only(&window)?;
     // A label-only update passes no worker fields and never rebinds. Passing a worker field is
     // the explicit account Save that reconciles both generations from a fresh authenticated view.
-    let rebind = image_worker_id.is_some() || video_worker_id.is_some();
+    let rebind = image_worker_id.is_some() || video_worker_id.is_some() || audio_worker_id.is_some();
     let binding_view = if rebind {
         manager.shared.gateway.current_view()
     } else {
@@ -1594,6 +1600,10 @@ pub(crate) fn manager_update_profile(
         if let Some(worker) = video_worker_id {
             let next = normalize_worker(worker)?;
             profile.video_worker_id = updated_binding(&profile.video_worker_id, next, frozen)?;
+        }
+        if let Some(worker) = audio_worker_id {
+            let next = normalize_worker(worker)?;
+            profile.audio_worker_id = updated_binding(&profile.audio_worker_id, next, frozen)?;
         }
         if rebind {
             // The mapping is written as one atom: either both exact generations for this saved
@@ -1690,6 +1700,18 @@ pub(crate) struct BrowserExtensions {
     number: u32,
     label: String,
     extensions: Vec<LoadedExtension>,
+}
+
+/// Writes one dispatch/seeding line onto an account's row after an async action completes.
+pub(crate) fn record_seeding(shared: &Shared, profile_id: &str, note: &str) {
+    if let Ok(mut inner) = locked(shared) {
+        let line = inner
+            .seeding
+            .get(profile_id)
+            .map(|existing| format!("{existing} · {note}"))
+            .unwrap_or_else(|| note.to_string());
+        inner.seeding.insert(profile_id.to_string(), line);
+    }
 }
 
 /// The first worker id bound for a kind across saved accounts, for automatic pairing.
@@ -1795,6 +1817,7 @@ pub(crate) fn manager_open_profiles(
                     id: profile.id.clone(),
                     image_worker_id: profile.image_worker_id.clone(),
                     video_worker_id: profile.video_worker_id.clone(),
+                    audio_worker_id: profile.audio_worker_id.clone(),
                     binding_origin: profile.binding_origin.clone(),
                     image_worker_generation: profile.image_worker_generation.clone(),
                     video_worker_generation: profile.video_worker_generation.clone(),
@@ -1816,6 +1839,36 @@ pub(crate) fn manager_open_profiles(
         let mut cache = manager.shared.gateway.cache();
         for (profile, _) in &opened {
             cache.closes.remove(&profile.id);
+        }
+    }
+    // Dispatch is Gateway's switch and starts off; opening a browser turns it on for its workers.
+    {
+        let targets: Vec<(String, Vec<String>)> = opened
+            .iter()
+            .filter_map(|(profile, _)| {
+                let ids: Vec<String> = [
+                    profile.image_worker_id.clone(),
+                    profile.video_worker_id.clone(),
+                    profile.audio_worker_id.clone(),
+                ]
+                .into_iter()
+                .flatten()
+                .filter(|id| !id.trim().is_empty())
+                .collect();
+                (!ids.is_empty()).then(|| (profile.id.clone(), ids))
+            })
+            .collect();
+        if !targets.is_empty() {
+            let shared = manager.shared.clone();
+            tauri::async_runtime::spawn(async move {
+                for (profile_id, ids) in targets {
+                    let note = match crate::pairing::enable_dispatch_for(&ids).await {
+                        Ok(()) => format!("Dispatch on for {}", ids.join(", ")),
+                        Err(error) => format!("Dispatch off — {error}; jobs will not be claimed"),
+                    };
+                    record_seeding(&shared, &profile_id, &note);
+                }
+            });
         }
     }
     let snapshot = finish(&manager.shared)?;
@@ -1978,6 +2031,7 @@ pub(crate) fn manager_force_close_profiles(
                 id: profile.id.clone(),
                 image_worker_id: profile.image_worker_id.clone(),
                 video_worker_id: profile.video_worker_id.clone(),
+                audio_worker_id: profile.audio_worker_id.clone(),
                 binding_origin: profile.binding_origin.clone(),
                 image_worker_generation: profile.image_worker_generation.clone(),
                 video_worker_generation: profile.video_worker_generation.clone(),
@@ -2197,6 +2251,7 @@ fn gateway_snapshot(profile: &StoredProfile, reading: Option<&GatewayReading>) -
         account_id: reading.account_id,
         image_worker_id: profile.image_worker_id.clone(),
         video_worker_id: profile.video_worker_id.clone(),
+        audio_worker_id: profile.audio_worker_id.clone(),
         observed_at: reading.observed_at,
         credits: reading.credits,
         next_eligible_at: reading.next_eligible_at,
@@ -2314,6 +2369,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                     id: profile.id.clone(),
                     image_worker_id: profile.image_worker_id.clone(),
                     video_worker_id: profile.video_worker_id.clone(),
+                    audio_worker_id: profile.audio_worker_id.clone(),
                     binding_origin: profile.binding_origin.clone(),
                     image_worker_generation: profile.image_worker_generation.clone(),
                     video_worker_generation: profile.video_worker_generation.clone(),
@@ -2943,6 +2999,7 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
             let bound = match kind {
                 "image" => profile.image_worker_id.as_deref(),
                 "video" => profile.video_worker_id.as_deref(),
+                "audio" => profile.audio_worker_id.as_deref(),
                 _ => None,
             };
             match profile.binding_origin.as_deref() {
@@ -3115,6 +3172,7 @@ fn append_profile(stored: &mut Stored, raw_label: &str) -> Result<String, String
         desired_open: false,
         image_worker_id: None,
         video_worker_id: None,
+        audio_worker_id: None,
         binding_origin: None,
         image_worker_generation: None,
         video_worker_generation: None,
@@ -3385,7 +3443,8 @@ mod tests {
             label: "Profile 1".into(),
             enabled: true,
             desired_open: false,
-            image_worker_id: Some("image-worker-1".into()),
+            audio_worker_id: None,
+        image_worker_id: Some("image-worker-1".into()),
             video_worker_id: None,
             binding_origin: None,
             image_worker_generation: None,
@@ -3511,7 +3570,8 @@ mod tests {
     fn unbound_profiles_close_locally_and_close_asks_only_bound_workers() {
         let unbound = GatewayProfile {
             id: "one".into(),
-            image_worker_id: None,
+            audio_worker_id: None,
+                    image_worker_id: None,
             video_worker_id: Some(String::new()),
             binding_origin: None,
             image_worker_generation: None,
@@ -3767,7 +3827,8 @@ mod tests {
     fn profile(image: Option<&str>, video: Option<&str>) -> GatewayProfile {
         GatewayProfile {
             id: "profile-1".into(),
-            image_worker_id: image.map(ToString::to_string),
+            audio_worker_id: None,
+                    image_worker_id: image.map(ToString::to_string),
             video_worker_id: video.map(ToString::to_string),
             binding_origin: None,
             image_worker_generation: None,
@@ -3778,7 +3839,8 @@ mod tests {
     fn bound_profile() -> GatewayProfile {
         GatewayProfile {
             id: "profile-1".into(),
-            image_worker_id: Some("image-1".into()),
+            audio_worker_id: None,
+                    image_worker_id: Some("image-1".into()),
             video_worker_id: Some("video-1".into()),
             binding_origin: Some("https://gateway.example".into()),
             image_worker_generation: Some("gen-image".into()),
@@ -4014,7 +4076,8 @@ mod tests {
     fn worker_ids_aggregate_each_explicit_binding_once() {
         let same = GatewayProfile {
             id: "profile-1".into(),
-            image_worker_id: Some("same".into()),
+            audio_worker_id: None,
+                    image_worker_id: Some("same".into()),
             video_worker_id: Some("same".into()),
             binding_origin: None,
             image_worker_generation: None,

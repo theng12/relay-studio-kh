@@ -204,13 +204,14 @@ export function showAction(profile = {}) {
   return { visible, disabled: Boolean(profile.close_pending) || state === 'closing', label: 'Show profile' };
 }
 
-export function profileUpdatePayload({ label, enabled, imageWorkerId, videoWorkerId } = {}) {
+export function profileUpdatePayload({ label, enabled, imageWorkerId, videoWorkerId, audioWorkerId } = {}) {
   return {
     label: String(label ?? '').trim(),
     enabled: Boolean(enabled),
     // Empty strings intentionally clear a manual binding; native treats absent arguments as unchanged.
     imageWorkerId: String(imageWorkerId ?? '').trim(),
     videoWorkerId: String(videoWorkerId ?? '').trim(),
+    audioWorkerId: String(audioWorkerId ?? '').trim(),
   };
 }
 
@@ -670,7 +671,7 @@ export function mountAccounts(invoke) {
     for (const [name, term] of [
       ['desired', 'Local profile'], ['process', 'Process'], ['processId', 'Process ID'], ['close', 'Close'],
       ['error', 'Error'], ['provider', 'Provider'], ['gatewayAccount', 'Gateway account'], ['gatewaySpend', 'Gateway spending'],
-      ['imageWorker', 'Image worker ID'], ['videoWorker', 'Video worker ID'], ['nextEligible', 'Next eligible'],
+      ['imageWorker', 'Image worker ID'], ['videoWorker', 'Video worker ID'], ['audioWorker', 'Audio worker ID'], ['nextEligible', 'Next eligible'],
       ['credits', 'Credits'], ['memory', 'Measured memory'], ['seeding', 'Extension seeding'],
     ]) addField(name, term);
 
@@ -686,6 +687,7 @@ export function mountAccounts(invoke) {
         enabled: enabledInput.checked,
         imageWorkerId: imageInput.value,
         videoWorkerId: videoInput.value,
+        audioWorkerId: audioInput.value,
       }), form);
     });
     const grid = document.createElement('div');
@@ -715,6 +717,10 @@ export function mountAccounts(invoke) {
     videoInput.type = 'text';
     videoInput.autocomplete = 'off';
     videoInput.spellcheck = false;
+    const audioInput = document.createElement('input');
+    audioInput.type = 'text';
+    audioInput.autocomplete = 'off';
+    audioInput.spellcheck = false;
     const enabledWrap = document.createElement('label');
     enabledWrap.className = 'check';
     const enabledInput = document.createElement('input');
@@ -722,7 +728,7 @@ export function mountAccounts(invoke) {
     const enabledText = document.createElement('span');
     enabledText.textContent = 'Local profile enabled';
     enabledWrap.append(enabledInput, enabledText);
-    grid.append(makeField('Label', labelInput), makeField('Image worker ID', imageInput), makeField('Video worker ID', videoInput), enabledWrap);
+    grid.append(makeField('Label', labelInput), makeField('Image worker ID', imageInput), makeField('Video worker ID', videoInput), makeField('Audio worker ID', audioInput), enabledWrap);
     const footer = document.createElement('div');
     footer.className = 'edit-footer';
     const save = document.createElement('button');
@@ -740,7 +746,7 @@ export function mountAccounts(invoke) {
     details.append(dl, form);
 
     li.append(row, message, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, fields, labelInput, labelStatus, imageInput, videoInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -778,12 +784,14 @@ export function mountAccounts(invoke) {
     const gatewayFields = profile.gateway || {};
     const seedingNote = value(profile.seeding) || '';
     let nextStep = null;
-    if (!value(gatewayFields.image_worker_id) && !value(gatewayFields.video_worker_id)) {
+    if (!value(gatewayFields.image_worker_id) && !value(gatewayFields.video_worker_id) && !value(gatewayFields.audio_worker_id)) {
       nextStep = 'Next: type a worker ID in Details, then save.';
     } else if (/not seeded .*no worker token/.test(seedingNote)) {
       nextStep = 'Next: open the Gateway page to finish pairing.';
     } else if (/not seeded .*could not be read/.test(seedingNote)) {
       nextStep = 'Next: save this worker token again on the Gateway page.';
+    } else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
+      nextStep = 'Closed — click to open; no jobs are claimed until it opens.';
     }
     refs.nextAction.textContent = nextStep || '';
     refs.nextAction.hidden = !nextStep;
@@ -795,6 +803,7 @@ export function mountAccounts(invoke) {
     if (draft === null && document.activeElement !== refs.labelInput) refs.labelInput.value = label;
     setInput(refs.imageInput, value(gateway.image_worker_id) || '');
     setInput(refs.videoInput, value(gateway.video_worker_id) || '');
+    setInput(refs.audioInput, value(gateway.audio_worker_id) || '');
     if (document.activeElement !== refs.enabledInput && !dirtyForms.has(refs.enabledInput.form)) refs.enabledInput.checked = Boolean(profile.enabled);
     refs.fields.desired.textContent = profile.enabled ? 'Enabled locally; Chrome profile only.' : 'Disabled locally. The saved entry stays.';
     refs.fields.process.textContent = `${process.label}${process.detail ? ` — ${process.detail}` : ''}`;
@@ -806,6 +815,7 @@ export function mountAccounts(invoke) {
     refs.fields.gatewaySpend.textContent = `${gatewaySpend(gateway)}${number(gateway.reserved) === null ? '' : ` Reserved: ${fmt(gateway.reserved)}.`}${number(gateway.available) === null ? '' : ` Available: ${fmt(gateway.available)}.`}`;
     refs.fields.imageWorker.textContent = value(gateway.image_worker_id) || 'Not bound';
     refs.fields.videoWorker.textContent = value(gateway.video_worker_id) || 'Not bound';
+    refs.fields.audioWorker.textContent = value(gateway.audio_worker_id) || 'Not bound';
     refs.fields.nextEligible.textContent = timeLabel(gateway.next_eligible_at) || 'Not reported';
     refs.fields.credits.replaceChildren();
     if (!credits.known) {

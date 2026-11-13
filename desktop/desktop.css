@@ -371,24 +371,25 @@ dialog p { margin: 0 0 8px; line-height: 1.6; }
 /* Accounts layout. Compact is the default: one line per account, details on expand.
    Card keeps the taller layout for people who want the facts side by side. */
 html[data-accounts-view="compact"] .account-row {
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  grid-template-areas: "pick identity action";
+  /* Identity and state own separate columns: no shared cell, so nothing can collide. */
+  grid-template-columns: 28px minmax(0, 1fr) minmax(160px, 300px) auto;
+  grid-template-areas: "pick identity status action";
   gap: 12px;
   padding: 6px 12px;
   min-height: 34px;
 }
 html[data-accounts-view="compact"] .account-status {
-  grid-area: identity;
   display: flex;
   align-items: baseline;
   gap: 10px;
   flex-wrap: wrap;
-  margin-left: auto;
   justify-content: flex-end;
+  min-width: 0;
   font-size: 12px;
 }
 html[data-accounts-view="compact"] .account-meta { margin-top: 0; }
-html[data-accounts-view="compact"] .account-title { align-items: baseline; }
+html[data-accounts-view="compact"] .account-title { min-width: 0; align-items: baseline; }
+.account-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Actions are always drawn: hover may add emphasis, never the only path to Rename or Delete. */
 html[data-accounts-view="compact"] .account-actions { opacity: 1; gap: 6px; }
 html[data-accounts-view="compact"] .account-actions button { padding: 2px 8px; font-size: 12px; }

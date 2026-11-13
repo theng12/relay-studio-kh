@@ -82,7 +82,7 @@ test('attention keeps a direct show action even while the profile is already ope
 
 test('worker bindings clear with an empty string while absent arguments stay unchanged', () => {
   assert.deepEqual(profileUpdatePayload({ label: '  Studio ', enabled: true, imageWorkerId: '', videoWorkerId: ' video-1 ' }), {
-    label: 'Studio', enabled: true, imageWorkerId: '', videoWorkerId: 'video-1',
+    label: 'Studio', enabled: true, imageWorkerId: '', videoWorkerId: 'video-1', audioWorkerId: '',
   });
 });
 
@@ -501,13 +501,13 @@ test('accounts page offers rename, recoverable delete and a persisted compact/ca
   const app = await load('../desktop/app.mjs');
   const native = await load('../src-tauri/src/lib.rs');
   // Compact is the default and the choice is a real control, not a fixed layout.
-  assert.match(html, /name="accounts-view" value="compact" checked/, 'compact is the default view');
+  assert.match(html, /name="accounts-view" value="card" checked/, 'Card is the default view');
   assert.match(html, /name="accounts-view" value="card"/, 'Card is available');
   assert.match(html, /<span>Card<\/span>/, 'the second view is named Card');
   assert.match(app, /accountsView/, 'the chosen view is saved with settings');
   assert.match(native, /accounts_view/, 'the native settings keep the chosen view');
   assert.match(native, /matches!\(value, "compact" \| "card"\)/, 'only two views are accepted');
-  assert.match(app, /value === 'grid'/, 'a saved grid choice still opens Card');
+  assert.match(app, /value === 'compact' \? 'compact' : 'card'/, 'Compact is opt-in; every other saved value, including grid, opens Card');
   // Rename and delete exist and go through the native commands rather than local state.
   assert.match(accounts, /manager_update_profile/, 'rename saves through the native update command');
   assert.match(accounts, /manager_delete_profile/, 'delete goes through the native delete command');

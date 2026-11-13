@@ -3,8 +3,12 @@
 ## 0.3.16 — 2026-11-13
 - An account row is clickable: it opens the browser, or focuses it when already open, and its primary button reads Focus.
 - "Open selected" becomes "Focus selected" when the selection is already open, instead of looking live and doing nothing.
+- Compact rows never overlap: identity and state own separate columns at every width, and Card is the default view (Compact remains a choice).
+- Closing a browser stops it; clicking the account reopens the same profile — same cookies and extension — and the row says no jobs are claimed while it is closed.
 - The row names the next pairing step in plain words: type a worker ID, or open the Gateway page to finish.
 - Saving a worker ID and opening the Gateway page re-run automatic pairing at once — no restart needed.
+- Audio worker IDs are bound, seeded and dispatched like image and video.
+- Dispatch, which Gateway starts off, is turned on for a worker when it pairs and when its browser opens; the row says Dispatch on, or off with the reason jobs will not be claimed.
 
 ## 0.3.15 — 2026-11-13
 - Relay finds the Gateway on this Mac by itself — no address to type — and keeps its worker tokens in a file only you can read, never the Keychain.
