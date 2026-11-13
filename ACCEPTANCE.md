@@ -65,5 +65,5 @@ Missing (known, backlog):
 - A true per-field column table (Account / State / Connection / Credits / Memory as
   separate cells); today's Table is an aligned dense layout over the same row.
 - Cell-to-cell keyboard navigation inside the table (rows themselves are reachable and act).
-- `browsers.mjs` still derives its own tones instead of rendering the snapshot's
-  `process_state`.
+- (Closed) The earlier `browsers.mjs` tone note was stale: the file has imported
+  `processTier` from accounts.mjs since 9cb673a; a regression test now pins it.
