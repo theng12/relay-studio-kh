@@ -105,13 +105,6 @@
           <ul id="overview-attention" class="attention-list" hidden></ul>
         </div>
 
-        <div class="card">
-          <h3>Quick links</h3>
-          <div class="actions">
-            <button type="button" id="overview-browsers-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-window"/></svg><span>Open windows</span></button>
-            <button type="button" id="overview-gateway-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gateway"/></svg><span>Gateway</span></button>
-          </div>
-        </div>
       </section>
 
       <section class="page" id="page-accounts" aria-labelledby="accounts-title" hidden>
@@ -131,6 +124,7 @@
 
         <div class="card">
           <div class="account-toolbar" role="group" aria-label="Select saved accounts">
+            <label class="field compact">Search<input id="account-search" type="search" autocomplete="off" placeholder="Label or number"></label>
             <label class="field compact">By number or range<input id="range-input" type="text" inputmode="numeric" autocomplete="off" placeholder="3 or 2-5"></label>
             <button id="select-range" type="button">Select range</button>
             <button id="select-all" type="button">All</button>

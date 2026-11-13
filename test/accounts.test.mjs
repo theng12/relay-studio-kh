@@ -566,3 +566,18 @@ test('every account row template exposes nextAction and a render failure is repo
   assert.match(accounts, /if \(refs\.nextAction\)/, 'the write is guarded for templates without it');
   assert.match(accounts, /account list could not be drawn/, 'a render failure is surfaced, not left loading');
 });
+
+test('the app surface keeps one search, no duplicate nav card, and diagnostics behind a button', async () => {
+  const load = async (path) => (await import('node:fs/promises')).readFile(new URL(path, import.meta.url), 'utf8');
+  const html = await load('../desktop/index.html');
+  const accounts = await load('../desktop/accounts.mjs');
+  const browsers = await load('../desktop/browsers.mjs');
+  const overview = await load('../desktop/overview.mjs');
+  const css = await load('../desktop/desktop.css');
+  assert.match(html, /id="account-search"/, 'one search in the accounts toolbar');
+  assert.match(accounts, /String\(profile\.number\)\.includes\(needle\)/, 'search matches a number as well as a label');
+  assert.doesNotMatch(html, /overview-browsers-link|overview-gateway-link/, 'no duplicate navigation card on Overview');
+  assert.doesNotMatch(overview, /overview-browsers-link|overview-gateway-link/, 'no dead handlers for removed links');
+  assert.match(browsers, /Show details/, 'Open windows diagnostics sit behind a visible button');
+  assert.match(browsers, /meta\.hidden = true/, 'the card face does not show the diagnostic line by default');
+});

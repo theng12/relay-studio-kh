@@ -108,8 +108,10 @@ export function mountBrowsers(invoke, accounts) {
     state.className = 'state';
     head.append(pick, title, state);
 
+    // Diagnostics stay behind a visible button; the card face keeps state and reason only.
     const meta = document.createElement('p');
     meta.className = 'browser-meta';
+    meta.hidden = true;
 
     const reason = document.createElement('p');
     reason.className = 'browser-reason';
@@ -130,7 +132,17 @@ export function mountBrowsers(invoke, accounts) {
     force.className = 'danger';
     force.textContent = 'Force close';
     force.addEventListener('click', () => askForce([id]));
-    actions.append(focus, close, force);
+    const details = document.createElement('button');
+    details.type = 'button';
+    details.className = 'ghost';
+    details.textContent = 'Show details';
+    details.setAttribute('aria-expanded', 'false');
+    details.addEventListener('click', () => {
+      meta.hidden = !meta.hidden;
+      details.textContent = meta.hidden ? 'Show details' : 'Hide details';
+      details.setAttribute('aria-expanded', String(!meta.hidden));
+    });
+    actions.append(focus, close, force, details);
 
     li.append(head, meta, reason, actions);
     return { li, checkbox, ordinal, label, state, meta, reason, focus, close, force };

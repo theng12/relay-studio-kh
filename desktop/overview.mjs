@@ -84,6 +84,4 @@ function render(snapshot, show) {
 export function mountOverview(accounts, show) {
   accounts.subscribe((snapshot) => render(snapshot, show));
   $('overview-accounts-link').addEventListener('click', () => show('accounts'));
-  $('overview-browsers-link').addEventListener('click', () => show('browsers'));
-  $('overview-gateway-link').addEventListener('click', () => show('gateway'));
 }

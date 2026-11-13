@@ -1,5 +1,11 @@
 # What's New
 
+## 0.3.19 — 2026-11-13
+- Accounts has one search for a label or account number, with a plain message when nothing matches; the range and All/None selectors are unchanged.
+- Overview no longer repeats Open windows and Gateway as buttons — the sidebar already has them.
+- Open windows cards show the account, its state and any reason on the face; process ID, memory, provider and activity sit behind a Show details button.
+- Measured at 1440 and 768: no clipping, no overlap, and lists scroll inside their page.
+
 ## 0.3.18 — 2026-11-13
 - The Accounts page renders again: a missing next-step element crashed the row render, left "Reading saved accounts…" on screen and looked like native management was unavailable. The element is wired and guarded, and a render failure now says what failed; Card is the default view.
 - Extensions have exactly two modes — Standalone (default) and Gateway Studio; a stored Studio choice moves silently to Standalone, and the Story Studio UI, settings, permissions and tests are gone.

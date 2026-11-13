@@ -424,6 +424,7 @@ export function mountAccounts(invoke) {
   let snapshot = null;
   let selection = new Set();
   let attentionOnly = false;
+  let searchText = '';
   let busy = false;
   let refreshing = false;
   let deletingId = null;
@@ -847,7 +848,11 @@ export function mountAccounts(invoke) {
 
   function renderList() {
     if (!snapshot) return;
-    const profiles = sortProfiles(snapshot.profiles);
+    // One search per toolbar: a label or number filter over the same list.
+    const needle = searchText.toLowerCase();
+    const profiles = sortProfiles(snapshot.profiles).filter((profile) => !needle
+      || String(profile.label || '').toLowerCase().includes(needle)
+      || String(profile.number).includes(needle));
     const current = new Set(profiles.map((profile) => profile.id));
     for (const [id, refs] of rows) {
       if (current.has(id)) continue;
@@ -865,7 +870,8 @@ export function mountAccounts(invoke) {
     const visibleCount = attentionOnly ? profiles.filter(needsAttention).length : profiles.length;
     list.hidden = visibleCount === 0;
     $('account-head').hidden = visibleCount === 0;
-    if (!profiles.length) empty('No saved accounts yet. Add a label above to create the first Chrome profile Relay manages.');
+    if (!snapshot.profiles.length) empty('No saved accounts yet. Add a label above to create the first Chrome profile Relay manages.');
+    else if (!profiles.length) empty(`No saved account matches “${searchText}”.`);
     else if (attentionOnly && !visibleCount) empty('No saved account needs attention.');
     else empty(null);
     renderSelection();
@@ -1025,6 +1031,7 @@ export function mountAccounts(invoke) {
   $('select-all').addEventListener('click', () => { selection = new Set((snapshot?.profiles || []).map((profile) => profile.id)); renderList(); });
   $('select-none').addEventListener('click', () => { selection = new Set(); renderList(); });
   $('attention-only').addEventListener('change', () => { attentionOnly = $('attention-only').checked; renderList(); });
+  $('account-search').addEventListener('input', () => { searchText = $('account-search').value.trim(); renderList(); });
   $('open-selected').addEventListener('click', () => {
     const ids = openableIds(snapshot?.profiles || [], [...selection]);
     if (ids.length) { runCommand('manager_open_profiles', { profileIds: ids }, ids); return; }
