@@ -4,8 +4,9 @@
 - Extensions keep one id across releases: each manifest carries a fixed key, so seeded storage is no longer orphaned when the bundled version folder changes.
 - Open and close are one action. Close never asks Gateway first and never needs a manual Force: it asks Chrome to quit, repeats at 10 s, ends the one process Relay started (with its helpers) at 15 s, and at 20 s says plainly what survived. Open during a close queues and opens when the process is gone.
 - Seeding writes Chrome's own storage API instead of evaluating the extension's worker, so a sleeping worker cannot make a seed fail, and every result goes to lifecycle.log.
-- Bundle Image 0.50.33, Video 1.3.27, Audio 0.7.35: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
+- Bundle Image 0.50.33, Video 1.3.28, Audio 0.7.36: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
 - Video and Audio panels say "Connected through Relay · <machine>" when Relay seeded them and show the readiness reason when blocked.
+- Video and Audio panels now share the image panel's system — one spacing scale, 32 px controls, one primary action, section titles — with behaviour and ids unchanged.
 - Contrast and layering pass, measured not eyeballed: body text 13.8–16.7:1, secondary 5.9–8.6:1, primary buttons 7.1–11.0:1, status text 6.3–11.3:1, in light and dark; the border ramp now separates cards from the ground (≥1.5:1). A test fails if any of these pairs drops below 4.5:1.
 - Accounts has a third, remembered layout: Table, with aligned columns and a fixed header; it joins Compact and Card and the choice survives restarts.
 - Each account row keeps one primary action; Show details and Delete moved into a ⋯ overflow menu that closes on Escape or a click outside.
