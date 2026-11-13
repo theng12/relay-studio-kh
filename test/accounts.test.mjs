@@ -61,9 +61,12 @@ test('bulk open and close exclude uncertain or already settled accounts', () => 
   assert.deepEqual(closableIds(entries, ids), ['id-2', 'id-3', 'id-4', 'id-7']);
 });
 
-test('open and close actions follow desired intent and never replay a pending close', () => {
+test('an open account focuses, a closed one opens, and a pending close never replays', () => {
   assert.deepEqual(rowAction(profile(1)), { kind: 'open', label: 'Open', disabled: false });
-  assert.deepEqual(rowAction(profile(1, { desired_open: true })), { kind: 'close', label: 'Close', disabled: false });
+  // Open browsers focus instead of offering a dead Open or a Close-first label.
+  assert.deepEqual(rowAction(profile(1, { process_state: 'open' })), { kind: 'focus', label: 'Focus', disabled: false });
+  assert.deepEqual(rowAction(profile(1, { process_state: 'opening' })), { kind: 'focus', label: 'Focus', disabled: false });
+  assert.deepEqual(rowAction(profile(1, { desired_open: true, process_state: 'queued' })), { kind: 'close', label: 'Close', disabled: false });
   assert.equal(rowAction(profile(1, { close_pending: true })).disabled, true);
   assert.equal(rowAction(profile(1, { process_state: 'closing' })).disabled, true);
 });

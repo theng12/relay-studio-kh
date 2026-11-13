@@ -188,9 +188,12 @@ export function closableIds(profiles = [], ids = []) {
 }
 
 export function rowAction(profile = {}) {
+  const state = value(profile.process_state);
   if (profile.close_pending) return { kind: 'close', label: 'Waiting to close', disabled: true };
-  if (value(profile.process_state) === 'closing') return { kind: 'close', label: 'Closing', disabled: true };
-  if (profile.desired_open || LIVE_STATES.has(value(profile.process_state))) return { kind: 'close', label: 'Close', disabled: false };
+  if (state === 'closing') return { kind: 'close', label: 'Closing', disabled: true };
+  // An open browser's primary action is Focus; a queued one can still be closed.
+  if (state === 'open' || state === 'opening') return { kind: 'focus', label: 'Focus', disabled: false };
+  if (profile.desired_open) return { kind: 'close', label: 'Close', disabled: false };
   return { kind: 'open', label: 'Open', disabled: false };
 }
 
@@ -601,17 +604,28 @@ export function mountAccounts(invoke) {
     activityState.className = 'state';
     const creditsRow = document.createElement('span');
     creditsRow.className = 'account-credits';
-    status.append(connectionState, connectionDetail, activityState, creditsRow);
+    const nextAction = document.createElement('span');
+    nextAction.className = 'state info';
+    nextAction.hidden = true;
+    status.append(connectionState, connectionDetail, activityState, creditsRow, nextAction);
 
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.addEventListener('click', () => {
+    // One primary action for the button and for a click anywhere on the row.
+    const primary = () => {
       const current = snapshot?.profiles?.find((entry) => entry.id === id);
       if (!current) return;
       const next = rowAction(current);
       if (next.disabled) return;
-      runCommand(next.kind === 'open' ? 'manager_open_profiles' : 'manager_close_profiles', { profileIds: [id] }, [id]);
+      const command = next.kind === 'open' ? 'manager_open_profiles'
+        : next.kind === 'focus' ? 'manager_show_profiles' : 'manager_close_profiles';
+      runCommand(command, { profileIds: [id] }, [id]);
+    };
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('button, input, label, a, select, textarea')) return;
+      primary();
     });
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.addEventListener('click', primary);
     const show = document.createElement('button');
     show.type = 'button';
     show.textContent = 'Show profile';
@@ -760,6 +774,19 @@ export function mountAccounts(invoke) {
     refs.message.textContent = refusal ? `Delete failed: ${refusal}` : '';
     refs.message.hidden = !refusal;
     refs.remove.disabled = busy;
+    // The row names the one next step that finishes pairing, instead of leaving it to a legend.
+    const gatewayFields = profile.gateway || {};
+    const seedingNote = value(profile.seeding) || '';
+    let nextStep = null;
+    if (!value(gatewayFields.image_worker_id) && !value(gatewayFields.video_worker_id)) {
+      nextStep = 'Next: type a worker ID in Details, then save.';
+    } else if (/not seeded .*no worker token/.test(seedingNote)) {
+      nextStep = 'Next: open the Gateway page to finish pairing.';
+    } else if (/not seeded .*could not be read/.test(seedingNote)) {
+      nextStep = 'Next: save this worker token again on the Gateway page.';
+    }
+    refs.nextAction.textContent = nextStep || '';
+    refs.nextAction.hidden = !nextStep;
     refs.li.hidden = attentionOnly && !needsAttention(profile);
 
     const gateway = profile.gateway || {};
@@ -838,9 +865,16 @@ export function mountAccounts(invoke) {
     $('selection-state').textContent = `${selection.size} of ${total} selected`;
     const canOpen = openableIds(snapshot?.profiles, selected).length;
     const canClose = closableIds(snapshot?.profiles, selected).length;
-    $('open-selected').disabled = busy || !canOpen;
+    // An open browser can still be focused, so the primary bulk action never reads dead.
+    const focusable = selected.filter((id) => {
+      const profile = snapshot?.profiles?.find((entry) => entry.id === id);
+      return profile && profile.process_id !== null && profile.process_id !== undefined
+        && (value(profile.process_state) === 'open' || value(profile.process_state) === 'opening');
+    });
+    $('open-selected').disabled = busy || (!canOpen && focusable.length === 0);
     $('close-selected').disabled = busy || !canClose;
-    $('open-selected').textContent = canOpen ? `Open selected (${canOpen})` : 'Open selected';
+    $('open-selected').textContent = canOpen ? `Open selected (${canOpen})`
+      : focusable.length ? `Focus selected (${focusable.length})` : 'Open selected';
     $('close-selected').textContent = canClose ? `Close selected (${canClose})` : 'Close selected';
   }
 
@@ -975,8 +1009,11 @@ export function mountAccounts(invoke) {
   $('attention-only').addEventListener('change', () => { attentionOnly = $('attention-only').checked; renderList(); });
   $('open-selected').addEventListener('click', () => {
     const ids = openableIds(snapshot?.profiles || [], [...selection]);
-    if (!ids.length) { setError('Selected accounts are already open, opening, waiting, or waiting to close.'); return; }
-    runCommand('manager_open_profiles', { profileIds: ids }, ids);
+    if (ids.length) { runCommand('manager_open_profiles', { profileIds: ids }, ids); return; }
+    const focus = (snapshot?.profiles || []).filter((profile) => selection.has(profile.id)
+      && profile.process_id !== null && value(profile.process_state) === 'open');
+    if (focus.length) { runCommand('manager_show_profiles', { profileIds: focus.map((profile) => profile.id) }, focus.map((profile) => profile.id)); return; }
+    setError('Selected accounts are already open, opening, waiting, or waiting to close.');
   });
   $('close-selected').addEventListener('click', () => {
     const ids = closableIds(snapshot?.profiles || [], [...selection]);

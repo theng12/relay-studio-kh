@@ -1,5 +1,11 @@
 # What's New
 
+## 0.3.16 — 2026-11-13
+- An account row is clickable: it opens the browser, or focuses it when already open, and its primary button reads Focus.
+- "Open selected" becomes "Focus selected" when the selection is already open, instead of looking live and doing nothing.
+- The row names the next pairing step in plain words: type a worker ID, or open the Gateway page to finish.
+- Saving a worker ID and opening the Gateway page re-run automatic pairing at once — no restart needed.
+
 ## 0.3.15 — 2026-11-13
 - Relay finds the Gateway on this Mac by itself — no address to type — and keeps its worker tokens in a file only you can read, never the Keychain.
 - An address you do type needs no http:// or port; Relay fills both in and shows what it used, and any failure names the address it actually tried.

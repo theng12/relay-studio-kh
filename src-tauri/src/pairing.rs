@@ -6,7 +6,6 @@
 use serde::Deserialize;
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 const SCHEMA: u8 = 1;
 const MINT_PATH: &str = "/admin/api/extension-workers/pair";
@@ -38,10 +37,11 @@ pub(crate) struct PairingStatus {
     note: String,
 }
 
-static STATUS: OnceLock<PairingStatus> = OnceLock::new();
+static STATUS: std::sync::Mutex<Option<PairingStatus>> = std::sync::Mutex::new(None);
 
 pub(crate) fn status() -> PairingStatus {
-    match STATUS.get() {
+    let guard = STATUS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    match guard.as_ref() {
         Some(status) => PairingStatus {
             automatic: status.automatic,
             url: status.url.clone(),
@@ -55,6 +55,10 @@ pub(crate) fn status() -> PairingStatus {
             note: "No local pairing yet; enter the Gateway address and worker tokens below.".into(),
         },
     }
+}
+
+fn remember(status: PairingStatus) {
+    *STATUS.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(status);
 }
 
 fn endpoint_path() -> PathBuf {
@@ -169,11 +173,11 @@ pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
     let endpoint = match read_endpoint() {
         Ok(Some(endpoint)) => endpoint,
         Ok(None) => {
-            let _ = STATUS.set(status());
+            remember(status());
             return messages;
         }
         Err(error) => {
-            let _ = STATUS.set(PairingStatus {
+            remember(PairingStatus {
                 automatic: false,
                 url: None,
                 machine_id: None,
@@ -182,12 +186,13 @@ pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
             return messages;
         }
     };
-    let _ = STATUS.set(PairingStatus {
+    remember(PairingStatus {
         automatic: true,
         url: Some(endpoint.url.clone()),
         machine_id: Some(endpoint.machine_id.clone()),
         note: "Connected through the local pairing file the Gateway writes on this Mac.".into(),
     });
+    let mut failures = Vec::new();
     for kind in crate::seeding::KINDS {
         let Some(worker_id) = crate::browser_manager::first_bound_worker_id(&app, kind) else {
             continue;
@@ -210,6 +215,16 @@ pub(crate) async fn autopair(app: tauri::AppHandle) -> Vec<String> {
             Err(error) => messages.push(format!("{kind}: automatic pairing failed — {error}")),
         }
     }
+    if !messages.is_empty() {
+        if messages.iter().any(|note| note.contains("failed") || note.contains("could not")) {
+            failures.extend(messages.iter().cloned());
+        }
+    }
+    if !failures.is_empty() {
+        let mut status = status();
+        status.note = failures.join(" · ");
+        remember(status);
+    }
     messages
 }
 
@@ -219,9 +234,23 @@ pub(crate) fn pairing_status(window: tauri::WebviewWindow) -> Result<PairingStat
     Ok(status())
 }
 
+/// Re-runs pairing on demand (Gateway page opened/refreshed) instead of only at launch.
+#[tauri::command]
+pub(crate) async fn pairing_refresh(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<PairingStatus, String> {
+    super::local_only(&window)?;
+    let _ = autopair(app).await;
+    Ok(status())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // GATEWAY_ENDPOINT_FILE is process-wide; the tests must not race on it.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn write_endpoint(bytes: &str, mode: u32) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
@@ -235,6 +264,7 @@ mod tests {
 
     #[test]
     fn a_private_schema_one_file_is_accepted_and_other_schemas_are_not() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let path = write_endpoint(
             r#"{"schema":1,"url":"http://127.0.0.1:8787","machineId":"mac-a","pairingToken":"gwp_0123456789abcdef"}"#,
             0o600,
@@ -251,6 +281,7 @@ mod tests {
 
     #[test]
     fn a_world_readable_file_is_refused() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let path = write_endpoint(
             r#"{"schema":1,"url":"http://127.0.0.1:8787","machineId":"mac-a","pairingToken":"gwp_0123456789abcdef"}"#,
             0o644,

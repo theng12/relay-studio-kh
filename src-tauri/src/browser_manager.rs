@@ -1630,6 +1630,12 @@ pub(crate) fn manager_update_profile(
             shared.gateway.apply_saved_pacing(&shared).await;
         });
     }
+    // A newly saved worker id should pair at once instead of waiting for the next launch.
+    if rebind {
+        use tauri::Manager;
+        let handle = window.app_handle().clone();
+        tauri::async_runtime::spawn(async move { let _ = crate::pairing::autopair(handle).await; });
+    }
     finish(&manager.shared)
 }
 

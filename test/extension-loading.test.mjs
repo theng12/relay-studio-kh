@@ -59,3 +59,16 @@ test('Relay consumes the Gateway local pairing file and points itself at it', as
   assert.match(app, /pairing_status/, 'the Gateway page shows the pairing state');
   assert.match(html, /id="pairing-file-state"/, 'one line, no wizard');
 });
+
+test('account rows name the next pairing step and the bulk action never dies', async () => {
+  const accounts = await load('../desktop/accounts.mjs');
+  const app = await load('../desktop/app.mjs');
+  const native = await load('../src-tauri/src/lib.rs');
+  const browser = await load('../src-tauri/src/browser_manager.rs');
+  assert.match(accounts, /Next: type a worker ID in Details/, 'the row names the fix, not a legend');
+  assert.match(accounts, /Focus selected/, 'an open selection still acts by focusing');
+  assert.match(accounts, /row\.addEventListener\('click'/, 'clicking the row runs its primary action');
+  assert.match(app, /pairing_refresh/, 'opening the Gateway page re-runs pairing');
+  assert.match(native, /pairing::pairing_refresh/, 'the refresh command is registered');
+  assert.match(browser, /crate::pairing::autopair/, 'saving a worker id re-runs pairing at once');
+});

@@ -32,6 +32,8 @@ const shell = mountShell({ onShow: (page) => {
   $('app-error').hidden = true;
   $('app-error').textContent = '';
   if (page === 'accounts' || page === 'browsers') accounts.refresh();
+  // Opening the Gateway page re-runs pairing, so a fresh binding does not wait for a restart.
+  if (page === 'gateway') loadPairingStatus(true);
 } });
 mountOverview(accounts, (page) => shell.show(page));
 setupExtensions(invoke, showError);
@@ -211,9 +213,9 @@ async function loadWorkerCredentials() {
     }
   } catch (error) { $('extension-workers-state').textContent = `Worker credentials could not be read. ${String(error)}`; }
 }
-async function loadPairingStatus() {
+async function loadPairingStatus(refresh = false) {
   try {
-    const status = await invoke('pairing_status');
+    const status = await invoke(refresh ? 'pairing_refresh' : 'pairing_status');
     $('pairing-file-state').textContent = status.automatic
       ? `Local pairing · ${status.machine_id} · ${status.url}`
       : status.note;
