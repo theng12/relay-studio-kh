@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   activityTier, closableIds, connectionTier, createLabelAutosave, creditsLine, creditsView, gatewaySpend, LABEL_AUTOSAVE_MS,
   labelAutosavePayload, memorySummary, needsAttention, openableIds,
-  pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
+  closeAction, pairingStatus, parseLabels, parseRange, processTier, profileUpdatePayload, rowAction, showAction,
   settingsPayload, sortProfiles, timeLabel, toMillis,
 } from '../desktop/accounts.mjs';
 import { browserProfiles, browserSummary, closeElapsedSeconds, elapsedLabel, forceBlockReason, residentIds } from '../desktop/browsers.mjs';
@@ -66,9 +66,18 @@ test('an open account focuses, a closed one opens, and a pending close never rep
   // Open browsers focus instead of offering a dead Open or a Close-first label.
   assert.deepEqual(rowAction(profile(1, { process_state: 'open' })), { kind: 'focus', label: 'Focus', disabled: false });
   assert.deepEqual(rowAction(profile(1, { process_state: 'opening' })), { kind: 'focus', label: 'Focus', disabled: false });
-  assert.deepEqual(rowAction(profile(1, { desired_open: true, process_state: 'queued' })), { kind: 'close', label: 'Close', disabled: false });
+  assert.deepEqual(rowAction(profile(1, { desired_open: true, process_state: 'queued' })), { kind: 'open', label: 'Open', disabled: false });
   assert.equal(rowAction(profile(1, { close_pending: true })).disabled, true);
   assert.equal(rowAction(profile(1, { process_state: 'closing' })).disabled, true);
+});
+
+test('Close is its own visible control: open or queued accounts, never a closed one', () => {
+  assert.deepEqual(closeAction(profile(1, { process_state: 'open' })), { kind: 'close', label: 'Close', visible: true, disabled: false });
+  assert.deepEqual(closeAction(profile(1, { process_state: 'opening' })), { kind: 'close', label: 'Close', visible: true, disabled: false });
+  assert.deepEqual(closeAction(profile(1, { desired_open: true, process_state: 'queued' })), { kind: 'close', label: 'Close', visible: true, disabled: false });
+  assert.equal(closeAction(profile(1)).visible, false, 'a closed account has nothing to close');
+  assert.equal(closeAction(profile(1, { close_pending: true })).visible, false, 'the primary already says Waiting to close');
+  assert.equal(closeAction(profile(1, { process_state: 'closing' })).visible, false);
 });
 
 test('attention keeps a direct show action even while the profile is already open', () => {

@@ -1,5 +1,9 @@
 # What's New
 
+## 0.3.22 — 2026-11-13
+- Every account row now has a visible primary button: Open when its browser is closed, Focus when it is open. Close sits beside it as the account's own safe-stop, and the row still opens on a click.
+- An open account shows its window state on the card face ("Open · open requested · memory"), so Open versus Focus is never a guess; a pending close is stated once, never as two buttons.
+
 ## 0.3.21 — 2026-11-13
 - Seeding no longer waits for a close-safety binding: a saved, validated Gateway address is enough, so an account that binds only image (or only video) now connects when it opens instead of staying on Standalone with no connection.
 - The generation check is per bound kind: an image-only account verifies its image worker instead of being asked for a video sibling it never had. The close safeguards keep the same rules.

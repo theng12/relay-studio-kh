@@ -191,10 +191,18 @@ export function rowAction(profile = {}) {
   const state = value(profile.process_state);
   if (profile.close_pending) return { kind: 'close', label: 'Waiting to close', disabled: true };
   if (state === 'closing') return { kind: 'close', label: 'Closing', disabled: true };
-  // An open browser's primary action is Focus; a queued one can still be closed.
+  // An open browser's primary action is Focus; a closed one always offers Open.
   if (state === 'open' || state === 'opening') return { kind: 'focus', label: 'Focus', disabled: false };
-  if (profile.desired_open) return { kind: 'close', label: 'Close', disabled: false };
   return { kind: 'open', label: 'Open', disabled: false };
+}
+
+/// Close is its own visible control beside the primary action, never a hidden replacement.
+export function closeAction(profile = {}) {
+  const state = value(profile.process_state);
+  // A pending close is already stated by the primary button; never show two of it.
+  if (profile.close_pending || state === 'closing') return { kind: 'close', label: 'Close', visible: false, disabled: true };
+  const visible = state === 'open' || state === 'opening' || profile.desired_open === true;
+  return { kind: 'close', label: 'Close', visible, disabled: false };
 }
 
 // Show only targets resident profiles; queued accounts still obey memory admission.
@@ -628,6 +636,12 @@ export function mountAccounts(invoke) {
     const action = document.createElement('button');
     action.type = 'button';
     action.addEventListener('click', primary);
+    // Always-visible secondary control: the safe-stop path for this account only.
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'ghost';
+    close.textContent = 'Close';
+    close.addEventListener('click', () => runCommand('manager_close_profiles', { profileIds: [id] }, [id]));
     const show = document.createElement('button');
     show.type = 'button';
     show.textContent = 'Show profile';
@@ -661,7 +675,7 @@ export function mountAccounts(invoke) {
       detailsButton.textContent = details.hidden ? 'Show details' : 'Hide details';
       detailsButton.setAttribute('aria-expanded', String(!details.hidden));
     });
-    actionCell.append(action, show, detailsButton, remove);
+    actionCell.append(action, close, show, detailsButton, remove);
     const dl = document.createElement('dl');
     const fields = {};
     const addField = (name, term) => {
@@ -747,7 +761,7 @@ export function mountAccounts(invoke) {
     details.append(dl, form);
 
     li.append(row, message, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, show, remove, message, nextAction, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, close, show, remove, message, nextAction, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -773,6 +787,11 @@ export function mountAccounts(invoke) {
     refs.action.textContent = action.label;
     refs.action.setAttribute('aria-label', `${action.label} account #${profile.number} ${label}`);
     refs.action.disabled = action.disabled || busyIds.has(profile.id) || busy;
+    const close = closeAction(profile);
+    refs.close.textContent = close.label;
+    refs.close.setAttribute('aria-label', `${close.label} account #${profile.number} ${label}`);
+    refs.close.hidden = !close.visible;
+    refs.close.disabled = close.disabled || busyIds.has(profile.id) || busy;
     const show = showAction(profile);
     refs.show.setAttribute('aria-label', `Show profile for account #${profile.number} ${label}`);
     refs.show.hidden = !show.visible;
