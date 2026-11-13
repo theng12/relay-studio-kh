@@ -1,7 +1,9 @@
 # What's New
 
 ## 0.3.18 — 2026-11-13
-- Bundle Image 0.50.26 and Video 1.3.22: Flow request ids are discovered from the live page each time and kept only as editable fallback values in Settings — a Google change is a settings edit, not an extension rebuild.
+- The Accounts page renders again: a missing next-step element crashed the row render, left "Reading saved accounts…" on screen and looked like native management was unavailable. The element is wired and guarded, and a render failure now says what failed; Card is the default view.
+- Extensions have exactly two modes — Standalone (default) and Gateway Studio; a stored Studio choice moves silently to Standalone, and the Story Studio UI, settings, permissions and tests are gone.
+- Bundle Image 0.50.27, Video 1.3.23 and Audio 0.7.31: Flow request ids are discovered from the live page each time and kept only as editable fallback values in Settings — a Google change is a settings edit, not an extension rebuild.
 - An id that cannot be resolved is named with what was tried, in the panel and at worker start ("Account probe failed: …"), never collapsed into "signed out".
 
 ## 0.3.17 — 2026-11-13
