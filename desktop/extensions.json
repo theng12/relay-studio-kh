@@ -122,18 +122,18 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.28",
-      "source_commit": "095703eda6c21a4dd4f567e5682c5ba3c6f95850",
+      "version": "0.50.29",
+      "source_commit": "99be122c1f5804a630b54efb106d6eb649e7eb0f",
       "accepted": true,
-      "manifest_sha256": "798bf7a36211d299547321f9a5cea549a56038cca2547a029a72737bea094e84",
+      "manifest_sha256": "cc8c4a22c145a2b08f771d0f8d47c1167b236ced922c285e87cece39ccf4e10b",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "aa433bb87774a62f208bb5a08b3f5b750394a0d433321971fea383acfe753a40"
+          "sha256": "cefec7f083c6f055b215d0a83f6fc6cecfd446ca1ad7ce383a6be5e6b392d8e4"
         },
         {
           "path": "manifest.json",
-          "sha256": "798bf7a36211d299547321f9a5cea549a56038cca2547a029a72737bea094e84"
+          "sha256": "cc8c4a22c145a2b08f771d0f8d47c1167b236ced922c285e87cece39ccf4e10b"
         },
         {
           "path": "src/background.js",
@@ -205,7 +205,7 @@
         },
         {
           "path": "src/lib/flow-exec.js",
-          "sha256": "7bf27a3f2e014e55e89cd87809c5df15d3c7a804fefef316d0655e7eabeef3cd"
+          "sha256": "5b76214e40583a2376481471784df4bd75a2c0ab05d4dd8a654622df7a31bd81"
         },
         {
           "path": "src/lib/gateway-account.js",
