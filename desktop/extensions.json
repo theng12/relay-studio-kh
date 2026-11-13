@@ -4,18 +4,18 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.24",
-      "source_commit": "d9f284a51c206240e5aa34aadb62bc102807f9fc",
+      "version": "1.3.25",
+      "source_commit": "3a4a648a5900a5b7040c84830c83216d10160442",
       "accepted": true,
-      "manifest_sha256": "17c16aa00a82d57048ddb625d72b790d3bac10be1380d393b1bc414d33fa1c7f",
+      "manifest_sha256": "bb916655b15d7a66c59e87c11bfbb084857a90edcf722bba9a83dd8f1018f2f9",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "bba2d964217e69e9645e4e347d48a475a21bfa2b53a16a64056458af4a165164"
+          "sha256": "c9e079636db1b66d5b22a6f80cb1db745666c78dfdd28adeb6a73a00a07b2b28"
         },
         {
           "path": "manifest.json",
-          "sha256": "17c16aa00a82d57048ddb625d72b790d3bac10be1380d393b1bc414d33fa1c7f"
+          "sha256": "bb916655b15d7a66c59e87c11bfbb084857a90edcf722bba9a83dd8f1018f2f9"
         },
         {
           "path": "src/background.js",
@@ -122,22 +122,22 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.29",
-      "source_commit": "99be122c1f5804a630b54efb106d6eb649e7eb0f",
+      "version": "0.50.31",
+      "source_commit": "9a0d94896df223825b2f724240b32456e9cde5c0",
       "accepted": true,
-      "manifest_sha256": "cc8c4a22c145a2b08f771d0f8d47c1167b236ced922c285e87cece39ccf4e10b",
+      "manifest_sha256": "1cff1810d7a0e68bb25c0771bba1a53e834e9851d48e95a0eb0e167915fda7f8",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "cefec7f083c6f055b215d0a83f6fc6cecfd446ca1ad7ce383a6be5e6b392d8e4"
+          "sha256": "9a0e724146ec0846b577cd37aa9f7bf41ccd5d550483a9c028e87e3d6b0aa89a"
         },
         {
           "path": "manifest.json",
-          "sha256": "cc8c4a22c145a2b08f771d0f8d47c1167b236ced922c285e87cece39ccf4e10b"
+          "sha256": "1cff1810d7a0e68bb25c0771bba1a53e834e9851d48e95a0eb0e167915fda7f8"
         },
         {
           "path": "src/background.js",
-          "sha256": "f81478021e22e95fc61303bf18580bccce7d1f79b5a15f1878e55e3c8952b0f0"
+          "sha256": "b6174af1ad68e8cbf4083e9440ca0a45842dd4b1490d37206884bf9b11817bfe"
         },
         {
           "path": "src/content/aistudio-main.js",
@@ -205,7 +205,7 @@
         },
         {
           "path": "src/lib/flow-exec.js",
-          "sha256": "5b76214e40583a2376481471784df4bd75a2c0ab05d4dd8a654622df7a31bd81"
+          "sha256": "dc41e08a8b6c4cebda130bf4497a32b370c4e8ec91fafd77821bdf8d56564b01"
         },
         {
           "path": "src/lib/gateway-account.js",
@@ -221,7 +221,7 @@
         },
         {
           "path": "src/lib/gateway-worker.js",
-          "sha256": "8bd2e41a361260e50cd899db8f4c2206d88a2ced42ac9a9105040df4c7442f6c"
+          "sha256": "897e465a4115452ea77ea92f140f16f59cc33928c0334bd661eeb851d1a60a74"
         },
         {
           "path": "src/lib/model-identity.js",
@@ -293,26 +293,26 @@
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "b5a82aa91ef204374cbb9811011f511759b5a941daf98ed695fa73fda4fc123f"
+          "sha256": "84f0c33e60a450ae63eb4fb4238bc47100da59c9457cb5448ef2a4585c1d3054"
         }
       ]
     },
     {
       "id": "audio",
       "name": "Audio generator — not working yet",
-      "version": "0.7.32",
-      "source_commit": "9f392f3a0881d7c68a8291837cde73c1b70fc18d",
+      "version": "0.7.33",
+      "source_commit": "319b0387d0c3710d3437483186878dfea303e422",
       "required": false,
       "accepted": true,
-      "manifest_sha256": "c7c53a17059da9f8259f88ca6eb685d17ef6b14924e72f1ff84d463ef0a90c7f",
+      "manifest_sha256": "5156cfdde7d2f23e49fabbaff33dca4e771ebff3a4164794a23e891cdcf6b1d2",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "b139c99e2fddc6c15c09136f93d316e0393206300405dfaacaa6698d84e42cee"
+          "sha256": "879dbb59357fd1c46a28d7f628bcc56a3018921b8e50199dc8e47e3706aa4066"
         },
         {
           "path": "manifest.json",
-          "sha256": "c7c53a17059da9f8259f88ca6eb685d17ef6b14924e72f1ff84d463ef0a90c7f"
+          "sha256": "5156cfdde7d2f23e49fabbaff33dca4e771ebff3a4164794a23e891cdcf6b1d2"
         },
         {
           "path": "src/background.js",
