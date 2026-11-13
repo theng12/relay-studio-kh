@@ -30,7 +30,7 @@ test('Relay seeds bound workers into the extensions it opens, never inventing co
   const app = await load('../desktop/app.mjs');
   const html = await load('../desktop/index.html');
   const accounts = await load('../desktop/accounts.mjs');
-  assert.match(manager, /seeding::seed_extension/, 'each launched browser seeds its extensions');
+  assert.match(manager, /seeding::seed_and_verify/, 'each opened browser seeds its extensions and reads them back');
   assert.match(manager, /extension-workers\.json/, "worker tokens live in Relay's own data file");
   assert.match(manager, /manager-token\.json/, "the manager token lives in Relay's own data file");
   assert.doesNotMatch(seeding, /security_framework/, 'no Keychain path remains');
