@@ -1714,6 +1714,94 @@ pub(crate) fn record_seeding(shared: &Shared, profile_id: &str, note: &str) {
     }
 }
 
+
+/// Seeds an already-open browser again and reads the connection back out of the extension.
+/// Opening must not wait on extension startup, so this runs on its own thread; the second
+/// pass is the retry for a worker that was not up on the first.
+pub(crate) fn seed_open_profile(shared: &Shared, profile_id: &str) {
+    let prepared = locked(shared).ok().and_then(|inner| {
+        let profile = inner
+            .stored
+            .as_ref()?
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)?;
+        Some((
+            profile.pid?,
+            profile.binding_origin.clone()?,
+            [
+                ("image", profile.image_worker_id.clone()),
+                ("video", profile.video_worker_id.clone()),
+                ("audio", profile.audio_worker_id.clone()),
+            ],
+        ))
+    });
+    let Some((pid, origin, bindings)) = prepared else { return };
+    let machine = super::pairing::read_endpoint()
+        .ok()
+        .flatten()
+        .map(|endpoint| endpoint.machine_id)
+        .unwrap_or_default();
+    let mut note = String::new();
+    for attempt in 0..2 {
+        if attempt == 1 {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+        match seed_open_profile_once(shared, pid, &origin, &bindings, &machine) {
+            Ok(lines) => {
+                if lines.iter().all(|(ok, _)| *ok) {
+                    record_seeding(shared, profile_id, "connection verified in the browser");
+                    return;
+                }
+                note = lines.into_iter().map(|(_, line)| line).collect::<Vec<_>>().join(" · ");
+            }
+            Err(reason) => note = reason,
+        }
+    }
+    if !note.is_empty() {
+        record_seeding(shared, profile_id, &note);
+    }
+}
+
+fn seed_open_profile_once(
+    shared: &Shared,
+    pid: u32,
+    origin: &str,
+    bindings: &[(&str, Option<String>)],
+    machine: &str,
+) -> Result<Vec<(bool, String)>, String> {
+    let mut children = shared
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(lease) = children.get_mut(&pid) else {
+        return Err("not seeded — Relay no longer controls this browser; open it again".into());
+    };
+    let Some(devtools) = lease.devtools.as_mut() else {
+        return Err("not seeded — Relay cannot control this browser's extensions; open it again".into());
+    };
+    let extensions = devtools.extensions()?;
+    let mut lines = Vec::new();
+    for (kind, bound) in bindings {
+        let Some(bound) = bound.as_deref().filter(|value| !value.is_empty()) else { continue };
+        let extension_id = extensions.iter().find_map(|extension| {
+            let path = extension.get("path").and_then(serde_json::Value::as_str)?;
+            if super::seeding::kind_for_dir(std::path::Path::new(path)) != Some(*kind) {
+                return None;
+            }
+            extension.get("id").and_then(serde_json::Value::as_str).map(str::to_string)
+        });
+        match extension_id {
+            Some(id) => lines.push(super::seeding::seed_and_verify(devtools, kind, &id, Some(bound), origin, machine)),
+            None => lines.push((false, format!("{kind}: not loaded in this browser"))),
+        }
+    }
+    if lines.is_empty() {
+        return Err("not seeded — no worker id is bound to this account".into());
+    }
+    Ok(lines)
+}
+
 /// The first worker id bound for a kind across saved accounts, for automatic pairing.
 pub(crate) fn first_bound_worker_id(app: &tauri::AppHandle, kind: &str) -> Option<String> {
     use tauri::Manager;
@@ -1872,6 +1960,13 @@ pub(crate) fn manager_open_profiles(
         }
     }
     let snapshot = finish(&manager.shared)?;
+    // Every open re-seeds and reads the connection back; a browser that was already
+    // resident gets the same check, so "Open" is the one action that connects it.
+    for (profile, _) in &opened {
+        let shared = manager.shared.clone();
+        let id = profile.id.clone();
+        std::thread::spawn(move || seed_open_profile(&shared, &id));
+    }
     // Opening never authorizes jobs. A profile that was already resident is activated by pid,
     // which brings its own windows forward and cannot resume paused or held work.
     let targets = {
@@ -1958,6 +2053,11 @@ pub(crate) fn manager_show_profiles(
         for (id, reason) in failures {
             inner.errors.insert(id, reason);
         }
+    }
+    // Focusing an open browser is an open: re-seed and read the connection back.
+    for id in shown {
+        let shared = manager.shared.clone();
+        std::thread::spawn(move || seed_open_profile(&shared, &id));
     }
     build_snapshot(&manager.shared)
 }
@@ -2994,6 +3094,11 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
         let (load_problems, loaded) = attached.load_unpacked(&extension_directories);
         problems.extend(load_problems);
         // Seed only a worker whose id is bound to this account and whose token Relay holds.
+        let machine = super::pairing::read_endpoint()
+            .ok()
+            .flatten()
+            .map(|endpoint| endpoint.machine_id)
+            .unwrap_or_default();
         for (directory, extension_id) in &loaded {
             let Some(kind) = super::seeding::kind_for_dir(directory) else { continue };
             let bound = match kind {
@@ -3003,7 +3108,7 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
                 _ => None,
             };
             match profile.binding_origin.as_deref() {
-                Some(origin) => seeding.push(super::seeding::seed_extension(attached, kind, extension_id, bound, origin)),
+                Some(origin) => seeding.push(super::seeding::seed_extension(attached, kind, extension_id, bound, origin, &machine)),
                 None => seeding.push(format!("{}: not seeded — no Gateway origin is bound", kind)),
             }
         }

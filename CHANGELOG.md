@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.20 — 2026-11-13
+- Opening an account now seeds its extension on every open, reads the connection back out of the extension over Chrome's own control pipe and retries once — the panel no longer opens with an empty Gateway form, and the account row carries the verified result or the exact reason.
+- Image extension 0.50.28 puts the connection in one place: one Mode control, one primary Connect, address/token/worker ID behind Details, "Connected through Relay" naming this Mac, a 32 px icon button for Open workspace, and one spacing scale at 360 and 375 in light and dark.
+- Bundle Image 0.50.28, Video 1.3.24 and Audio 0.7.32: Gateway mode can reach http://127.0.0.1:8787 again — the loopback host permissions came out with the old Story server and are restored, with a test that fails if Gateway mode ever ships without them.
+
 ## 0.3.19 — 2026-11-13
 - Accounts has one search for a label or account number, with a plain message when nothing matches; the range and All/None selectors are unchanged.
 - Overview no longer repeats Open windows and Gateway as buttons — the sidebar already has them.

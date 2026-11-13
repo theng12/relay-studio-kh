@@ -170,10 +170,11 @@ pub(crate) fn clear(kind: &str) -> Result<(), String> {
 }
 
 /// The storage write for one extension. Each extension keeps its own shape; never invent fields.
-fn expression(kind: &str, stored: &Stored, origin: &str) -> Option<String> {
+fn expression(kind: &str, stored: &Stored, origin: &str, machine_id: &str) -> Option<String> {
     let worker_id = serde_json::to_string(&stored.worker_id).ok()?;
     let token = serde_json::to_string(&stored.token).ok()?;
     let origin = serde_json::to_string(origin).ok()?;
+    let machine = serde_json::to_string(machine_id).ok()?;
     let worker_id_value = worker_id.clone();
     match kind {
         "image" => {
@@ -181,21 +182,37 @@ fn expression(kind: &str, stored: &Stored, origin: &str) -> Option<String> {
                 "{{ gatewayModeEnabled: true, gatewayUrl: {origin}, gatewayToken: {token}, gatewayWorkerId: {worker_id_value} }}"
             );
             Some(format!(
-                "(async () => {{ await chrome.storage.local.set({{ gatewayConnection: {connection}, imageGeneratorWorkMode: 'gateway' }}); return true; }})()"
+                "(async () => {{ await chrome.storage.local.set({{ gatewayConnection: {connection}, imageGeneratorWorkMode: 'gateway', gatewayRelayMachineId: {machine} }}); return true; }})()"
             ))
         }
         "video" => Some(format!(
-            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway', gatewayUrl: {origin}, gatewayWorkerId: {worker_id_value} }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayWorkerToken: {token} }}); return true; }})()"
+            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway', gatewayUrl: {origin}, gatewayWorkerId: {worker_id_value} }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayWorkerToken: {token}, gatewayRelayMachineId: {machine} }}); return true; }})()"
         )),
         "audio" => Some(format!(
-            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway' }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayModeEnabled: true, gatewayBaseUrl: {origin}, gatewayWorkerId: {worker_id_value}, gatewayWorkerToken: {token} }}); return true; }})()"
+            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway' }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayModeEnabled: true, gatewayBaseUrl: {origin}, gatewayWorkerId: {worker_id_value}, gatewayWorkerToken: {token}, gatewayRelayMachineId: {machine} }}); return true; }})()"
         )),
         _ => None,
     }
 }
 
+/// Reads the connection back out of the extension: Relay must never trust that a write landed.
+fn verify_expression(kind: &str) -> Option<&'static str> {
+    match kind {
+        "image" => Some(
+            "(async () => { const s = await chrome.storage.local.get(['gatewayConnection', 'imageGeneratorWorkMode']); const c = s.gatewayConnection || {}; return { mode: s.imageGeneratorWorkMode === 'gateway', url: !!c.gatewayUrl, worker: !!c.gatewayWorkerId, token: !!c.gatewayToken }; })()",
+        ),
+        "video" => Some(
+            "(async () => { const sy = await chrome.storage.sync.get('settings'); const s = sy.settings || {}; const l = await chrome.storage.local.get('gatewayWorkerToken'); return { mode: s.mode === 'gateway', url: !!s.gatewayUrl, worker: !!s.gatewayWorkerId, token: !!l.gatewayWorkerToken }; })()",
+        ),
+        "audio" => Some(
+            "(async () => { const sy = await chrome.storage.sync.get('settings'); const s = sy.settings || {}; const l = await chrome.storage.local.get(['gatewayBaseUrl', 'gatewayWorkerId', 'gatewayWorkerToken']); return { mode: s.mode === 'gateway', url: !!l.gatewayBaseUrl, worker: !!l.gatewayWorkerId, token: !!l.gatewayWorkerToken }; })()",
+        ),
+        _ => None,
+    }
+}
+
 /// Seeds one loaded extension for this profile. Returns the honest line shown on the profile row.
-pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &str, extension_id: &str, bound_worker_id: Option<&str>, origin: &str) -> String {
+pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &str, extension_id: &str, bound_worker_id: Option<&str>, origin: &str, machine_id: &str) -> String {
     let Some(bound) = bound_worker_id.filter(|value| !value.is_empty()) else {
         return format!("{}: not seeded — no worker id is bound to this account", label(kind));
     };
@@ -207,12 +224,36 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
     if stored.worker_id != bound {
         return format!("{}: not seeded — the saved token belongs to worker {}, not {}", label(kind), stored.worker_id, bound);
     }
-    let Some(expression) = expression(kind, &stored, origin) else {
+    let Some(expression) = expression(kind, &stored, origin, machine_id) else {
         return format!("{}: not seeded — unsupported kind", label(kind));
     };
     match devtools.eval_in_extension(extension_id, &expression) {
         Ok(_) => format!("{}: seeded as {}", label(kind), bound),
         Err(error) => format!("{}: not seeded — {error}", label(kind)),
+    }
+}
+
+/// Seeds and proves it: a write that did not land is reported as a failure, never as "seeded".
+pub(crate) fn seed_and_verify(devtools: &mut super::devtools::Devtools, kind: &str, extension_id: &str, bound_worker_id: Option<&str>, origin: &str, machine_id: &str) -> (bool, String) {
+    let note = seed_extension(devtools, kind, extension_id, bound_worker_id, origin, machine_id);
+    if !note.contains(": seeded") {
+        return (false, note);
+    }
+    let Some(check) = verify_expression(kind) else {
+        return (false, format!("{}: not seeded — unsupported kind", label(kind)));
+    };
+    match devtools.eval_in_extension(extension_id, check) {
+        Ok(value) => {
+            let all = ["mode", "url", "worker", "token"]
+                .iter()
+                .all(|field| value.get(*field).and_then(serde_json::Value::as_bool) == Some(true));
+            if all {
+                (true, note)
+            } else {
+                (false, format!("{}: written but the extension does not hold the connection (read-back failed)", label(kind)))
+            }
+        }
+        Err(error) => (false, format!("{}: written but could not be read back — {error}", label(kind))),
     }
 }
 
