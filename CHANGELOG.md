@@ -4,7 +4,8 @@
 - Extensions keep one id across releases: each manifest carries a fixed key, so seeded storage is no longer orphaned when the bundled version folder changes.
 - Open and close are one action. Close never asks Gateway first and never needs a manual Force: it asks Chrome to quit, repeats at 10 s, ends the one process Relay started (with its helpers) at 15 s, and at 20 s says plainly what survived. Open during a close queues and opens when the process is gone.
 - Seeding writes Chrome's own storage API instead of evaluating the extension's worker, so a sleeping worker cannot make a seed fail, and every result goes to lifecycle.log.
-- Bundle Image 0.50.31, Video 1.3.25, Audio 0.7.33: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
+- Bundle Image 0.50.32, Video 1.3.26, Audio 0.7.34: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
+- Video and Audio panels say "Connected through Relay · <machine>" when Relay seeded them and show the readiness reason when blocked.
 - The Accounts page refreshes once a second, so an open, close or seed result is not five seconds stale.
 - Start at Login is a proper macOS login item now, not a raw LaunchAgent that macOS can list as a nameless entry. The old agent is retired only after the new registration succeeds, and moved to a recoverable trash rather than deleted.
 

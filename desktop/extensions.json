@@ -4,18 +4,18 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.25",
-      "source_commit": "3a4a648a5900a5b7040c84830c83216d10160442",
+      "version": "1.3.26",
+      "source_commit": "7887a5dee976dfe143d7448cab6f5837a19ce488",
       "accepted": true,
-      "manifest_sha256": "bb916655b15d7a66c59e87c11bfbb084857a90edcf722bba9a83dd8f1018f2f9",
+      "manifest_sha256": "bd9ff8b2c1b7825507505c1d90deb82b5bc5b62bbe43e5f34dbce9504bd4c795",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "c9e079636db1b66d5b22a6f80cb1db745666c78dfdd28adeb6a73a00a07b2b28"
+          "sha256": "3c5c4c8a7b5ede970262e484611a81174d5dbaf18882638c7cfa4029a0d78782"
         },
         {
           "path": "manifest.json",
-          "sha256": "bb916655b15d7a66c59e87c11bfbb084857a90edcf722bba9a83dd8f1018f2f9"
+          "sha256": "bd9ff8b2c1b7825507505c1d90deb82b5bc5b62bbe43e5f34dbce9504bd4c795"
         },
         {
           "path": "src/background.js",
@@ -111,11 +111,11 @@
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "e0dd554eea3965331b57edd0e45cf8a603bbde68f7b714500c23383e4e2291b9"
+          "sha256": "eabb606f9286ec8aec27701b089e47b8d6aa97e2e26dd997df22f7fd50d64608"
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "574c3625b81b89dab9f694c696063ad7adeeb0ff146935c776051138c9adb3c8"
+          "sha256": "82bc9e90a6bed9284b797fcaf1af6e45673b020d12a14ba1cbecaad89d3deeac"
         }
       ]
     },
@@ -300,19 +300,19 @@
     {
       "id": "audio",
       "name": "Audio generator — not working yet",
-      "version": "0.7.33",
-      "source_commit": "319b0387d0c3710d3437483186878dfea303e422",
+      "version": "0.7.34",
+      "source_commit": "4821de42c81250e3a4f1d3b7f6e84cb2693f7667",
       "required": false,
       "accepted": true,
-      "manifest_sha256": "5156cfdde7d2f23e49fabbaff33dca4e771ebff3a4164794a23e891cdcf6b1d2",
+      "manifest_sha256": "b079b2fa2b173e782355765fd96519b9c1292c1b23d98b7b2b8214140c7f6ea7",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "879dbb59357fd1c46a28d7f628bcc56a3018921b8e50199dc8e47e3706aa4066"
+          "sha256": "3bcb6f61537e99eacc6bfb9bf1194db8159b4dfc179b558ea65fe0f76ea64dc6"
         },
         {
           "path": "manifest.json",
-          "sha256": "5156cfdde7d2f23e49fabbaff33dca4e771ebff3a4164794a23e891cdcf6b1d2"
+          "sha256": "b079b2fa2b173e782355765fd96519b9c1292c1b23d98b7b2b8214140c7f6ea7"
         },
         {
           "path": "src/background.js",
@@ -416,11 +416,11 @@
         },
         {
           "path": "src/popup/popup.html",
-          "sha256": "6ed686a18d306fc052525cdc04899ec9a08bffaa18aa056cada5bd1b65f40250"
+          "sha256": "830bd26e85c2ce67331e8aafba56002df36baa9494f788f94cb135aa986817e0"
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "8e86d2eb2f1ba3f49dfaad8bbfe3618ea0306088545a808448d95626b4915515"
+          "sha256": "ee8aefecd2e400ba261b855b28b993800aa6123a0ea26bc5469addc26d395254"
         }
       ]
     }
