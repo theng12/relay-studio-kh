@@ -170,45 +170,64 @@ pub(crate) fn clear(kind: &str) -> Result<(), String> {
 }
 
 /// The storage write for one extension. Each extension keeps its own shape; never invent fields.
-fn expression(kind: &str, stored: &Stored, origin: &str, machine_id: &str) -> Option<String> {
-    let worker_id = serde_json::to_string(&stored.worker_id).ok()?;
-    let token = serde_json::to_string(&stored.token).ok()?;
-    let origin = serde_json::to_string(origin).ok()?;
-    let machine = serde_json::to_string(machine_id).ok()?;
-    let worker_id_value = worker_id.clone();
-    match kind {
-        "image" => {
-            let connection = format!(
-                "{{ gatewayModeEnabled: true, gatewayUrl: {origin}, gatewayToken: {token}, gatewayWorkerId: {worker_id_value} }}"
-            );
-            Some(format!(
-                "(async () => {{ await chrome.storage.local.set({{ gatewayConnection: {connection}, imageGeneratorWorkMode: 'gateway', gatewayRelayMachineId: {machine} }}); return true; }})()"
-            ))
-        }
-        "video" => Some(format!(
-            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway', gatewayUrl: {origin}, gatewayWorkerId: {worker_id_value} }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayWorkerToken: {token}, gatewayRelayMachineId: {machine} }}); return true; }})()"
-        )),
-        "audio" => Some(format!(
-            "(async () => {{ const key = 'settings'; const got = await chrome.storage.sync.get(key); const settings = Object.assign({{}}, got[key] || {{}}, {{ mode: 'gateway' }}); await chrome.storage.sync.set({{ [key]: settings }}); await chrome.storage.local.set({{ gatewayModeEnabled: true, gatewayBaseUrl: {origin}, gatewayWorkerId: {worker_id_value}, gatewayWorkerToken: {token}, gatewayRelayMachineId: {machine} }}); return true; }})()"
-        )),
-        _ => None,
-    }
+/// The extension's local-storage connection block for one kind.
+fn local_values(kind: &str, stored: &Stored, origin: &str, machine_id: &str) -> Option<serde_json::Value> {
+    let worker_id = serde_json::Value::String(stored.worker_id.clone());
+    let token = serde_json::Value::String(stored.token.clone());
+    let origin = serde_json::Value::String(origin.to_string());
+    let machine = serde_json::Value::String(machine_id.to_string());
+    Some(match kind {
+        "image" => serde_json::json!({
+            "gatewayConnection": {
+                "gatewayModeEnabled": true,
+                "gatewayUrl": origin,
+                "gatewayToken": token,
+                "gatewayWorkerId": worker_id,
+            },
+            "imageGeneratorWorkMode": "gateway",
+            "gatewayRelayMachineId": machine,
+        }),
+        "video" => serde_json::json!({
+            "gatewayWorkerToken": token,
+            "gatewayRelayMachineId": machine,
+        }),
+        "audio" => serde_json::json!({
+            "gatewayModeEnabled": true,
+            "gatewayBaseUrl": origin,
+            "gatewayWorkerId": worker_id,
+            "gatewayWorkerToken": token,
+            "gatewayRelayMachineId": machine,
+        }),
+        _ => return None,
+    })
 }
 
-/// Reads the connection back out of the extension: Relay must never trust that a write landed.
-fn verify_expression(kind: &str) -> Option<&'static str> {
-    match kind {
-        "image" => Some(
-            "(async () => { const s = await chrome.storage.local.get(['gatewayConnection', 'imageGeneratorWorkMode']); const c = s.gatewayConnection || {}; return { mode: s.imageGeneratorWorkMode === 'gateway', url: !!c.gatewayUrl, worker: !!c.gatewayWorkerId, token: !!c.gatewayToken }; })()",
-        ),
-        "video" => Some(
-            "(async () => { const sy = await chrome.storage.sync.get('settings'); const s = sy.settings || {}; const l = await chrome.storage.local.get('gatewayWorkerToken'); return { mode: s.mode === 'gateway', url: !!s.gatewayUrl, worker: !!s.gatewayWorkerId, token: !!l.gatewayWorkerToken }; })()",
-        ),
-        "audio" => Some(
-            "(async () => { const sy = await chrome.storage.sync.get('settings'); const s = sy.settings || {}; const l = await chrome.storage.local.get(['gatewayBaseUrl', 'gatewayWorkerId', 'gatewayWorkerToken']); return { mode: s.mode === 'gateway', url: !!l.gatewayBaseUrl, worker: !!l.gatewayWorkerId, token: !!l.gatewayWorkerToken }; })()",
-        ),
-        _ => None,
+/// Fields merged into the synced `settings` object (video/audio keep mode + address there).
+fn settings_patch(kind: &str, stored: &Stored, origin: &str) -> Option<serde_json::Value> {
+    Some(match kind {
+        "image" => return None,
+        "video" => serde_json::json!({
+            "mode": "gateway",
+            "gatewayUrl": origin,
+            "gatewayWorkerId": stored.worker_id,
+        }),
+        "audio" => serde_json::json!({ "mode": "gateway" }),
+        _ => return None,
+    })
+}
+
+/// Extensions storage replies are a key/value object; older Chrome nests {name,value} rows.
+fn items_object(value: &serde_json::Value) -> serde_json::Value {
+    if let Some(rows) = value.as_array() {
+        let mut map = serde_json::Map::new();
+        for row in rows {
+            if let (Some(name), Some(item)) = (row.get("name").and_then(|name| name.as_str()), row.get("value")) {
+                map.insert(name.to_string(), item.clone());
+            }
+        }
+        return serde_json::Value::Object(map);
     }
+    value.clone()
 }
 
 /// Seeds one loaded extension for this profile. Returns the honest line shown on the profile row.
@@ -224,11 +243,28 @@ pub(crate) fn seed_extension(devtools: &mut super::devtools::Devtools, kind: &st
     if stored.worker_id != bound {
         return format!("{}: not seeded — the saved token belongs to worker {}, not {}", label(kind), stored.worker_id, bound);
     }
-    let Some(expression) = expression(kind, &stored, origin, machine_id) else {
+    let Some(local) = local_values(kind, &stored, origin, machine_id) else {
         return format!("{}: not seeded — unsupported kind", label(kind));
     };
-    match devtools.eval_in_extension(extension_id, &expression) {
-        Ok(_) => format!("{}: seeded as {}", label(kind), bound),
+    // Storage items are written by Chrome itself; no service worker is woken or evaluated.
+    let written = (|| -> Result<(), String> {
+        if let Some(patch) = settings_patch(kind, &stored, origin) {
+            let current = devtools.get_storage_items(extension_id, "sync", Some(vec!["settings".into()]))?;
+            let current = items_object(&current);
+            let mut settings = current.get("settings").cloned().unwrap_or_else(|| serde_json::json!({}));
+            if !settings.is_object() {
+                settings = serde_json::json!({});
+            }
+            for (key, value) in patch.as_object().into_iter().flatten() {
+                settings[key] = value.clone();
+            }
+            devtools.set_storage_items(extension_id, "sync", serde_json::json!({ "settings": settings }))?;
+        }
+        devtools.set_storage_items(extension_id, "local", local)?;
+        Ok(())
+    })();
+    match written {
+        Ok(()) => format!("{}: seeded as {}", label(kind), bound),
         Err(error) => format!("{}: not seeded — {error}", label(kind)),
     }
 }
@@ -239,20 +275,41 @@ pub(crate) fn seed_and_verify(devtools: &mut super::devtools::Devtools, kind: &s
     if !note.contains(": seeded") {
         return (false, note);
     }
-    let Some(check) = verify_expression(kind) else {
-        return (false, format!("{}: not seeded — unsupported kind", label(kind)));
+    let has = |value: &serde_json::Value, key: &str| {
+        value.get(key).and_then(serde_json::Value::as_str).is_some_and(|text| !text.is_empty())
     };
-    match devtools.eval_in_extension(extension_id, check) {
-        Ok(value) => {
-            let all = ["mode", "url", "worker", "token"]
-                .iter()
-                .all(|field| value.get(*field).and_then(serde_json::Value::as_bool) == Some(true));
-            if all {
-                (true, note)
-            } else {
-                (false, format!("{}: written but the extension does not hold the connection (read-back failed)", label(kind)))
+    let check = (|| -> Result<bool, String> {
+        let local = items_object(&devtools.get_storage_items(extension_id, "local", None)?);
+        match kind {
+            "image" => {
+                let connection = local.get("gatewayConnection").cloned().unwrap_or(serde_json::Value::Null);
+                Ok(local.get("imageGeneratorWorkMode").and_then(serde_json::Value::as_str) == Some("gateway")
+                    && has(&connection, "gatewayUrl")
+                    && has(&connection, "gatewayWorkerId")
+                    && has(&connection, "gatewayToken"))
             }
+            "video" => {
+                let sync = items_object(&devtools.get_storage_items(extension_id, "sync", Some(vec!["settings".into()]))?);
+                let settings = sync.get("settings").cloned().unwrap_or(serde_json::Value::Null);
+                Ok(settings.get("mode").and_then(serde_json::Value::as_str) == Some("gateway")
+                    && has(&settings, "gatewayUrl")
+                    && has(&settings, "gatewayWorkerId")
+                    && has(&local, "gatewayWorkerToken"))
+            }
+            "audio" => {
+                let sync = items_object(&devtools.get_storage_items(extension_id, "sync", Some(vec!["settings".into()]))?);
+                let settings = sync.get("settings").cloned().unwrap_or(serde_json::Value::Null);
+                Ok(settings.get("mode").and_then(serde_json::Value::as_str) == Some("gateway")
+                    && has(&local, "gatewayBaseUrl")
+                    && has(&local, "gatewayWorkerId")
+                    && has(&local, "gatewayWorkerToken"))
+            }
+            _ => Err("unsupported kind".into()),
         }
+    })();
+    match check {
+        Ok(true) => (true, note),
+        Ok(false) => (false, format!("{}: written but the extension does not hold the connection (read-back failed)", label(kind))),
         Err(error) => (false, format!("{}: written but could not be read back — {error}", label(kind))),
     }
 }
@@ -311,6 +368,16 @@ mod tests {
         let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&path).unwrap().permissions());
         assert_eq!(mode & 0o777, 0o600, "credential files are readable only by this user");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn storage_replies_accept_objects_and_rows() {
+        let object = items_object(&serde_json::json!({ "gatewayReadiness": { "ready": true } }));
+        assert_eq!(object.pointer("/gatewayReadiness/ready").and_then(serde_json::Value::as_bool), Some(true));
+        let rows = items_object(&serde_json::json!([
+            { "name": "gatewayReadiness", "value": { "ready": false, "reason": "No open Flow tab." } }
+        ]));
+        assert_eq!(rows.pointer("/gatewayReadiness/reason").and_then(serde_json::Value::as_str), Some("No open Flow tab."));
     }
 
     #[test]

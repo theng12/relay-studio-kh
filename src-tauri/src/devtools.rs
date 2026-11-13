@@ -148,6 +148,32 @@ impl Devtools {
         self.wait_reply(id, timeout)
     }
 
+    /// Chrome's storage API for an extension, without waking or evaluating its worker.
+    pub(crate) fn get_storage_items(&mut self, extension_id: &str, area: &str, keys: Option<Vec<String>>) -> Result<Value, String> {
+        let mut params = serde_json::json!({ "id": extension_id, "storageArea": area });
+        if let Some(keys) = keys {
+            params["keys"] = serde_json::json!(keys);
+        }
+        let reply = self.call("Extensions.getStorageItems", params, None, Duration::from_secs(5))?;
+        if let Some(error) = reply.get("error").and_then(|error| error.get("message")).and_then(Value::as_str) {
+            return Err(error.to_string());
+        }
+        Ok(reply.pointer("/result/data").cloned().unwrap_or(Value::Null))
+    }
+
+    pub(crate) fn set_storage_items(&mut self, extension_id: &str, area: &str, values: Value) -> Result<(), String> {
+        let reply = self.call(
+            "Extensions.setStorageItems",
+            serde_json::json!({ "id": extension_id, "storageArea": area, "values": values }),
+            None,
+            Duration::from_secs(5),
+        )?;
+        if let Some(error) = reply.get("error").and_then(|error| error.get("message")).and_then(Value::as_str) {
+            return Err(error.to_string());
+        }
+        Ok(())
+    }
+
     /// Chrome's own registry for this window: what is loaded, with versions.
     pub(crate) fn extensions(&mut self) -> Result<Vec<Value>, String> {
         self.next_id += 1;

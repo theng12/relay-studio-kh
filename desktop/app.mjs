@@ -259,7 +259,7 @@ try {
   await loadPairingStatus();
   await loadWorkerCredentials();
   setInterval(tick, 15000);
-  setInterval(() => accounts.refresh(), 5000);
+  setInterval(() => accounts.refresh(), 1000);
 } catch (error) {
   applyAppearance('system');
   showError(error);

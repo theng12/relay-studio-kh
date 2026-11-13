@@ -93,6 +93,8 @@ impl GatewaySupport {
 }
 
 /// A close is authorized only by the authenticated adapter, never by a UI caller.
+/// Kept for a future Gateway-driven close pause; a local close uses the bounded deadline.
+#[allow(dead_code)]
 pub(crate) enum CloseAuthorization {
     NotAcknowledged(String),
     Safe,
@@ -114,6 +116,7 @@ pub(crate) trait ManagerGateway: Send + Sync {
     /// `Safe` only after a fresh paused acknowledgement carrying THIS attempt's revision plus
     /// `safeToClose`. Missing bindings must return `NotAcknowledged`; a cached pre-attempt
     /// acknowledgement is never enough. Must return promptly.
+    #[allow(dead_code)]
     fn close_authorization(&self, profile: &GatewayProfile) -> CloseAuthorization;
 }
 
@@ -131,6 +134,7 @@ fn authority() -> Option<&'static Arc<dyn ManagerGateway>> {
     AUTHORITY.get()
 }
 
+#[allow(dead_code)]
 fn close_authorization(profile: &GatewayProfile) -> CloseAuthorization {
     match authority() {
         Some(authority) => authority.close_authorization(profile),
@@ -397,6 +401,7 @@ impl ManagerGateway for LiveGateway {
         }
     }
 
+    #[allow(dead_code)]
     fn close_authorization(&self, profile: &GatewayProfile) -> CloseAuthorization {
         let Some(origin) = gateway_origin(&self.app) else {
             return CloseAuthorization::NotAcknowledged("Save a Gateway address first.".into());
@@ -586,6 +591,7 @@ fn worker_ids(profile: &GatewayProfile) -> Vec<String> {
     ids
 }
 
+#[allow(dead_code)]
 fn close_reason(safety: &manager_gateway::CloseSafety) -> String {
     if let Some(reason) = &safety.reason {
         return reason.clone();
@@ -1761,9 +1767,14 @@ pub(crate) fn seed_open_profile(shared: &Shared, profile_id: &str) {
             std::thread::sleep(std::time::Duration::from_millis(1500));
         }
         match seed_open_profile_once(shared, pid, &origin, &bindings, &machine) {
-            Ok(lines) => {
+            Ok((lines, readiness)) => {
                 if lines.iter().all(|(ok, _)| *ok) {
-                    record_seeding(shared, profile_id, "connection verified in the browser");
+                    let line = match readiness {
+                        Some(reason) => format!("connection verified in the browser · {reason}"),
+                        None => "connection verified in the browser".to_string(),
+                    };
+                    lifecycle_log(shared, &format!("seed {profile_id}: {line}"));
+                    record_seeding(shared, profile_id, &line);
                     return;
                 }
                 note = lines.into_iter().map(|(_, line)| line).collect::<Vec<_>>().join(" · ");
@@ -1772,6 +1783,7 @@ pub(crate) fn seed_open_profile(shared: &Shared, profile_id: &str) {
         }
     }
     if !note.is_empty() {
+        lifecycle_log(shared, &format!("seed {profile_id}: {note}"));
         record_seeding(shared, profile_id, &note);
     }
 }
@@ -1782,7 +1794,7 @@ fn seed_open_profile_once(
     origin: &str,
     bindings: &[(&str, Option<String>)],
     machine: &str,
-) -> Result<Vec<(bool, String)>, String> {
+) -> Result<(Vec<(bool, String)>, Option<String>), String> {
     let mut children = shared
         .children
         .lock()
@@ -1795,6 +1807,7 @@ fn seed_open_profile_once(
     };
     let extensions = devtools.extensions()?;
     let mut lines = Vec::new();
+    let mut first_id: Option<String> = None;
     for (kind, bound) in bindings {
         let Some(bound) = bound.as_deref().filter(|value| !value.is_empty()) else { continue };
         let extension_id = extensions.iter().find_map(|extension| {
@@ -1805,14 +1818,36 @@ fn seed_open_profile_once(
             extension.get("id").and_then(serde_json::Value::as_str).map(str::to_string)
         });
         match extension_id {
-            Some(id) => lines.push(super::seeding::seed_and_verify(devtools, kind, &id, Some(bound), origin, machine)),
+            Some(id) => {
+                if first_id.is_none() {
+                    first_id = Some(id.clone());
+                }
+                lines.push(super::seeding::seed_and_verify(devtools, kind, &id, Some(bound), origin, machine));
+            }
             None => lines.push((false, format!("{kind}: not loaded in this browser"))),
         }
     }
     if lines.is_empty() {
         return Err("not seeded — no worker id is bound to this account".into());
     }
-    Ok(lines)
+    // The extension publishes one readiness object; Relay shows its reason rather than
+    // inventing a status of its own.
+    let readiness = first_id.and_then(|id| {
+        let items = devtools
+            .get_storage_items(&id, "local", Some(vec!["gatewayReadiness".into()]))
+            .ok()?;
+        let value = items.get("gatewayReadiness").cloned().unwrap_or(serde_json::Value::Null);
+        let value = match value {
+            serde_json::Value::String(text) => serde_json::from_str(&text).ok()?,
+            other => other,
+        };
+        if value.get("ready").and_then(serde_json::Value::as_bool) == Some(false) {
+            value.get("reason").and_then(serde_json::Value::as_str).map(str::to_string)
+        } else {
+            None
+        }
+    });
+    Ok((lines, readiness))
 }
 
 /// The first worker id bound for a kind across saved accounts, for automatic pairing.
@@ -1902,10 +1937,9 @@ pub(crate) fn manager_open_profiles(
                 continue;
             }
             if profile.close_pending {
-                rejected.push((
-                    profile.id.clone(),
-                    "Waiting for Gateway safety before this profile can reopen.".into(),
-                ));
+                // Open during a close queues instead of refusing: the launch happens on the
+                // reconcile pass after the old process is gone.
+                profile.desired_open = true;
                 continue;
             }
             // Only local Chrome intent is saved; Gateway dispatch stays Gateway's decision.
@@ -2487,30 +2521,18 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                     image_worker_generation: profile.image_worker_generation.clone(),
                     video_worker_generation: profile.video_worker_generation.clone(),
                 };
-                // Unbound profiles are local: no Gateway round-trip, no waiting for a binding.
-                let authorization = if no_close_workers(&input) {
-                    CloseAuthorization::Safe
-                } else {
-                    close_authorization(&input)
-                };
-                let authorized = matches!(authorization, CloseAuthorization::Safe);
-                // Explicit paid work still blocks every escalation, exactly like Force close.
+                // A local close never asks Gateway first: the deadline below is the safety
+                // net. Explicit paid work still blocks every escalation, exactly like Force.
                 let paid = paid_work_block(&input);
                 let age = profile
                     .close_requested_at
                     .map(|at| (epoch_now() - at).max(0.0))
                     .unwrap_or(0.0);
                 let pid = profile.pid.unwrap_or_default();
-                match close_step(age, paid.is_some(), authorized) {
+                match close_step(age, paid.is_some(), true) {
                     CloseStep::Wait => {
                         let reason = paid
-                            .or_else(|| match &authorization {
-                                CloseAuthorization::NotAcknowledged(reason) => Some(reason.clone()),
-                                _ => None,
-                            })
-                            .unwrap_or_else(|| {
-                                "Waiting for Gateway to confirm this close is safe.".into()
-                            });
+                            .unwrap_or_else(|| "Chrome is still closing.".into());
                         errors.insert(profile.id.clone(), reason);
                     }
                     CloseStep::Term => match terminate(pid) {
@@ -2842,22 +2864,35 @@ pub(crate) fn shutdown(manager: &BrowserManager) {
     }
 }
 
+/// Signals the verified pid, or its process group when the pid leads that group, so
+/// Chrome's helpers cannot respawn. A pid that is not a group leader is signalled alone.
+fn signal_process(pid: u32, signal: libc::c_int) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(unix)]
+    unsafe {
+        let pgid = libc::getpgid(pid as libc::pid_t);
+        if pgid == pid as libc::pid_t && pgid > 1 {
+            return libc::kill(-pgid, signal) == 0;
+        }
+        return libc::kill(pid as libc::pid_t, signal) == 0;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = signal;
+        false
+    }
+}
+
 fn terminate(pid: u32) -> Result<(), String> {
     if pid == 0 {
         return Err("Managed Chrome process identity is incomplete; it was not stopped.".into());
     }
-    // Graceful only. Relay never sends SIGKILL or replays work.
-    let target = pid.to_string();
-    let status = Command::new("/bin/kill")
-        .args(["-TERM", target.as_str()])
-        .status()
-        .map_err(|_| {
-            "Chrome did not accept a graceful close request; it was not forced.".to_string()
-        })?;
-    if status.success() {
+    if signal_process(pid, libc::SIGTERM) {
         Ok(())
     } else {
-        Err("Chrome did not accept a graceful close request; it was not forced.".into())
+        Err("Chrome did not accept the close request; Relay will retry, then force it.".into())
     }
 }
 
@@ -2866,12 +2901,7 @@ fn force_terminate(pid: u32) -> Result<(), String> {
     if pid == 0 {
         return Err("Managed Chrome process identity is incomplete; it was not stopped.".into());
     }
-    let target = pid.to_string();
-    let status = Command::new("/bin/kill")
-        .args(["-KILL", target.as_str()])
-        .status()
-        .map_err(|_| "Chrome could not be force closed; it was not stopped.".to_string())?;
-    if status.success() {
+    if signal_process(pid, libc::SIGKILL) {
         Ok(())
     } else {
         Err("Chrome could not be force closed; it was not stopped.".into())
@@ -3158,34 +3188,14 @@ fn launch(shared: &Shared, profile: &mut StoredProfile, chrome: &Path) -> Result
     let child = command
         .spawn()
         .map_err(|_| "Could not start Google Chrome for this profile.".to_string())?;
+    // Loading is done here; seeding runs on the post-open thread so no state lock
+    // waits on Chrome's storage API (see seed_open_profile).
     let mut seeding = Vec::new();
+    let mut problems = problems;
     if let Some(attached) = devtools.as_mut() {
         attached.spawned();
-        let (load_problems, loaded) = attached.load_unpacked(&extension_directories);
+        let (load_problems, _loaded) = attached.load_unpacked(&extension_directories);
         problems.extend(load_problems);
-        // Seed only a worker whose id is bound to this account and whose token Relay holds.
-        let machine = super::pairing::read_endpoint()
-            .ok()
-            .flatten()
-            .map(|endpoint| endpoint.machine_id)
-            .unwrap_or_default();
-        for (directory, extension_id) in &loaded {
-            let Some(kind) = super::seeding::kind_for_dir(directory) else { continue };
-            let bound = match kind {
-                "image" => profile.image_worker_id.as_deref(),
-                "video" => profile.video_worker_id.as_deref(),
-                "audio" => profile.audio_worker_id.as_deref(),
-                _ => None,
-            };
-            // A saved, validated Gateway address is enough to seed. The binding origin is the
-            // stricter close-safety record; a one-kind account never earns one, and gating
-            // the connection on it left the extension unseeded.
-            let origin = profile.binding_origin.clone().or_else(|| gateway_origin(&shared.app));
-            match origin.as_deref() {
-                Some(origin) => seeding.push(super::seeding::seed_extension(attached, kind, extension_id, bound, origin, &machine)),
-                None => seeding.push(format!("{}: not seeded — no Gateway address is saved", kind)),
-            }
-        }
     }
     let pid = child.id();
     let binary = chrome.to_string_lossy().into_owned();

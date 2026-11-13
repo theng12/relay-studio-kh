@@ -1,5 +1,12 @@
 # What's New
 
+## 0.3.24 — 2026-11-13
+- Extensions keep one id across releases: each manifest carries a fixed key, so seeded storage is no longer orphaned when the bundled version folder changes.
+- Open and close are one action. Close never asks Gateway first and never needs a manual Force: it asks Chrome to quit, repeats at 10 s, ends the one process Relay started (with its helpers) at 15 s, and at 20 s says plainly what survived. Open during a close queues and opens when the process is gone.
+- Seeding writes Chrome's own storage API instead of evaluating the extension's worker, so a sleeping worker cannot make a seed fail, and every result goes to lifecycle.log.
+- Bundle Image 0.50.31, Video 1.3.25, Audio 0.7.33: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
+- The Accounts page refreshes once a second, so an open, close or seed result is not five seconds stale.
+
 ## 0.3.23 — 2026-11-13
 - Closing an account is bounded: Relay asks Chrome to quit, repeats at 10 s, forces the one process it started at 15 s, and at 20 s says plainly that the pid survived and keeps the account usable for Open — no more "Waiting to close" that only a manual kill clears. Verified paid work still blocks every step.
 - Image extension 0.50.29: Gateway claims no longer depend on reading a Flow account identity. A real Flow project tab claims with an unknown balance and the probe kept as detail; the project id comes from the tab itself, sign-in detection checks several markers, and a tab with no project names what failed.
