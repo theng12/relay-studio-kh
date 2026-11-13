@@ -86,7 +86,9 @@ const files = new Map([
   ['/', ['index.html','text/html']],
   ...['app.mjs','accounts.mjs','app-info.mjs','recovery.mjs','setup.mjs','extension-info.mjs','browsers.mjs','overview.mjs','shell.mjs'].map(name=>['/'+name,[name,'text/javascript']]),
   ['/desktop.css',['desktop.css','text/css']],
-  ['/relay-mark.png',['relay-mark.png','image/png']]
+  ['/relay-mark.png',['relay-mark.png','image/png']],
+  // Same-origin harness for render acceptance (present only while a render file exists).
+  ['/render.html',['render.html','text/html']]
 ]);
 const port = Number(process.env.PORT || 7921);
 createServer(async (req,res) => {
