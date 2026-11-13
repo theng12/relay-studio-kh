@@ -3,6 +3,7 @@ mod devtools;
 mod extensions;
 mod seeding;
 mod storage;
+mod login_item;
 mod manager_gateway;
 mod pairing;
 use serde::{Deserialize, Serialize};
@@ -173,7 +174,11 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
 }
 fn snapshot(app: &tauri::AppHandle) -> Result<Snapshot, String> {
     let settings = current(app)?;
-    let observed = app.autolaunch().is_enabled();
+    // A real login item first; the autostart plugin only answers when SMAppService is absent.
+    let observed = match crate::login_item::registered() {
+        Some(value) => Ok(value),
+        None => app.autolaunch().is_enabled(),
+    };
     let state = app.state::<NativeState>();
     let saved_error = state
         .login_error
@@ -236,10 +241,24 @@ fn save_settings(
     apply_appearance(&window, &settings.appearance);
     // Save intent first; a URL-only edit never reverses an OS opt-out.
     if let Some(enabled) = start_at_login {
-        let result = if enabled {
-            app.autolaunch().enable()
-        } else {
-            app.autolaunch().disable()
+        let result = match crate::login_item::set_enabled(enabled) {
+            Ok(_) => {
+                // Retire the old raw agent only after the new login item is registered.
+                if enabled {
+                    if let Ok(home) = app.path().home_dir() {
+                        let present = crate::login_item::legacy_agent(&home).exists();
+                        if crate::login_item::should_retire_agent(present, true) {
+                            let _ = crate::login_item::retire_legacy_agent(&home);
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Err(reason) if reason == "unsupported" => {
+                let plugin = if enabled { app.autolaunch().enable() } else { app.autolaunch().disable() };
+                plugin.map_err(|_| ())
+            }
+            Err(_) => Err(()),
         };
         let error = result.err().map(|_| "Settings were saved, but macOS refused the Start at Login change. Check it in System Settings.".to_string());
         *state.login_error.lock().map_err(|_| "Settings are busy.")? = error.clone();

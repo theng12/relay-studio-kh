@@ -6,6 +6,7 @@
 - Seeding writes Chrome's own storage API instead of evaluating the extension's worker, so a sleeping worker cannot make a seed fail, and every result goes to lifecycle.log.
 - Bundle Image 0.50.31, Video 1.3.25, Audio 0.7.33: the Flow account comes from the project tab address alone, heartbeats carry the real account and project, a 4xx claim refusal clears its marker, every tick writes a status, and one readiness object feeds the panel and Relay.
 - The Accounts page refreshes once a second, so an open, close or seed result is not five seconds stale.
+- Start at Login is a proper macOS login item now, not a raw LaunchAgent that macOS can list as a nameless entry. The old agent is retired only after the new registration succeeds, and moved to a recoverable trash rather than deleted.
 
 ## 0.3.23 — 2026-11-13
 - Closing an account is bounded: Relay asks Chrome to quit, repeats at 10 s, forces the one process it started at 15 s, and at 20 s says plainly that the pid survived and keeps the account usable for Open — no more "Waiting to close" that only a manual kill clears. Verified paid work still blocks every step.

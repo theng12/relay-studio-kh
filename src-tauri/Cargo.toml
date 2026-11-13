@@ -25,4 +25,5 @@ libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Smallest AppKit binding for PID-targeted activation of an already-running Chrome profile.
+objc2 = { version = "0.6", features = ["std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSRunningApplication", "libc"] }
