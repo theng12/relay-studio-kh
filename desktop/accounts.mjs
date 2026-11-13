@@ -883,7 +883,7 @@ export function mountAccounts(invoke) {
     // The row names the one next step that finishes pairing, instead of leaving it to a legend.
     const nextStepReason = nextStepFor(profile);
     let nextStep = null;
-    if (nextStepReason === 'needs a worker ID') nextStep = 'Next: type a worker ID in Details, then save.';
+    if (nextStepReason === 'needs a worker ID') nextStep = 'Next: type a worker ID under ⋯ → Show details, then save.';
     else if (nextStepReason === 'needs a worker token in Relay') nextStep = 'Next: open the Gateway page to finish pairing.';
     else if (nextStepReason === 'needs its worker token saved again') nextStep = 'Next: save this worker token again on the Gateway page.';
     else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
@@ -980,14 +980,14 @@ export function mountAccounts(invoke) {
     for (const profile of profiles) {
       const reason = rowErrors.get(profile.id) || value(profile.error) || nextStepFor(profile);
       if (!reason) continue;
-      const label = reason.startsWith('needs ') ? reason.replace(/^needs /, '') : reason;
-      groups.set(label, (groups.get(label) || 0) + 1);
+      groups.set(reason, (groups.get(reason) || 0) + 1);
     }
     el.replaceChildren();
     for (const [label, count] of groups) {
       const chip = document.createElement('span');
       chip.className = 'warning-group';
-      chip.textContent = `${count} ${count === 1 ? 'account' : 'accounts'} ${label}`;
+      const verb = count === 1 ? label : label.replace(/^needs /, 'need ');
+      chip.textContent = `${count} ${count === 1 ? 'account' : 'accounts'} ${verb}`;
       el.append(chip);
     }
     el.hidden = groups.size === 0;

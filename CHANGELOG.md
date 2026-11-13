@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.25 — 2026-11-14
+- The grouped warning above Accounts reads as a sentence for any count ("5 accounts need a worker ID", "1 account needs a worker ID"), and the row's next step points at the ⋯ → Show details menu where the form now lives.
+
 ## 0.3.24 — 2026-11-13
 - Extensions keep one id across releases: each manifest carries a fixed key, so seeded storage is no longer orphaned when the bundled version folder changes.
 - Open and close are one action. Close never asks Gateway first and never needs a manual Force: it asks Chrome to quit, repeats at 10 s, ends the one process Relay started (with its helpers) at 15 s, and at 20 s says plainly what survived. Open during a close queues and opens when the process is gone.

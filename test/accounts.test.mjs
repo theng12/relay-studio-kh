@@ -607,3 +607,10 @@ test('rows are keyboard reachable and run their primary action', async () => {
   assert.match(accounts, /event\.key === 'Enter' \|\| event\.key === ' '/, 'Enter and Space run the row primary');
   assert.match(accounts, /event\.target !== row/, 'keys inside the row controls are never stolen');
 });
+
+test('grouped warnings read as sentences for one and many accounts', async () => {
+  const accounts = await readFile(new URL('../desktop/accounts.mjs', import.meta.url), 'utf8');
+  assert.ok(accounts.includes("'need '"), 'plural warnings use the plural verb');
+  assert.ok(accounts.includes("'account' : 'accounts'"), 'the noun agrees with the count');
+  assert.ok(accounts.includes('under ⋯ → Show details'), 'the next step names where the form moved');
+});
