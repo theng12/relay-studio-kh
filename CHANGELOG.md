@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.28 — 2026-11-15
+- An update holds Relay first, and holds nothing on disk. The hold stops Relay starting any new browser, so queued accounts stay queued and no new work is claimed; it then waits up to 20 seconds (30 at most) for an account that is opening or closing to finish or to keep the id the next start picks up, and says whether restarting now would strand anything. Letting go resumes at once, the pause also expires on its own, and a restart always starts working again — an install that aborts can never leave Relay refusing work.
+
 ## 0.3.27 — 2026-11-14
 - Below 1080 px the Table layout stacks the same way Compact does, so the status column can never extend past the row on a narrow window.
 

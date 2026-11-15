@@ -2475,6 +2475,44 @@ fn gateway_snapshot(profile: &StoredProfile, reading: Option<&GatewayReading>) -
 // Reconciliation: ownership, admission, graceful close
 // ---------------------------------------------------------------------------
 
+/// May Relay begin this profile's Chrome right now? The update hold is one of the conditions,
+/// so taking a hold closes the start path — queued work stays queued, nothing new claims — in
+/// the one place every launch already passes through.
+fn may_start(profile: &StoredProfile, held: bool) -> bool {
+    !held && profile.desired_open && profile.pid.is_none() && !profile.close_pending
+}
+
+/// Work Relay is inside right now: a Chrome it is starting or one it is stopping. A queued
+/// profile is not in flight — queued work stays queued and the next start launches it.
+/// `resumable` reads the persisted intent straight from the row, so every piece this reports
+/// keeps an id the next start follows unless that intent itself is missing.
+fn in_flight(profiles: &[StoredProfile]) -> Vec<crate::maintenance::InFlight> {
+    profiles
+        .iter()
+        .filter(|profile| {
+            profile.close_pending || (profile.pid.is_some() && profile.pid_started.is_none())
+        })
+        .map(|profile| crate::maintenance::InFlight {
+            id: profile.id.clone(),
+            resumable: profile.close_pending || profile.desired_open,
+        })
+        .collect()
+}
+
+/// The update hold's view of Relay's own work, read under the state lock so a launch already
+/// inside `reconcile` has finished and its pid is on disk before the hold answers.
+pub(crate) fn hold_work(
+    manager: &BrowserManager,
+) -> Result<Vec<crate::maintenance::InFlight>, String> {
+    let guard = locked(&manager.shared)?;
+    Ok(in_flight(stored_or_error(&guard)?.profiles.as_slice()))
+}
+
+/// One line in lifecycle.log for the update hold's own milestones.
+pub(crate) fn log_line(manager: &BrowserManager, line: &str) {
+    lifecycle_log(&manager.shared, line);
+}
+
 fn reconcile(shared: &Shared) -> Result<(), String> {
     let mut guard = locked(shared)?;
     let load_error = guard.load_error.clone();
@@ -2685,7 +2723,10 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 break;
             }
             let profile = &stored.profiles[index];
-            if !profile.desired_open || profile.pid.is_some() || profile.close_pending {
+            // The update hold is one of the conditions, so taking it closes the start path in
+            // the single place every launch passes through: queued work stays queued and a
+            // browser that never begins never claims.
+            if !may_start(profile, crate::maintenance::paused()) {
                 continue;
             }
             if profile.open_failures >= MAX_OPEN_ATTEMPTS {
@@ -3990,6 +4031,90 @@ mod tests {
         profile.desired_open = false;
         profile.close_pending = true;
         assert_eq!(process_state(&profile, true), "closing");
+    }
+
+    #[test]
+    fn hold_closes_the_start_path_and_in_flight_matches_reality() {
+        let _guard = crate::maintenance::test_lock();
+        let mut queued = sample_profile();
+        queued.desired_open = true;
+        let mut opening = sample_profile();
+        opening.id = "opening-profile-00000000000000".into();
+        opening.desired_open = true;
+        opening.pid = Some(77);
+        opening.pid_started = None;
+        let profiles = vec![queued.clone(), opening.clone()];
+
+        assert!(may_start(&queued, false), "the claim path is open before the hold");
+        let answer = crate::maintenance::take(Some(0.0), Some(120.0), || {
+            Ok(in_flight(&profiles))
+        })
+        .expect("hold taken");
+
+        assert!(
+            !may_start(&queued, crate::maintenance::paused()),
+            "with live work queued, the hold claims nothing new"
+        );
+        assert_eq!(
+            answer.in_flight,
+            1,
+            "in_flight matches the one account actually inside a launch, not the queued one"
+        );
+        assert!(answer.safe, "both pieces keep an id the next start follows");
+        assert_eq!(answer.dispatch_paused_s, 120.0);
+
+        crate::maintenance::release(|| Ok(in_flight(&profiles))).expect("release");
+        assert!(
+            may_start(&queued, crate::maintenance::paused()),
+            "DELETE resumes the claim path at once"
+        );
+    }
+
+    #[test]
+    fn in_flight_at_the_deadline_keeps_a_resumable_id_or_is_named_unsettled() {
+        let _guard = crate::maintenance::test_lock();
+        // A launch Relay is inside: the state file already carries desired_open, so the next
+        // start follows it. Asserted from the row, never from a log line.
+        let mut opening = sample_profile();
+        opening.desired_open = true;
+        opening.pid = Some(77);
+        opening.pid_started = None;
+        let profiles = vec![opening];
+        let work = in_flight(&profiles);
+        assert_eq!(work.len(), 1);
+        assert!(work[0].resumable, "the persisted desired_open is the id the next start follows");
+
+        let answer = crate::maintenance::take(Some(0.05), Some(120.0), || Ok(in_flight(&profiles)))
+            .expect("hold taken");
+        assert_eq!(answer.in_flight, 1, "still in flight at the deadline");
+        assert_eq!(answer.unsettled, Vec::<String>::new());
+        assert!(answer.safe, "nothing a restart would strand is left");
+
+        // Work whose persisted intent is missing: a restart could not follow it, so it must
+        // be named rather than reported away.
+        let mut stranded = sample_profile();
+        stranded.id = "stranded-profile-000000000000".into();
+        stranded.desired_open = false;
+        stranded.pid = Some(78);
+        stranded.pid_started = None;
+        let profiles = vec![stranded];
+        let work = in_flight(&profiles);
+        assert!(!work[0].resumable, "no queued row, no close intent: nothing to follow");
+        let answer =
+            crate::maintenance::take(Some(0.0), Some(120.0), || Ok(in_flight(&profiles)))
+                .expect("hold taken");
+        assert_eq!(answer.unsettled, vec!["stranded-profile-000000000000".to_string()]);
+        assert!(!answer.safe, "an unsafe answer names what a restart would strand");
+
+        crate::maintenance::release(|| Ok(vec![])).expect("release");
+    }
+
+    #[test]
+    fn a_queued_profile_is_not_in_flight_and_a_closed_one_is_not_either() {
+        let mut queued = sample_profile();
+        queued.desired_open = true;
+        let closed = sample_profile();
+        assert!(in_flight(&[queued, closed]).is_empty(), "queued work stays queued");
     }
 
     #[test]
