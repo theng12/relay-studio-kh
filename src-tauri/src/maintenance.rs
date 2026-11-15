@@ -8,6 +8,7 @@
 
 use serde::Serialize;
 use std::sync::Mutex;
+use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{State, WebviewWindow};
 
@@ -130,7 +131,9 @@ pub(crate) fn take(
 }
 
 /// The release request: resume at once.
-pub(crate) fn release(work: impl FnMut() -> Result<Vec<InFlight>, String>) -> Result<Reply, String> {
+pub(crate) fn release(
+    mut work: impl FnMut() -> Result<Vec<InFlight>, String>,
+) -> Result<Reply, String> {
     lock().resume();
     Ok(reply(work()?, 0.0))
 }
@@ -176,16 +179,16 @@ pub(crate) fn maintenance_release(
     Ok(answer)
 }
 
+/// The four contract checks mutate the process-wide pause, so they take turns.
+#[cfg(test)]
+pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The four contract checks mutate the process-wide pause, so they take turns.
-    #[cfg(test)]
-    pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
 
     #[test]
     fn the_reply_is_exactly_the_contract_shape() {
