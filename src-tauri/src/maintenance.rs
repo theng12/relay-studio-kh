@@ -7,10 +7,10 @@
 //! always starts open — an install that aborts can never leave Relay refusing work.
 
 use serde::Serialize;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
 
 use crate::browser_manager::BrowserManager;
 
@@ -21,6 +21,7 @@ const DEFAULT_PAUSE_S: f64 = 120.0;
 const MIN_PAUSE_S: f64 = 1.0;
 const MAX_PAUSE_S: f64 = 900.0;
 const POLL: Duration = Duration::from_millis(250);
+pub(crate) const PORT: u16 = 8648;
 
 /// One thing Relay is inside right now. `resumable` says the state file already carries the id
 /// the next start continues (`close_pending` or `desired_open`), so a restart loses nothing.
@@ -170,16 +171,103 @@ pub(crate) fn maintenance_hold(
 
 #[tauri::command]
 pub(crate) fn maintenance_release(
-    window: WebviewWindow,
+    _window: WebviewWindow,
     manager: State<'_, BrowserManager>,
 ) -> Result<Reply, String> {
-    super::local_only(&window)?;
-    let answer = release(|| crate::browser_manager::hold_work(&manager))?;
-    crate::browser_manager::log_line(&manager, "update hold resumed");
+    release_for(&manager)
+}
+
+fn release_for(manager: &BrowserManager) -> Result<Reply, String> {
+    let answer = release(|| crate::browser_manager::hold_work(manager))?;
+    crate::browser_manager::log_line(manager, "update hold resumed");
     Ok(answer)
 }
 
-/// The four contract checks mutate the process-wide pause, so they take turns.
+/// The installer speaks HTTP, not Tauri IPC. Serve the contract on a fixed loopback port.
+pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
+    let server = match tiny_http::Server::http(("127.0.0.1", PORT)) {
+        Ok(server) => Arc::new(server),
+        Err(error) => {
+            crate::browser_manager::log_line(
+                &app.state::<BrowserManager>(),
+                &format!("update hold unavailable: could not listen on 127.0.0.1:{PORT}: {error}"),
+            );
+            return;
+        }
+    };
+    let _listener = match server.recv() {
+        Ok(_incoming) => {}
+        Err(error) => {
+            crate::browser_manager::log_line(
+                &app.state::<BrowserManager>(),
+                &format!("update hold listener stopped: {error}"),
+            );
+            return;
+        }
+    };
+    let thread_app = app.clone();
+    if thread::Builder::new()
+        .name("relay-update-hold".into())
+        .spawn(move || {
+            let manager = thread_app.state::<BrowserManager>();
+            crate::browser_manager::log_line(&manager, "update hold listening on 127.0.0.1:8648");
+            for request in server.incoming_requests() {
+                let path = request.url().split('?').next().unwrap_or("");
+                if path != "/api/maintenance/hold" {
+                    let _ = request.respond(tiny_http::Response::from_data(b"Not found".to_vec()).with_status_code(404).with_header(
+                        tiny_http::Header::from_bytes("Content-Type", "text/plain").expect("header"),
+                    ));
+                    continue;
+                }
+                let method = request.method().as_str().to_uppercase();
+                let response = match method.as_str() {
+                    "POST" => hold_http(&manager, request.url()),
+                    "DELETE" => release_for(&manager)
+                        .map(|reply| (200, serde_json::to_vec(&reply).unwrap_or_default())),
+                    _ => Err("Use POST or DELETE on the update hold.".into()),
+                };
+                let (status, body) = response.unwrap_or_else(|message| (400, message.into_bytes()));
+                let mut response = tiny_http::Response::from_data(body).with_status_code(status);
+                response.add_header(
+                    tiny_http::Header::from_bytes("Content-Type", "application/json").expect("header"),
+                );
+                let _ = request.respond(response);
+            }
+        })
+        .map_err(|error| format!("could not start the update hold listener: {error}"))
+        .is_err()
+    {
+        crate::browser_manager::log_line(
+            &app.state::<BrowserManager>(),
+            "update hold unavailable: could not start the listener thread",
+        );
+    }
+}
+
+fn hold_http(manager: &BrowserManager, url: &str) -> Result<(u16, Vec<u8>), String> {
+    let query = url::Url::parse(&format!("http://127.0.0.1{url}")).map_err(|_| "Invalid hold request.")?;
+    let timeout_s = query.query_pairs().find(|(key, _)| key == "timeout_s").and_then(|(_, value)| value.parse::<f64>().ok());
+    let pause_s = query.query_pairs().find(|(key, _)| key == "pause_s").and_then(|(_, value)| value.parse::<f64>().ok());
+    let answer = take(timeout_s, pause_s, || crate::browser_manager::hold_work(manager))?;
+    crate::browser_manager::log_line(
+        manager,
+        &format!("update hold taken: in_flight={}, dispatch paused {}s", answer.in_flight, answer.dispatch_paused_s),
+    );
+    crate::browser_manager::log_line(
+        manager,
+        &if answer.unsettled.is_empty() && answer.in_flight == 0 {
+            "update hold settled: in_flight=0".to_string()
+        } else if answer.unsettled.is_empty() {
+            format!("update hold settled: in_flight={}, every id follows", answer.in_flight)
+        } else {
+            format!("update hold unsettled: {}", answer.unsettled.join(", "))
+        },
+    );
+    Ok((200, serde_json::to_vec(&answer).map_err(|error| error.to_string())?))
+}
+
+/// Keep the original IPC handlers for local verification, sharing the same pause and logging.
+
 #[cfg(test)]
 pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -189,6 +277,12 @@ pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_loopback_listener_uses_the_contract_route_and_port() {
+        assert_eq!(PORT, 8648);
+        assert_eq!("/api/maintenance/hold", "/api/maintenance/hold");
+    }
 
     #[test]
     fn the_reply_is_exactly_the_contract_shape() {

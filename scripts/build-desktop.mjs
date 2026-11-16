@@ -11,7 +11,7 @@ execFileSync(process.execPath, [resolve(root, 'scripts/build.mjs')], { stdio: 'i
 const version = (await readFile(resolve(root, 'VERSION'), 'utf8')).trim();
 const native = JSON.parse(await readFile(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8'));
 if (native.version !== version) throw new Error('Native and Relay versions must match.');
-const shared = resolve(process.env.KH_SHARED_UI || resolve(root, '../kh-shared-ui'));
+const shared = resolve(process.env.KH_SHARED_UI || resolve(root, '../../Shared Tools/kh-shared-ui'));
 const python = process.env.RELAY_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const releases = JSON.parse(execFileSync(python, ['-I', '-X', 'utf8', resolve(shared, 'whats-new.py'), resolve(root, 'CHANGELOG.md')], { encoding: 'utf8' }));
 const style = (await readFile(resolve(root, 'dist/relay-pane.html'), 'utf8')).match(/^<style>[\s\S]*?<\/style>/)?.[0];

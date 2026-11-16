@@ -578,6 +578,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![get_settings, save_settings, open_gateway, open_support_link, open_launcher, pairing::pairing_status, pairing::pairing_refresh, gateway_health, quit_app, data_folder, open_data_folder, extensions::get_extension_setup, extensions::open_extension_settings, extensions::prepare_extension, extensions::set_extension_enabled, seeding::extension_worker_status, seeding::save_extension_worker, seeding::clear_extension_worker, extensions::show_extension_folder, manager_gateway::manager_read_gateway, manager_gateway::manager_control_gateway, manager_gateway::manager_paired_gateway, browser_manager::manager_pair_gateway, browser_manager::manager_clear_gateway, browser_manager::manager_snapshot, browser_manager::manager_loaded_extensions, browser_manager::manager_add_profiles, browser_manager::manager_update_profile, browser_manager::manager_delete_profile, browser_manager::manager_open_profiles, browser_manager::manager_show_profiles, browser_manager::manager_close_profiles, browser_manager::manager_force_close_profiles, browser_manager::manager_save_settings, maintenance::maintenance_hold, maintenance::maintenance_release])
         .setup(|app| {
             app.manage(browser_manager::init(app.handle())?);
+            maintenance::start_http_listener(app.handle());
             let path = app.path().app_config_dir()?.join("settings.json");
             let loaded = read_settings(&path);
             let settings = loaded.as_ref().map(|(s, _)| s.clone()).map_err(Clone::clone);

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const shared = resolve(process.env.KH_SHARED_UI || resolve(root, '../kh-shared-ui'));
+const shared = resolve(process.env.KH_SHARED_UI || resolve(root, '../../Shared Tools/kh-shared-ui'));
 const python = process.env.RELAY_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 try {
   await Promise.all(['whats-new.py', 'design-tokens.json'].map((name) => access(resolve(shared, name))));
