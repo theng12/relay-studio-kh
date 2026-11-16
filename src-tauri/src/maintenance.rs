@@ -195,16 +195,6 @@ pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
             return;
         }
     };
-    let _listener = match server.recv() {
-        Ok(_incoming) => {}
-        Err(error) => {
-            crate::browser_manager::log_line(
-                &app.state::<BrowserManager>(),
-                &format!("update hold listener stopped: {error}"),
-            );
-            return;
-        }
-    };
     let thread_app = app.clone();
     if thread::Builder::new()
         .name("relay-update-hold".into())
