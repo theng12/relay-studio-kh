@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.29 — 2026-11-16
+- Relay's icon is blue everywhere it is drawn. The smallest sizes Finder, the Dock, the menu bar and the DMG window use were packed in a way that turned them red and purple; they now ship packed the way macOS expects, so the mark stays its own blue at every size.
+
 ## 0.3.28 — 2026-11-15
 - An update holds Relay first, and holds nothing on disk. The hold stops Relay starting any new browser, so queued accounts stay queued and no new work is claimed; it then waits up to 20 seconds (30 at most) for an account that is opening or closing to finish or to keep the id the next start picks up, and says whether restarting now would strand anything. Letting go resumes at once, the pause also expires on its own, and a restart always starts working again — an install that aborts can never leave Relay refusing work.
 
