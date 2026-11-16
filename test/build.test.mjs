@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 
 const source = fileURLToPath(new URL('..', import.meta.url));
-const sharedSource = resolve(process.env.KH_SHARED_UI || resolve(source, '../kh-shared-ui'));
+const sharedSource = resolve(process.env.KH_SHARED_UI || resolve(source, '../../Shared Tools/kh-shared-ui'));
 const unicodeNote = 'Fixture: ខ្មែរ — café';
 async function fixture() {
   const workspace = await mkdtemp(join(process.env.RELAY_TEST_ROOT || tmpdir(), 'relay build fixture '));
