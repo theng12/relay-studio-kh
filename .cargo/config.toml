@@ -1,0 +1,10 @@
+# The release binary bakes build paths into panic and debug strings — 0.3.29 named this Mac's
+# home directory 587 times, inside a public download. Remap the prefix at compile time so every
+# build from this repo is clean, whoever runs it and however it is launched. The panic messages
+# themselves are unchanged; only the prefix differs. A prefix that does not exist on the build
+# machine simply never matches.
+[build]
+rustflags = [
+  "--remap-path-prefix=/build/.cargo=/cargo",
+  "--remap-path-prefix=/build/Developer=/src",
+]
