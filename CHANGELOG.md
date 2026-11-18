@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.31 — 2026-11-18
+- The download itself is clean. 0.3.30's app still carried this Mac's home folder — once, in symbol names built from a dependency's C code, which the compiler's path remap cannot reach — so the build now strips those symbols and the release gate scans the finished DMG, the exact bytes that go on the feed, instead of the build folder. Nothing about how Relay works changes.
+
 ## 0.3.30 — 2026-11-18
 - A web page can no longer pause Relay. The update hold still answers Studio Launcher on this Mac, but a request coming from any browser page — any origin other than Relay's own page — is refused, so a stray tab cannot stop Relay starting browsers for fifteen minutes.
 - A Gateway on another Mac needs an https:// address: plain HTTP carried your worker token unencrypted, so it is now accepted only for a Gateway on this same Mac. A fleet still on http:// keeps working — the saved address carries that choice forward — and the Gateway page has a visible “Allow plain HTTP” switch to turn it back on for a network you trust.
