@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.30 — 2026-11-18
+- A web page can no longer pause Relay. The update hold still answers Studio Launcher on this Mac, but a request coming from any browser page — any origin other than Relay's own page — is refused, so a stray tab cannot stop Relay starting browsers for fifteen minutes.
+- A Gateway on another Mac needs an https:// address: plain HTTP carried your worker token unencrypted, so it is now accepted only for a Gateway on this same Mac. A fleet still on http:// keeps working — the saved address carries that choice forward — and the Gateway page has a visible “Allow plain HTTP” switch to turn it back on for a network you trust.
+- Relay's README says where its tokens actually live: a file only you can read in its own data folder, never the Keychain.
+
 ## 0.3.29 — 2026-11-16
 - Relay's icon is blue everywhere it is drawn. The smallest sizes Finder, the Dock, the menu bar and the DMG window use were packed in a way that turned them red and purple; they now ship packed the way macOS expects, so the mark stays its own blue at every size.
 

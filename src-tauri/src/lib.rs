@@ -42,6 +42,10 @@ struct Settings {
     /// Accounts page layout: compact (default) or card. In-app only.
     #[serde(default = "default_accounts_view")]
     accounts_view: String,
+    /// Off by default: a Gateway on another Mac must use HTTPS, because plain HTTP carries the
+    /// worker token unencrypted. Loopback is always allowed; this turns plain HTTP on for a fleet.
+    #[serde(default)]
+    allow_plain_http: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -50,6 +54,7 @@ impl Default for Settings {
             start_at_login: true,
             appearance: default_appearance(),
             accounts_view: default_accounts_view(),
+            allow_plain_http: false,
         }
     }
 }
@@ -99,9 +104,25 @@ fn local_only(window: &WebviewWindow) -> Result<(), String> {
 /// Gateway's default port; the address field supplies it when the person leaves it out.
 const DEFAULT_GATEWAY_PORT: u16 = 8787;
 
+/// Loopback is the same Mac, so plain HTTP never leaves it. Anything else needs HTTPS unless the
+/// person has explicitly allowed plain HTTP for a fleet.
+fn loopback(host: Option<url::Host<&str>>) -> bool {
+    match host {
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// A saved address that is plain HTTP off this Mac — the fleet setup the switch exists for.
+fn plain_remote(value: &str) -> bool {
+    Url::parse(value).is_ok_and(|url| url.scheme() == "http" && !loopback(url.host()))
+}
+
 /// Takes what the person types: a bare host or IP gets `http://` and Gateway's default port;
 /// a trailing slash is trimmed; every refusal names the address actually tried.
-fn origin(value: &str) -> Result<Option<String>, String> {
+fn origin(value: &str, allow_plain_http: bool) -> Result<Option<String>, String> {
     let text = value.trim();
     if text.is_empty() {
         return Ok(None);
@@ -111,9 +132,13 @@ fn origin(value: &str) -> Result<Option<String>, String> {
     } else {
         format!("http://{text}")
     };
-    let parsed = Url::parse(&candidate).map_err(|_| {
-        format!("{text} is not a Gateway address. Use a host or IP, like 127.0.0.1 or 100.82.91.102.")
-    })?;
+    let parsed = Url::parse(&candidate)
+        .map_err(|_| format!("{text} is not a Gateway address. Use a host name or IP address."))?;
+    if parsed.scheme() == "http" && !allow_plain_http && !loopback(parsed.host()) {
+        return Err(format!(
+            "{text} uses plain HTTP, which sends your worker token so anyone on the network can read it. Use an https:// address for a Gateway on another Mac, or turn on “Allow plain HTTP” below for a network you trust."
+        ));
+    }
     if !matches!(parsed.scheme(), "http" | "https")
         || parsed.host_str().is_none()
         || !parsed.username().is_empty()
@@ -160,7 +185,10 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
         Ok(bytes) => {
             let mut settings: Settings = serde_json::from_slice(&bytes)
                 .map_err(|_| "Saved settings are unreadable. The file has not been reset.")?;
-            settings.gateway_url = origin(settings.gateway_url.as_deref().unwrap_or(""))?;
+            // An address saved by an older build already works: carry that choice forward, visibly.
+            settings.allow_plain_http |= plain_remote(settings.gateway_url.as_deref().unwrap_or(""));
+            settings.gateway_url =
+                origin(settings.gateway_url.as_deref().unwrap_or(""), settings.allow_plain_http)?;
             settings.appearance = normalized_appearance(&settings.appearance);
             settings.accounts_view = normalized_accounts_view(&settings.accounts_view);
             Ok((settings, false))
@@ -213,6 +241,7 @@ fn save_settings(
     start_at_login: Option<bool>,
     appearance: Option<String>,
     accounts_view: Option<String>,
+    allow_plain_http: Option<bool>,
 ) -> Result<(), String> {
     local_only(&window)?;
     let state = app.state::<NativeState>();
@@ -228,13 +257,15 @@ fn save_settings(
             return Err("Choose System, Light or Dark for appearance.".into());
         }
     }
+    let allow = allow_plain_http.unwrap_or(previous.allow_plain_http);
     let settings = Settings {
-        gateway_url: origin(&gateway_url)?,
+        gateway_url: origin(&gateway_url, allow)?,
         start_at_login: start_at_login.unwrap_or(previous.start_at_login),
         appearance: appearance.unwrap_or_else(|| previous.appearance.clone()),
         accounts_view: accounts_view
             .map(|value| value.to_string())
             .unwrap_or_else(|| previous.accounts_view.clone()),
+        allow_plain_http: allow,
     };
     persist(&state.path, &settings)?;
     *guard = Ok(settings.clone());
@@ -560,11 +591,16 @@ fn quit_app(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> 
 }
 
 /// The local pairing file wins over a stale saved address; the manual field remains the fallback.
+/// The pairing file is 0600 and written by the local Gateway, so a plain HTTP fleet address it
+/// names is the person's own setup: accept it and show the plain-HTTP switch on.
 fn apply_pairing_url(state: &NativeState, url: &str) {
     if let Ok(mut guard) = state.settings.lock() {
         if let Ok(saved) = guard.as_mut() {
-            if saved.gateway_url.as_deref() != Some(url) {
-                saved.gateway_url = Some(url.to_string());
+            let allow = saved.allow_plain_http || plain_remote(url);
+            let Ok(Some(url)) = origin(url, allow) else { return };
+            if saved.gateway_url.as_deref() != Some(url.as_str()) || saved.allow_plain_http != allow {
+                saved.gateway_url = Some(url);
+                saved.allow_plain_http = allow;
                 let _ = persist(&state.path, saved);
             }
         }
@@ -741,12 +777,23 @@ mod tests {
 
     #[test]
     fn the_address_field_takes_a_bare_host_and_fills_gateway_defaults() {
-        assert_eq!(origin("100.82.91.102").unwrap().unwrap(), "http://100.82.91.102:8787");
-        assert_eq!(origin("100.82.91.102:9000").unwrap().unwrap(), "http://100.82.91.102:9000");
-        assert_eq!(origin("http://127.0.0.1/").unwrap().unwrap(), "http://127.0.0.1:8787");
-        assert_eq!(origin("https://gateway.example").unwrap().unwrap(), "https://gateway.example:8787");
-        assert!(origin("http://gateway.example/path").unwrap_err().contains("gateway.example"));
-        assert!(origin("not a host").unwrap_err().contains("not a host"));
+        assert_eq!(origin("127.0.0.1", false).unwrap().unwrap(), "http://127.0.0.1:8787");
+        assert_eq!(origin("http://127.0.0.1/", false).unwrap().unwrap(), "http://127.0.0.1:8787");
+        assert_eq!(origin("localhost:9000", false).unwrap().unwrap(), "http://localhost:9000");
+        assert_eq!(origin("https://gateway.example", false).unwrap().unwrap(), "https://gateway.example:8787");
+        assert!(origin("https://gateway.example/path", false).unwrap_err().contains("gateway.example"));
+        assert!(origin("not a host", false).unwrap_err().contains("not a host"));
+    }
+
+    #[test]
+    fn plain_http_is_loopback_only_unless_the_switch_is_on() {
+        assert!(origin("gateway.example", false).unwrap_err().contains("https://"), "remote plain HTTP names the fix");
+        assert!(origin("http://192.168.1.20:8787", false).is_err());
+        assert_eq!(origin("gateway.example", true).unwrap().unwrap(), "http://gateway.example:8787");
+        assert_eq!(origin("192.168.1.20:9000", true).unwrap().unwrap(), "http://192.168.1.20:9000");
+        assert!(!plain_remote("http://127.0.0.1:8787"), "loopback is never the fleet case");
+        assert!(plain_remote("http://192.168.1.20:8787"));
+        assert!(!plain_remote("https://192.168.1.20:8787"));
     }
 
     #[test]

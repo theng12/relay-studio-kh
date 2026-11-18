@@ -208,7 +208,9 @@
         <div class="card">
           <form id="settings">
             <label class="field">Gateway address<input id="gateway-url" type="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8787" aria-describedby="address-help"></label>
-            <p id="address-help" class="help">Type the Mac's address — a bare host or IP is enough: Relay adds <code>http://</code> and Gateway's port <code>8787</code> when you leave them out, and saves what it will actually use. When Relay and Gateway are on the same Mac, <code>127.0.0.1</code> is right; otherwise use the LAN or tailnet IP. Sign in through Gateway’s own interface; never put a password or token here.</p>
+            <p id="address-help" class="help">Type the Mac's address — a bare host or IP is enough: Relay adds <code>http://</code> and Gateway's port <code>8787</code> when you leave them out, and saves what it will actually use. When Relay and Gateway are on the same Mac, <code>127.0.0.1</code> is right; for a Gateway on another Mac use its <code>https://</code> address. Sign in through Gateway’s own interface; never put a password or token here.</p>
+            <label class="check"><input id="allow-plain-http" type="checkbox"> Allow plain HTTP to a Gateway on another Mac</label>
+            <p class="help">Plain HTTP sends your worker token unencrypted, so anyone on that network can read it. Off by default: another Mac's Gateway needs an <code>https://</code> address. Turn this on only on a network you trust, such as a private tailnet or VPN.</p>
             <div class="actions"><button class="primary" id="save" type="submit">Save settings</button><button class="ghost" id="reconnect" type="button">Reconnect</button></div>
           </form>
           <p id="connection-state" class="secondary" role="status" aria-live="polite">Reading saved settings...</p>

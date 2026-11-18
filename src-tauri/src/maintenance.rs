@@ -183,6 +183,20 @@ fn release_for(manager: &BrowserManager) -> Result<Reply, String> {
     Ok(answer)
 }
 
+/// A web page must not drive the hold: a request carrying an `Origin` is a browser, and only
+/// Relay's own page (its `tauri://` webview or a loopback page) may send one. No `Origin` at all
+/// is a non-browser caller, which is what the updater is.
+fn origin_allowed(origin: Option<&str>) -> bool {
+    let Some(origin) = origin else {
+        return true;
+    };
+    match url::Url::parse(origin) {
+        Ok(url) if url.scheme() == "tauri" => true,
+        Ok(url) => matches!(url.host_str(), Some("localhost") | Some("127.0.0.1") | Some("[::1]")),
+        Err(_) => false,
+    }
+}
+
 /// The installer speaks HTTP, not Tauri IPC. Serve the contract on a fixed loopback port.
 pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
     let server = match tiny_http::Server::http(("127.0.0.1", PORT)) {
@@ -202,6 +216,27 @@ pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
             let manager = thread_app.state::<BrowserManager>();
             crate::browser_manager::log_line(&manager, "update hold listening on 127.0.0.1:8648");
             for request in server.incoming_requests() {
+                let origin = request
+                    .headers()
+                    .iter()
+                    .find(|header| header.field.equiv("Origin"))
+                    .map(|header| header.value.as_str());
+                if !origin_allowed(origin) {
+                    crate::browser_manager::log_line(
+                        &manager,
+                        &format!("update hold refused a cross-origin request from {}", origin.unwrap_or("")),
+                    );
+                    let _ = request.respond(
+                        tiny_http::Response::from_data(
+                            b"Cross-origin requests cannot change the update hold.".to_vec(),
+                        )
+                        .with_status_code(403)
+                        .with_header(
+                            tiny_http::Header::from_bytes("Content-Type", "text/plain").expect("header"),
+                        ),
+                    );
+                    continue;
+                }
                 let path = request.url().split('?').next().unwrap_or("");
                 if path != "/api/maintenance/hold" {
                     let _ = request.respond(tiny_http::Response::from_data(b"Not found".to_vec()).with_status_code(404).with_header(
@@ -272,6 +307,17 @@ mod tests {
     fn the_loopback_listener_uses_the_contract_route_and_port() {
         assert_eq!(PORT, 8648);
         assert_eq!("/api/maintenance/hold", "/api/maintenance/hold");
+    }
+
+    #[test]
+    fn a_browser_page_cannot_pause_the_hold_but_the_updater_can() {
+        assert!(origin_allowed(None), "the updater sends no Origin");
+        assert!(origin_allowed(Some("tauri://localhost")), "Relay's own webview page");
+        assert!(origin_allowed(Some("http://127.0.0.1:1420")), "a loopback page");
+        assert!(origin_allowed(Some("http://localhost:3000")));
+        assert!(!origin_allowed(Some("https://evil.example")), "any other web page is refused");
+        assert!(!origin_allowed(Some("http://192.168.1.20:8787")));
+        assert!(!origin_allowed(Some("null")), "a sandboxed page's opaque origin is not the app");
     }
 
     #[test]

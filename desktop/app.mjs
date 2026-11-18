@@ -87,6 +87,7 @@ async function loadSettings() {
   currentSettings = snapshot.settings || {};
   applyAccountsView(currentSettings.accounts_view || 'card');
   $('gateway-url').value = currentSettings.gateway_url || '';
+  $('allow-plain-http').checked = Boolean(currentSettings.allow_plain_http);
   $('start-at-login').checked = Boolean(currentSettings.start_at_login);
   $('start-at-login').disabled = false;
   $('login-state').textContent = snapshot.autostart_error || (snapshot.autostart_observed === null ? 'Start at Login has not been checked.' : `Start at Login is ${snapshot.autostart_observed ? 'on' : 'off'}.`);
@@ -111,7 +112,10 @@ $('settings').addEventListener('submit', async (event) => {
   $('save').disabled = true;
   $('error').hidden = true;
   try {
-    await saveSettings({ gatewayUrl: $('gateway-url').value.trim() });
+    await saveSettings({
+      gatewayUrl: $('gateway-url').value.trim(),
+      allowPlainHttp: $('allow-plain-http').checked,
+    });
     await tick();
   } catch (error) {
     try { await loadSettings(); } catch { /* Preserve the original save error. */ }
