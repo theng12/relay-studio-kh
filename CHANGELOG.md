@@ -1,5 +1,9 @@
 # What's New
 
+## 0.3.33 — 2026-11-20
+- Force close now tells Gateway to stop sending work to that account. Before, closing an account normally did this but force closing did not, so Gateway kept handing jobs to a browser that was no longer running: the work was accepted, nothing could pick it up, and no error said so. Force close now does the same thing Close does.
+- Reopening an account no longer shows the previous launch's connection result while the new one is still connecting. It shows that nothing is checked yet, then the real result.
+
 ## 0.3.32 — 2026-11-19
 - Relay now signs itself with the same certificate as the other Studio apps, instead of an anonymous one. An anonymous signature gave every update a different identity, so macOS treated each new Relay as a stranger and forgot the permissions you had granted it — you had to allow screen recording and accessibility again every time. Now Relay keeps its identity between updates, and those permissions stay.
 
