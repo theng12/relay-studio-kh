@@ -1734,6 +1734,14 @@ pub(crate) struct BrowserExtensions {
     extensions: Vec<LoadedExtension>,
 }
 
+/// Drops the last launch's seeding lines for these accounts. The seeding map is session state that
+/// outlives a close, so without this a row would show the previous launch's result as this one's.
+fn forget_last_launch(inner: &mut Inner, profile_ids: &[&str]) {
+    for id in profile_ids {
+        inner.seeding.remove(*id);
+    }
+}
+
 /// Writes one dispatch/seeding line onto an account's row after an async action completes.
 pub(crate) fn record_seeding(shared: &Shared, profile_id: &str, note: &str) {
     if let Ok(mut inner) = locked(shared) {
@@ -2010,6 +2018,14 @@ pub(crate) fn manager_open_profiles(
             cache.closes.remove(&profile.id);
         }
     }
+    {
+        // And any earlier seeding line: the row must not show last launch's result as this one's.
+        // Taken after the cache guard is gone; reconcile holds the state lock and then this cache,
+        // so nesting them the other way round would be a deadlock.
+        let mut inner = locked(&manager.shared)?;
+        let ids: Vec<&str> = opened.iter().map(|(profile, _)| profile.id.as_str()).collect();
+        forget_last_launch(&mut inner, &ids);
+    }
     // Dispatch is Gateway's switch and starts off; opening a browser turns it on for its workers.
     {
         let targets: Vec<(String, Vec<String>)> = opened
@@ -2164,34 +2180,43 @@ pub(crate) fn manager_close_profiles(
         Ok(())
     })?;
     // Tell Gateway to stop dispatching now; the deadline below never waits for the answer.
-    {
-        let targets: Vec<Vec<String>> = {
-            let inner = locked(&manager.shared)?;
-            let stored = stored_or_error(&inner)?;
-            profile_ids
-                .iter()
-                .filter_map(|id| {
-                    let profile = stored.profiles.iter().find(|profile| &profile.id == id)?;
-                    let ids: Vec<String> = [
-                        profile.image_worker_id.clone(),
-                        profile.video_worker_id.clone(),
-                        profile.audio_worker_id.clone(),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .filter(|id| !id.trim().is_empty())
-                    .collect();
-                    (!ids.is_empty()).then_some(ids)
-                })
-                .collect()
-        };
-        for ids in targets {
-            tauri::async_runtime::spawn(async move {
-                let _ = crate::pairing::disable_dispatch_for(&ids).await;
-            });
-        }
-    }
+    stop_dispatch(&manager.shared, &profile_ids);
     finish(&manager.shared)
+}
+
+/// Tells Gateway to stop dispatching to these accounts' workers. Fire-and-forget by design: a
+/// close or a force close never waits on Gateway's answer.
+fn stop_dispatch(shared: &Shared, profile_ids: &[String]) {
+    let targets: Vec<Vec<String>> = {
+        let Ok(inner) = locked(shared) else { return };
+        let Ok(stored) = stored_or_error(&inner) else { return };
+        profile_ids
+            .iter()
+            .filter_map(|id| {
+                let profile = stored.profiles.iter().find(|profile| &profile.id == id)?;
+                Some(bound_worker_ids(profile))
+            })
+            .filter(|ids| !ids.is_empty())
+            .collect()
+    };
+    for ids in targets {
+        tauri::async_runtime::spawn(async move {
+            let _ = crate::pairing::disable_dispatch_for(&ids).await;
+        });
+    }
+}
+
+/// The non-empty worker ids bound to one account.
+fn bound_worker_ids(profile: &StoredProfile) -> Vec<String> {
+    [
+        profile.image_worker_id.clone(),
+        profile.video_worker_id.clone(),
+        profile.audio_worker_id.clone(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|id| !id.trim().is_empty())
+    .collect()
 }
 
 /// Explicit owner force close. Only a verified Relay-owned process with Gateway's fresh
@@ -2294,6 +2319,10 @@ pub(crate) fn manager_force_close_profiles(
         for id in &closed {
             cache.closes.remove(id);
         }
+        // A force close kills the browser that was claiming these workers. Without this, Gateway
+        // keeps assigning to a worker whose browser is gone: the job is accepted, no Relay can
+        // claim it, and nothing reports an error. Close already does this; force close must too.
+        stop_dispatch(&manager.shared, &closed);
     }
     finish(&manager.shared)
 }
@@ -4510,6 +4539,42 @@ mod tests {
         assert_eq!(
             worker_ids(&different),
             vec!["image-1".to_string(), "video-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_force_closed_account_tells_gateway_to_stop_dispatching() {
+        // The ids come from the saved row, so dispatch is switched off before the killed
+        // browser is forgotten — a force close must not leave Gateway assigning to a dead worker.
+        let mut profile = sample_profile();
+        profile.image_worker_id = Some("image-worker-1".into());
+        profile.video_worker_id = Some("video-worker-1".into());
+        profile.audio_worker_id = Some("".into());
+        assert_eq!(
+            bound_worker_ids(&profile),
+            vec!["image-worker-1".to_string(), "video-worker-1".to_string()],
+            "an unbound kind contributes nothing and a blank id is not sent"
+        );
+        profile.image_worker_id = None;
+        profile.video_worker_id = None;
+        assert!(bound_worker_ids(&profile).is_empty(), "an unbound account sends nothing");
+    }
+
+    #[test]
+    fn a_new_open_clears_the_last_launch_s_seeding_line() {
+        // The seeding map is session state keyed by profile id and survives a close, so an Open
+        // that did not clear it would show the previous launch's result as this launch's.
+        let mut inner = Inner::default();
+        inner.seeding.insert("opened".into(), "not seeded — no worker token saved in Relay".into());
+        inner.seeding.insert("other".into(), "connection verified in the browser".into());
+        forget_last_launch(&mut inner, &["opened"]);
+        assert!(
+            !inner.seeding.contains_key("opened"),
+            "the row shows no last-launch result until this launch seeds it"
+        );
+        assert!(
+            inner.seeding.contains_key("other"),
+            "another account's own line is left alone"
         );
     }
 
