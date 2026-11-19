@@ -4,22 +4,22 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.28",
-      "source_commit": "2c5d54e1a8042428113052154e631c66b139f748",
+      "version": "1.3.29",
+      "source_commit": "5a2280c2201d90a096260b408b9acac5b4e33e56",
       "accepted": true,
-      "manifest_sha256": "9e5a7b9b194f35296394bb4cde1869ffe62b83d2eb76a429fd6205962a0d5f51",
+      "manifest_sha256": "7db280c675ed26a7d914b6c6ff684dd3f2f7b27dcd26ef14e9823cb4cdc45021",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "0a14a50a80d32ac442e1adcaf4a4d60b386222b6452b45798913d44f97db3b64"
+          "sha256": "312677b5f5a7d6424cece93d81db20aa8e4ad9f237304b8b52dde085139453d1"
         },
         {
           "path": "manifest.json",
-          "sha256": "9e5a7b9b194f35296394bb4cde1869ffe62b83d2eb76a429fd6205962a0d5f51"
+          "sha256": "7db280c675ed26a7d914b6c6ff684dd3f2f7b27dcd26ef14e9823cb4cdc45021"
         },
         {
           "path": "src/background.js",
-          "sha256": "c5b58625db4c70eedf945fa592bae45df339550e25c6ea9402ae12b84b154ab9"
+          "sha256": "7011fabf8c4d6390ca250fbeeef880c49824dbc5b7f3a67384d3114f0583f38b"
         },
         {
           "path": "src/flow-recorder.js",
@@ -67,7 +67,7 @@
         },
         {
           "path": "src/lib/gateway-worker.js",
-          "sha256": "0154bdd069ba339cc54f57acd87258193f7b15a2dd9132c62bbdab4b419ee03a"
+          "sha256": "93f65b21b8af683647678e7a1f55f9d408d19f840dfc9580e93f01800e913b30"
         },
         {
           "path": "src/lib/rpc-ids.js",
@@ -122,22 +122,22 @@
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.33",
-      "source_commit": "8ef9c5e45b8e883e25ccd11e988ca7d4ae44d76a",
+      "version": "0.50.34",
+      "source_commit": "f52376bd471318399791cf7a06a763827f79effc",
       "accepted": true,
-      "manifest_sha256": "120aedd660e7506b9d301d6e62e7d7bea45a001bf61c74b8359609f0e58a8935",
+      "manifest_sha256": "e4965d16cba87d32dad238556519dc8d3b516cdd512ff85420fd1bd1bf3fc821",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "aac462e953107e860b15be8510cbcedbb87f970af306b870afe8017779db4ea3"
+          "sha256": "6f8737b436a05ead2fa63e4048765d00cf1da4067400261e83ac0d01f7d73b53"
         },
         {
           "path": "manifest.json",
-          "sha256": "120aedd660e7506b9d301d6e62e7d7bea45a001bf61c74b8359609f0e58a8935"
+          "sha256": "e4965d16cba87d32dad238556519dc8d3b516cdd512ff85420fd1bd1bf3fc821"
         },
         {
           "path": "src/background.js",
-          "sha256": "b6174af1ad68e8cbf4083e9440ca0a45842dd4b1490d37206884bf9b11817bfe"
+          "sha256": "39738dd6e6cf0f8c3abee8078bbc9d5fba9140e521c9fd79700b6da6777d1134"
         },
         {
           "path": "src/content/aistudio-main.js",
@@ -221,7 +221,7 @@
         },
         {
           "path": "src/lib/gateway-worker.js",
-          "sha256": "897e465a4115452ea77ea92f140f16f59cc33928c0334bd661eeb851d1a60a74"
+          "sha256": "92daa60ffef96caef18bfe03b5264ba559bb0fe0f134c9c1c73bb732a891c1b4"
         },
         {
           "path": "src/lib/model-identity.js",
