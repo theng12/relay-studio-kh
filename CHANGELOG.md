@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.32 — 2026-11-19
+- Relay now signs itself with the same certificate as the other Studio apps, instead of an anonymous one. An anonymous signature gave every update a different identity, so macOS treated each new Relay as a stranger and forgot the permissions you had granted it — you had to allow screen recording and accessibility again every time. Now Relay keeps its identity between updates, and those permissions stay.
+
 ## 0.3.31 — 2026-11-18
 - The download itself is clean. 0.3.30's app still carried this Mac's home folder — once, in symbol names built from a dependency's C code, which the compiler's path remap cannot reach — so the build now strips those symbols and the release gate scans the finished DMG, the exact bytes that go on the feed, instead of the build folder. Nothing about how Relay works changes.
 
