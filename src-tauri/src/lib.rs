@@ -46,6 +46,10 @@ struct Settings {
     /// worker token unencrypted. Loopback is always allowed; this turns plain HTTP on for a fleet.
     #[serde(default)]
     allow_plain_http: bool,
+    /// What Relay quotes Gateway for one image on the image channel. Free is 0 — a real price,
+    /// never "unpriced" — and the owner may change it here at any time.
+    #[serde(default)]
+    image_credits_per_image: f64,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -55,7 +59,15 @@ impl Default for Settings {
             appearance: default_appearance(),
             accounts_view: default_accounts_view(),
             allow_plain_http: false,
+            image_credits_per_image: 0.0,
         }
+    }
+}
+fn normalized_credits(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        0.0
     }
 }
 fn default_accounts_view() -> String {
@@ -191,6 +203,7 @@ fn read_settings(path: &PathBuf) -> Result<(Settings, bool), String> {
                 origin(settings.gateway_url.as_deref().unwrap_or(""), settings.allow_plain_http)?;
             settings.appearance = normalized_appearance(&settings.appearance);
             settings.accounts_view = normalized_accounts_view(&settings.accounts_view);
+            settings.image_credits_per_image = normalized_credits(settings.image_credits_per_image);
             Ok((settings, false))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -242,6 +255,7 @@ fn save_settings(
     appearance: Option<String>,
     accounts_view: Option<String>,
     allow_plain_http: Option<bool>,
+    image_credits_per_image: Option<f64>,
 ) -> Result<(), String> {
     local_only(&window)?;
     let state = app.state::<NativeState>();
@@ -266,6 +280,9 @@ fn save_settings(
             .map(|value| value.to_string())
             .unwrap_or_else(|| previous.accounts_view.clone()),
         allow_plain_http: allow,
+        image_credits_per_image: image_credits_per_image
+            .map(normalized_credits)
+            .unwrap_or(previous.image_credits_per_image),
     };
     persist(&state.path, &settings)?;
     *guard = Ok(settings.clone());
