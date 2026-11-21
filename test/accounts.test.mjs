@@ -462,9 +462,11 @@ test('desktop surface keeps native commands, password pairing and no browser tok
   for (const name of ['manager_snapshot', 'manager_add_profiles', 'manager_update_profile', 'manager_open_profiles', 'manager_close_profiles', 'manager_save_settings', 'manager_pair_gateway']) {
     assert.ok(accounts.includes(`'${name}'`), `missing native command ${name}`);
   }
-  for (const name of ['manager_show_profiles', 'manager_open_profiles', 'manager_close_profiles', 'manager_force_close_profiles']) {
+  for (const name of ['manager_show_profiles', 'manager_close_profiles', 'manager_force_close_profiles']) {
     assert.ok(browsers.includes(`'${name}'`), `missing browser command ${name}`);
   }
+  // Open windows lists browsers already open, so its Open selected button could never enable.
+  assert.doesNotMatch(browsers, /browser-open|manager_open_profiles/, 'no dead Open selected control on Open windows');
   assert.equal(/localStorage|sessionStorage/.test(accounts + browsers + app), false);
   assert.doesNotMatch(app, /AppleInterfaceStyle|System Events|osascript/, 'appearance never changes macOS');
 });
@@ -612,5 +614,5 @@ test('grouped warnings read as sentences for one and many accounts', async () =>
   const accounts = await readFile(new URL('../desktop/accounts.mjs', import.meta.url), 'utf8');
   assert.ok(accounts.includes("'need '"), 'plural warnings use the plural verb');
   assert.ok(accounts.includes("'account' : 'accounts'"), 'the noun agrees with the count');
-  assert.ok(accounts.includes('under ⋯ → Show details'), 'the next step names where the form moved');
+  assert.ok(accounts.includes('⋯ → Show details'), 'the next step names where the form moved');
 });

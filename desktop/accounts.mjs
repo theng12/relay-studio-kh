@@ -66,7 +66,7 @@ export function connectionTier(gateway = {}) {
   if (connection === 'disconnected') return { tone: 'warn', label: 'Disconnected', detail };
   if (connection === 'paused' || source.paused === true) return { tone: 'warn', label: 'Paused', detail };
   if (connection === 'connected') return { tone: 'ok', label: 'Connected', detail };
-  if (!connection) return { tone: 'off', label: 'Connection unknown', detail: signIn || readiness ? detail : 'No authoritative readback' };
+  if (!connection) return { tone: 'off', label: 'Connection unknown', detail: signIn || readiness ? detail : 'Gateway has not confirmed it' };
   return { tone: 'off', label: humanize(connection), detail };
 }
 
@@ -556,6 +556,7 @@ export function mountAccounts(invoke) {
     if (!current || busy || busyIds.has(id)) return;
     deletingId = id;
     $('delete-body').textContent = `Account ${current.number} — ${current.label || 'Untitled account'} will be deleted with its Chrome profile.`;
+    closeAllMenus();
     $('delete-dialog').showModal();
   }
 
@@ -843,7 +844,7 @@ export function mountAccounts(invoke) {
     details.append(dl, form);
 
     li.append(row, message, details);
-    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, close, show, remove, message, nextAction, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
+    return { li, checkbox, ordinal, label, metaText, processState, connectionState, connectionDetail, activityState, creditsRow, action, close, show, remove, message, nextAction, details, detailsButton, fields, labelInput, labelStatus, imageInput, videoInput, audioInput, enabledInput };
   }
 
   function updateRow(refs, profile) {
@@ -856,7 +857,9 @@ export function mountAccounts(invoke) {
     refs.processState.className = `state ${process.tone}`;
     refs.processState.textContent = process.label;
     const memory = profile.memory_mb === null || profile.memory_mb === undefined ? '' : ` · ${fmt(profile.memory_mb)} MB`;
-    refs.metaText.textContent = `${profile.enabled ? 'Ready' : 'Off'} · ${profile.desired_open ? 'open' : 'closed'}${memory}`;
+    const local = `${profile.enabled ? 'Ready' : 'Off'}${memory}`;
+    // The state chip already says Open or Closed; this line adds what Relay will do and local state.
+    refs.metaText.textContent = profile.desired_open ? local : `${local} · Relay can open it`;
     const sharedLabel = connectionStateLabel(profile.gateway?.connection_state);
     const connection = connectionTier(profile.gateway);
     if (sharedLabel) {
@@ -950,6 +953,7 @@ export function mountAccounts(invoke) {
 
   function renderList() {
     if (!snapshot) return;
+    $('account-toolbar').hidden = snapshot.profiles.length === 0;
     // One search per toolbar: a label or number filter over the same list.
     const needle = searchText.toLowerCase();
     const profiles = sortProfiles(snapshot.profiles).filter((profile) => !needle
@@ -987,14 +991,25 @@ export function mountAccounts(invoke) {
     for (const profile of profiles) {
       const reason = rowErrors.get(profile.id) || value(profile.error) || nextStepFor(profile);
       if (!reason) continue;
-      groups.set(reason, (groups.get(reason) || 0) + 1);
+      const group = groups.get(reason);
+      if (group) group.count += 1;
+      else groups.set(reason, { count: 1, id: profile.id });
     }
     el.replaceChildren();
-    for (const [label, count] of groups) {
-      const chip = document.createElement('span');
+    for (const [label, { count, id }] of groups) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'warning-group';
       const verb = count === 1 ? label : label.replace(/^needs /, 'need ');
       chip.textContent = `${count} ${count === 1 ? 'account' : 'accounts'} ${verb}`;
+      chip.addEventListener('click', () => {
+        const refs = rows.get(id);
+        if (!refs) return;
+        refs.details.hidden = false;
+        refs.detailsButton.textContent = 'Hide details';
+        refs.detailsButton.setAttribute('aria-expanded', 'true');
+        refs.li.scrollIntoView({ block: 'center' });
+      });
       el.append(chip);
     }
     el.hidden = groups.size === 0;
@@ -1037,7 +1052,14 @@ export function mountAccounts(invoke) {
     const settings = snapshot.settings || {};
     const memory = { ...(snapshot.memory || {}), reserve_mb: (snapshot.memory || {}).reserve_mb ?? settings.reserve_mb };
     const summary = memorySummary(memory);
-    $('memory-summary').textContent = summary;
+    const used = number(memory.used_mb);
+    const budget = number(memory.budget_mb);
+    const available = number(memory.available_mb);
+    const reserve = number(memory.reserve_mb);
+    const short = [used ? `Measured use ${fmt(used)} MB` : 'Nothing opened yet',
+      budget === null ? 'no budget set' : `budget ${fmt(budget)} MB`];
+    if (available !== null && reserve !== null) short.push(`${fmt(Math.max(0, available - reserve))} MB free`);
+    $('memory-summary').textContent = short.join(' · ');
     $('memory-summary-page').textContent = summary;
     setInput($('memory-budget'), settings.memory_budget_mb ?? '');
     setInput($('memory-reserve'), settings.reserve_mb ?? '');

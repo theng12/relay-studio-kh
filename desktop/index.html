@@ -116,14 +116,14 @@
 
         <div class="card">
           <form id="add-form" class="add-accounts">
-            <label class="field">New account labels<textarea id="add-labels" rows="2" placeholder="One label per line" spellcheck="false"></textarea></label>
+            <label class="field">New account labels<textarea id="add-labels" rows="1" placeholder="One label per line" spellcheck="false"></textarea></label>
             <button class="primary" id="add-submit" type="submit">Add account</button>
           </form>
-          <p class="help">Each saved account gets its own fresh Chrome profile inside Relay. Clicking an account opens that browser, or focuses it if it is already open. Closing the window stops that browser; clicking the account opens the same profile again — same cookies, same extension — and no jobs are claimed while it is closed. Relay never copies, reads or extracts cookies or passwords.</p>
+          <p class="help">One account per line. No jobs are claimed while an account is closed.</p>
         </div>
 
         <div class="card">
-          <div class="account-toolbar" role="group" aria-label="Select saved accounts">
+          <div class="account-toolbar" id="account-toolbar" role="group" aria-label="Select saved accounts">
             <label class="field compact">Search<input id="account-search" type="search" autocomplete="off" placeholder="Label or number"></label>
             <label class="field compact">By number or range<input id="range-input" type="text" inputmode="numeric" autocomplete="off" placeholder="3 or 2-5"></label>
             <button id="select-range" type="button">Select range</button>
@@ -136,12 +136,12 @@
               <label class="seg"><input type="radio" name="accounts-view" value="card" checked><span>Card</span></label>
               <label class="seg"><input type="radio" name="accounts-view" value="table"><span>Table</span></label>
             </div>
+            <div class="account-bulk">
+              <button class="primary" id="open-selected" type="button" disabled>Open selected</button>
+              <button id="close-selected" type="button" disabled>Close selected</button>
+            </div>
           </div>
-          <div class="account-bulk">
-            <button class="primary" id="open-selected" type="button" disabled>Open selected</button>
-            <button id="close-selected" type="button" disabled>Close selected</button>
-            <span class="secondary">Open and close follow measured memory and Gateway safe-stop acknowledgement.</span>
-          </div>
+          <p class="help">Relay opens a browser only when memory allows.</p>
           <p id="memory-summary" class="secondary">Memory measurements have not been read yet.</p>
           <div id="accounts-warnings" class="warning-groups" role="status" aria-live="polite" hidden></div>
 
@@ -164,7 +164,6 @@
             <label class="check"><input id="browser-attention-only" type="checkbox"> Attention only</label>
             <span id="browser-selection" class="secondary" role="status">0 selected</span>
             <div class="actions">
-              <button class="primary" id="browser-open" type="button" disabled>Open selected</button>
               <button id="browser-close" type="button" disabled>Close selected</button>
               <button id="browser-force" type="button" class="danger" disabled>Force close selected</button>
             </div>
@@ -195,7 +194,7 @@
             <div class="actions"><button class="primary" id="manager-settings-save" type="submit">Save memory and pacing</button></div>
             <p id="settings-state" class="secondary" role="status">Values are read from this build's native manager.</p>
             <p id="pacing-state" class="secondary" role="status">Pacing application has not been read yet.</p>
-            <p class="help">The budget caps the measured memory of all open accounts; the reserve is kept free for macOS and other apps, so the room left is available memory minus the reserve. How many more accounts fit uses whichever is tighter: the budget left or that room, divided by the measured per-account memory. Measured use is not a cap: the first opened account is measured, and that figure governs the next. Five to fifteen seconds is the usual pause between account jobs; 0 keeps no added wait. These values remain preferences until Gateway acknowledges them. A blank budget uses measured memory; a blank maximum means no account-count cap.</p>
+            <p class="help">The budget caps the measured memory of all open accounts; the reserve stays free for macOS. A blank budget uses measured memory, and a blank maximum means no account-count cap. These values stay preferences until Gateway applies them.</p>
           </form>
         </div>
       </section>
@@ -298,8 +297,8 @@
           <p>Closing the window keeps Relay running. Quit Relay from the app menu to stop it.</p>
           <p id="data-folder" class="secondary">Reading Relay’s data folder...</p>
           <div class="actions">
-            <button type="button" id="show-data-folder">Show folder</button>
-            <button type="button" id="copy-data-folder" class="ghost">Copy path</button>
+            <button type="button" id="show-data-folder" disabled>Show folder</button>
+            <button type="button" id="copy-data-folder" class="ghost" disabled>Copy path</button>
           </div>
           <p class="help">Saved accounts and settings stay in this folder across updates. Removing it resets Relay’s saved accounts; browser profiles are kept separately.</p>
         </div>

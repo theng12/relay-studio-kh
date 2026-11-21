@@ -25,8 +25,19 @@ function gatewayState(snapshot) {
   const problem = readings.find((reading) => reading.tone === 'bad' || reading.tone === 'warn');
   if (connected) return { label: 'Connected', note: `${connected} of ${profiles.length} saved ${profiles.length === 1 ? 'account' : 'accounts'} report connected.` };
   if (problem) return { label: problem.label, note: problem.detail || 'Gateway reports a problem.' };
-  if (!profiles.length) return { label: 'No accounts yet', note: 'Save an account before pairing workers.' };
+  if (!profiles.length) return { label: 'Not checked', note: 'Connect on the Gateway page.' };
   return { label: 'Not checked', note: 'Gateway has not reported a connection state yet.' };
+}
+
+export function attentionReason(profile = {}) {
+  const gateway = profile.gateway || {};
+  const connection = connectionTier(gateway);
+  if (value(gateway.sign_in ?? gateway.signIn) === 'signed_out'
+    || /sign[-_ ]?in/i.test(`${value(gateway.connection) || ''} ${connection.label}`)) {
+    return 'Sign in to this account in its browser.';
+  }
+  const detail = value(processTier(profile).detail);
+  return detail && /^[A-Z].*[.!?]$/.test(detail) ? detail : 'Open this account from Accounts to fix it.';
 }
 
 function render(snapshot, show) {
@@ -69,7 +80,7 @@ function render(snapshot, show) {
     title.textContent = `#${profile.number} · ${value(profile.label) || 'Untitled account'}`;
     const reason = document.createElement('span');
     reason.className = 'attention-reason';
-    reason.textContent = value(profile.error) || processTier(profile).detail || 'Needs attention.';
+    reason.textContent = attentionReason(profile);
     button.append(title, reason);
     button.addEventListener('click', () => show('accounts'));
     item.append(button);

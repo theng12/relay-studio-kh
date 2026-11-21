@@ -66,7 +66,7 @@ test('account rows name the next pairing step and the bulk action never dies', a
   const native = await load('../src-tauri/src/lib.rs');
   const browser = await load('../src-tauri/src/browser_manager.rs');
   // 0.3.16 moved the fields behind ⋯ → Show details; the assertion follows the current copy.
-  assert.match(accounts, /Next: type a worker ID under ⋯ → Show details/, 'the row names the fix, not a legend');
+  assert.match(accounts, /Add a worker ID: ⋯ → Show details/, 'the row names the fix, not a legend');
   assert.match(accounts, /Focus selected/, 'an open selection still acts by focusing');
   assert.match(accounts, /row\.addEventListener\('click'/, 'clicking the row runs its primary action');
   assert.match(app, /pairing_refresh/, 'opening the Gateway page re-runs pairing');

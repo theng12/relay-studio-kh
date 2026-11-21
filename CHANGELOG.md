@@ -1,5 +1,13 @@
 # What's New
 
+## 0.3.35 — 2026-11-22
+- The saved accounts are back on screen. The add form is one row, its help is one line and the bulk buttons sit in the filter bar, so the first account starts well inside the window at every size — before, it began below the fold.
+- Account rows speak plainly: "Closed · Relay can open it" instead of "open not requested", and "Gateway has not confirmed it" instead of a readback term. The memory line on that page is one short sentence; the Memory page keeps the full breakdown.
+- "5 accounts need a worker ID" is a button that opens the first of those accounts' details, where the field is. The row menu closes before the Delete dialog opens, so two destructive buttons are never on screen together.
+- Overview attention rows say what to do ("Sign in to this account in its browser."), and the Gateway card describes the Gateway instead of repeating the account count. The audio extension is marked optional and not finished, and its switch starts off.
+- Memory & pacing lays its five fields out in one even row, and the sidebar footer — "Not paired · 0 connected" — fits inside the smallest window instead of being cut off. A failed folder or pairing read says one plain sentence with a next step, and the folder buttons stay disabled until a path is known.
+- Open windows no longer offers "Open selected", which could never become available on a page that only lists browsers already open.
+
 ## 0.3.34 — 2026-11-21
 - When several accounts are waiting to open and memory frees up one at a time, Relay now takes them in turn instead of always starting the first account in the list again, so an account further down the list no longer waits forever.
 - The update hold now says how many accounts are waiting for memory. It used to answer "nothing in flight, safe to restart" while work was still queued — correct for "would a restart strand anything", but it read as idle when it was not.

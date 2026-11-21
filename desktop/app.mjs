@@ -229,7 +229,7 @@ async function loadWorkerCredentials() {
       wrap.append(title, state, worker, token, reveal, save, clear);
       list.append(wrap);
     }
-  } catch (error) { $('extension-workers-state').textContent = `Worker credentials could not be read. ${String(error)}`; }
+  } catch { $('extension-workers-state').textContent = 'Worker credentials could not be read. Save them again below.'; }
 }
 async function loadPairingStatus(refresh = false) {
   try {
@@ -237,8 +237,8 @@ async function loadPairingStatus(refresh = false) {
     $('pairing-file-state').textContent = status.automatic
       ? `Local pairing · ${status.machine_id} · ${status.url}`
       : status.note;
-  } catch (error) {
-    $('pairing-file-state').textContent = `Local pairing could not be checked. ${String(error)}`;
+  } catch {
+    $('pairing-file-state').textContent = 'Local pairing could not be checked. Open the Gateway page, or reopen Relay.';
   }
 }
 async function loadDataFolder() {
@@ -247,8 +247,10 @@ async function loadDataFolder() {
     // The system path contains the bundle id; keep it out of the visible copy.
     $('data-folder').textContent = 'Relay’s saved accounts and settings live in this folder.';
     $('data-folder').dataset.path = path;
-  } catch (error) {
-    $('data-folder').textContent = `Relay’s data folder could not be read. ${String(error)}`;
+    $('show-data-folder').disabled = false;
+    $('copy-data-folder').disabled = false;
+  } catch {
+    $('data-folder').textContent = 'Relay could not read its data folder. Try again, or quit and reopen Relay.';
   }
 }
 $('show-data-folder').addEventListener('click', () => invoke('open_data_folder').catch(showError));

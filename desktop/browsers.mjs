@@ -1,5 +1,5 @@
 // Control room for the real Chrome windows Relay started. Nothing here fakes a browser.
-import { sortProfiles, needsAttention, openableIds, closableIds, processTier, activityTier } from './accounts.mjs';
+import { sortProfiles, needsAttention, closableIds, processTier, activityTier } from './accounts.mjs';
 
 const LIVE = new Set(['opening', 'open', 'closing', 'queued']);
 const text = (input) => {
@@ -225,7 +225,6 @@ export function mountBrowsers(invoke, accounts) {
     const ids = [...selection];
     const blocked = ids.map((id) => snapshot?.profiles?.find((entry) => entry.id === id)).find((profile) => profile && forceBlockReason(profile));
     $('browser-selection').textContent = `${ids.length} selected${blocked ? ` · Force close refused: ${forceBlockReason(blocked)}` : ''}`;
-    const canOpen = openableIds(snapshot?.profiles || [], ids).length;
     const canClose = closableIds(snapshot?.profiles || [], ids).filter((id) => {
       const profile = snapshot.profiles.find((entry) => entry.id === id);
       return profile && !profile.close_pending;
@@ -235,10 +234,8 @@ export function mountBrowsers(invoke, accounts) {
       // A blocked account is not offered at all, in bulk exactly as on its card.
       return profile && (!profile.close_pending || (closeElapsedSeconds(profile) ?? 0) >= 3) && !forceBlockReason(profile);
     }).length;
-    $('browser-open').disabled = busy || !canOpen;
     $('browser-close').disabled = busy || !canClose;
     $('browser-force').disabled = busy || !canForce;
-    $('browser-open').textContent = canOpen ? `Open selected (${canOpen})` : 'Open selected';
     $('browser-close').textContent = canClose ? `Close selected (${canClose})` : 'Close selected';
     $('browser-force').textContent = canForce ? `Force close selected (${canForce})` : 'Force close selected';
   }
@@ -287,11 +284,6 @@ export function mountBrowsers(invoke, accounts) {
   $('browser-attention-only').addEventListener('change', () => {
     attentionOnly = $('browser-attention-only').checked;
     paint();
-  });
-  $('browser-open').addEventListener('click', () => {
-    const ids = openableIds(snapshot?.profiles || [], [...selection]);
-    if (!ids.length) { setError('Selected accounts are already open, opening, waiting, or waiting to close.'); return; }
-    runCommand('manager_open_profiles', { profileIds: ids }, ids);
   });
   $('browser-close').addEventListener('click', () => {
     const ids = closableIds(snapshot?.profiles || [], [...selection]).filter((id) => {

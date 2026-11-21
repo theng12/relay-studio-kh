@@ -26,7 +26,9 @@ export async function setupExtensions(invoke, showError) {
       const row = document.createElement('li');
       const title = document.createElement('h3'); title.textContent = extension.name;
       const status = document.createElement('p');
-      status.textContent = extension.available
+      status.textContent = extension.available && extension.required === false
+        ? `Optional — not finished yet. Leave it off unless you are testing. (Bundled v${extension.version}.)`
+        : extension.available
         ? `Bundled v${extension.version}. Browsers opened from Accounts load it automatically.`
         : extension.required === false
         ? `Optional, off. ${extension.reason}`
@@ -36,7 +38,7 @@ export async function setupExtensions(invoke, showError) {
       toggle.className = 'check';
       const box = document.createElement('input');
       box.type = 'checkbox';
-      box.checked = extension.enabled !== false;
+      box.checked = extension.required === false ? extension.enabled === true : extension.enabled !== false;
       box.disabled = !extension.available;
       box.setAttribute('aria-label', `Load ${extension.name} in browsers Relay opens`);
       box.addEventListener('change', async () => {
