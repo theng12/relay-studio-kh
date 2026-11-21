@@ -194,12 +194,10 @@ pub(crate) fn maintenance_hold(
     pause_s: Option<f64>,
 ) -> Result<Reply, String> {
     super::local_only(&window)?;
-    // shortcut: the queued count is injected as 0 until browser_manager exposes its accessor;
-    // integration replaces these closures with `|| crate::browser_manager::waiting_count(&manager)`.
     let answer = take_with_waiting(
         timeout_s,
         pause_s,
-        || Ok(0),
+        || crate::browser_manager::waiting_count(&manager),
         || crate::browser_manager::hold_work(&manager),
     )?;
     crate::browser_manager::log_line(&manager, &hold_taken_line(&answer));
@@ -216,7 +214,10 @@ pub(crate) fn maintenance_release(
 }
 
 fn release_for(manager: &BrowserManager) -> Result<Reply, String> {
-    let answer = release_with_waiting(|| Ok(0), || crate::browser_manager::hold_work(manager))?;
+    let answer = release_with_waiting(
+        || crate::browser_manager::waiting_count(manager),
+        || crate::browser_manager::hold_work(manager),
+    )?;
     crate::browser_manager::log_line(manager, "update hold resumed");
     Ok(answer)
 }
@@ -314,7 +315,7 @@ fn hold_http(manager: &BrowserManager, url: &str) -> Result<(u16, Vec<u8>), Stri
     let answer = take_with_waiting(
         timeout_s,
         pause_s,
-        || Ok(0),
+        || crate::browser_manager::waiting_count(manager),
         || crate::browser_manager::hold_work(manager),
     )?;
     crate::browser_manager::log_line(manager, &hold_taken_line(&answer));

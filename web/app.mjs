@@ -1,48 +1,5 @@
 import { readWorkers, mintWorker, revokeWorker, reportedCredit, workerState } from './api.mjs';
 
-// Per-image price for the image channel (owner decision 2026-11-21): it starts at
-// 0 credits — a real price, never "unknown" — and is adjustable per channel. It
-// rides the account/quote payload Relay gives Gateway. shortcut: the value is
-// prepared but not sent yet; R5's image job is what proves the wire.
-export const DEFAULT_IMAGE_CREDITS_PER_IMAGE = 0;
-// Same storage path the connector pane already uses: its own origin's browser
-// storage. No new store file, no migration. Falls back to memory when storage
-// is unavailable (the value then just does not survive a reload).
-const IMAGE_PRICE_KEY = 'relay-image-credits-per-image';
-let imagePriceMemory;
-
-// Blank and every invalid value mean free, matching the image extension's rule:
-// an unset price is free, not unpriced.
-export function normalizeImageCreditsPerImage(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? number : DEFAULT_IMAGE_CREDITS_PER_IMAGE;
-}
-
-export function storedImageCreditsPerImage() {
-  try {
-    const raw = globalThis.localStorage?.getItem(IMAGE_PRICE_KEY);
-    if (raw === null || raw === undefined) return imagePriceMemory ?? DEFAULT_IMAGE_CREDITS_PER_IMAGE;
-    return normalizeImageCreditsPerImage(raw);
-  } catch {
-    return imagePriceMemory ?? DEFAULT_IMAGE_CREDITS_PER_IMAGE;
-  }
-}
-
-export function saveImageCreditsPerImage(value) {
-  const next = normalizeImageCreditsPerImage(value);
-  imagePriceMemory = next;
-  try { globalThis.localStorage?.setItem(IMAGE_PRICE_KEY, String(next)); } catch { /* memory only */ }
-  return next;
-}
-
-// The price portion of the account/quote payload Relay gives Gateway. Field names
-// follow the image extension's quote builder (value/unit/source) so the payload
-// needs no re-keying; provider, accountId, payloadSha256 and observedAt come from
-// the live claim itself.
-export function imageQuotePrice(credits) {
-  return { value: normalizeImageCreditsPerImage(credits), unit: 'credits', source: 'settings.image-credits' };
-}
-
 export function mountRelayConnector(root, { request = fetch, canManage = false, appInfo } = {}) {
 const KINDS = { video: 'Video Generator', image: 'Image Generator', audio: 'Audio Generator' };
 const $ = (id) => root.querySelector(`#relay-${id}`);
@@ -86,29 +43,6 @@ function beginRevoke(worker) {
   $('revoke-description').textContent = `${worker.label || KINDS[worker.kind]} · ${worker.workerId}`;
   $('revoke-error').hidden = true;
   $('revoke-dialog').showModal();
-}
-
-// The image channel's own price row, shown with its workers. Plain words, real units.
-function imagePriceRow() {
-  const section = element('article', 'worker image-price');
-  const row = element('div', 'worker-row');
-  const identity = element('div', 'worker-identity');
-  identity.append(
-    element('span', 'worker-title', 'Image price'),
-    element('span', 'worker-subtitle', 'What one image costs. Free is 0.'),
-  );
-  const input = element('input', '', undefined);
-  input.type = 'number';
-  input.min = '0';
-  input.step = '1';
-  input.id = 'relay-image-price';
-  input.value = String(storedImageCreditsPerImage());
-  input.setAttribute('aria-label', 'Credits per image');
-  input.addEventListener('input', () => saveImageCreditsPerImage(input.value));
-  const unit = element('span', 'secondary', 'credits per image');
-  row.append(identity, input, unit);
-  section.append(row);
-  return section;
 }
 
 function workerRow(kind, worker) {
@@ -179,8 +113,6 @@ function renderWorkers(workers) {
   if (unknown) throw new Error('Gateway returned a worker with an unsupported kind or missing ID. Check its worker API version.');
   const rows = [];
   for (const kind of Object.keys(KINDS)) {
-    // The price belongs to the image channel, so it is shown on that channel's rows.
-    if (kind === 'image') rows.push(imagePriceRow());
     const matching = workers.filter((worker) => worker.kind === kind);
     if (matching.length) rows.push(...matching.map((worker) => workerRow(kind, worker)));
     else rows.push(workerRow(kind, null));

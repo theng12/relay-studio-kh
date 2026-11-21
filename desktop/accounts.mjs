@@ -277,6 +277,13 @@ export function labelAutosavePayload(label) {
 export const LABEL_AUTOSAVE_MS = 600;
 const LABEL_RETRY_MS = 400;
 
+// Image channel price Relay reports to Gateway (owner decision 2026-11-21): starts at 0 credits, adjustable.
+export const DEFAULT_IMAGE_CREDITS_PER_IMAGE = 0;
+export function imageCreditsPerImage(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : DEFAULT_IMAGE_CREDITS_PER_IMAGE;
+}
+
 const LABEL_STATUS = {
   pending: { tone: 'info', text: 'Waiting to save…' },
   saving: { tone: 'info', text: 'Saving…' },

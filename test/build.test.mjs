@@ -13,10 +13,12 @@ const sharedSource = resolve(process.env.KH_SHARED_UI || resolve(source, '../../
 const unicodeNote = 'Fixture: ខ្មែរ — café';
 async function fixture() {
   const workspace = await mkdtemp(join(process.env.RELAY_TEST_ROOT || tmpdir(), 'relay build fixture '));
-  const root = join(workspace, 'Relay checkout');
-  const shared = join(workspace, 'kh-shared-ui');
+  // The real layout (owner, 2026-11-10): apps under `My Own Apps/`, shared tools in
+  // `Shared Tools/`, so build.mjs finds kh-shared-ui two levels above the checkout.
+  const root = join(workspace, 'My Own Apps', 'Relay checkout');
+  const shared = join(workspace, 'Shared Tools', 'kh-shared-ui');
   await mkdir(join(root, 'scripts'), { recursive: true });
-  await mkdir(shared);
+  await mkdir(shared, { recursive: true });
   await copyFile(join(source, 'scripts/build.mjs'), join(root, 'scripts/build.mjs'));
   await copyFile(join(source, 'VERSION'), join(root, 'VERSION'));
   const changelog = (await readFile(join(source, 'CHANGELOG.md'), 'utf8')).replace(/(##[^\n]+\n)/, `$1- ${unicodeNote}\n`);

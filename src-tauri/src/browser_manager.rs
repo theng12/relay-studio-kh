@@ -1389,6 +1389,9 @@ struct Inner {
     measurement: Measurement,
     // Last launch's per-extension seeding lines, keyed by profile id.
     seeding: HashMap<String, String>,
+    // The account admitted in the last pass, so the next pass visits accounts in
+    // rotation and an account late in the list does not wait forever.
+    last_admitted: Option<u32>,
 }
 
 impl Default for Inner {
@@ -1397,6 +1400,7 @@ impl Default for Inner {
             stored: None,
             load_error: None,
             seeding: HashMap::new(),
+            last_admitted: None,
             errors: HashMap::new(),
             attention: HashSet::new(),
             measurement: Measurement::default(),
@@ -2511,10 +2515,14 @@ fn may_start(profile: &StoredProfile, held: bool) -> bool {
     !held && profile.desired_open && profile.pid.is_none() && !profile.close_pending
 }
 
-/// The order admission visits the accounts this pass.
+/// The order admission visits the accounts this pass: starting after the account
+/// admitted last, wrapping around, so a freed slot goes to the account that has
+/// waited longest instead of the first in the list every time.
 fn admission_order(profiles: &[StoredProfile], last_admitted_number: Option<u32>) -> Vec<usize> {
-    let _ = last_admitted_number;
-    (0..profiles.len()).collect()
+    let start = last_admitted_number
+        .and_then(|number| profiles.iter().position(|profile| profile.number == number))
+        .map_or(0, |index| index + 1);
+    (start..profiles.len()).chain(0..start).collect()
 }
 
 /// Work Relay is inside right now: a Chrome it is starting or one it is stopping. A queued
@@ -2541,6 +2549,19 @@ pub(crate) fn hold_work(
 ) -> Result<Vec<crate::maintenance::InFlight>, String> {
     let guard = locked(&manager.shared)?;
     Ok(in_flight(stored_or_error(&guard)?.profiles.as_slice()))
+}
+
+/// Accounts that want to open but have no Chrome yet: work waiting for memory or
+/// a free slot. The hold reports this so queued work never reads as idle.
+pub(crate) fn waiting_count(manager: &BrowserManager) -> Result<u32, String> {
+    let guard = locked(&manager.shared)?;
+    Ok(stored_or_error(&guard)?
+        .profiles
+        .iter()
+        .filter(|profile| {
+            profile.desired_open && profile.pid.is_none() && !profile.close_pending
+        })
+        .count() as u32)
 }
 
 /// One line in lifecycle.log for the update hold's own milestones.
@@ -2752,8 +2773,9 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
         .or(settings.measured_per_profile_mb);
     let mut probe_opened = false;
     let mut launched = false;
+    let mut last_admitted = guard.last_admitted;
     if let Some(chrome_path) = chrome.as_deref() {
-        for index in 0..stored.profiles.len() {
+        for index in admission_order(&stored.profiles, last_admitted) {
             if probe_opened {
                 break;
             }
@@ -2818,6 +2840,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                                     format!("Chrome opened, but an extension did not load: {first}"),
                                 );
                             }
+                            last_admitted = Some(stored.profiles[index].number);
                             resident = resident.saturating_add(1);
                             match estimate {
                                 Some(value) => {
@@ -2865,6 +2888,7 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     guard.measurement = measurement;
     guard.errors = errors;
     guard.attention = attention;
+    guard.last_admitted = last_admitted;
     for (id, line) in seeding_rows {
         guard.seeding.insert(id, line);
     }

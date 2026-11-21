@@ -824,4 +824,16 @@ mod tests {
         assert_eq!(normalized_accounts_view("cards"), "card");
         assert!(!valid_accounts_view("grid"));
     }
+
+    #[test]
+    fn the_image_price_starts_free_and_invalid_values_normalize_to_free() {
+        assert_eq!(normalized_credits(-1.0), 0.0);
+        assert_eq!(normalized_credits(f64::NAN), 0.0);
+        assert_eq!(normalized_credits(f64::INFINITY), 0.0);
+        assert_eq!(normalized_credits(2.5), 2.5);
+        assert_eq!(Settings::default().image_credits_per_image, 0.0);
+        // A settings file written before the price existed has no field; it reads as free.
+        let settings = serde_json::from_str::<Settings>(r#"{"start_at_login": false}"#).unwrap();
+        assert_eq!(settings.image_credits_per_image, 0.0);
+    }
 }

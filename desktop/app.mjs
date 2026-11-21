@@ -1,5 +1,5 @@
 import info from './app-info.mjs';
-import { mountAccounts } from './accounts.mjs';
+import { imageCreditsPerImage, mountAccounts } from './accounts.mjs';
 import { mountBrowsers } from './browsers.mjs';
 import { mountOverview } from './overview.mjs';
 import { mountShell } from './shell.mjs';
@@ -91,6 +91,9 @@ async function loadSettings() {
   $('start-at-login').checked = Boolean(currentSettings.start_at_login);
   $('start-at-login').disabled = false;
   $('login-state').textContent = snapshot.autostart_error || (snapshot.autostart_observed === null ? 'Start at Login has not been checked.' : `Start at Login is ${snapshot.autostart_observed ? 'on' : 'off'}.`);
+  const credits = imageCreditsPerImage(currentSettings.image_credits_per_image ?? 0);
+  $('image-price').value = String(credits);
+  $('image-price-state').textContent = credits === 0 ? 'Free — 0 credits per image.' : `${credits} credits per image.`;
   applyAppearance(currentSettings.appearance || 'system');
   return snapshot;
 }
@@ -146,6 +149,16 @@ $('start-at-login').addEventListener('change', async () => {
     await saveSettings({ startAtLogin: $('start-at-login').checked });
   } catch (error) {
     $('login-state').textContent = String(error);
+    try { await loadSettings(); } catch { /* Preserve the reported failure. */ }
+  }
+});
+// The image price saves on change, like Start at Login; it is not part of the
+// Gateway form, and an invalid value normalizes to free on the next read.
+$('image-price').addEventListener('change', async () => {
+  try {
+    await saveSettings({ imageCreditsPerImage: imageCreditsPerImage($('image-price').value) });
+  } catch (error) {
+    $('image-price-state').textContent = `The image price was not saved. ${String(error)}`;
     try { await loadSettings(); } catch { /* Preserve the reported failure. */ }
   }
 });

@@ -1,5 +1,10 @@
 # What's New
 
+## 0.3.34 — 2026-11-21
+- When several accounts are waiting to open and memory frees up one at a time, Relay now takes them in turn instead of always starting the first account in the list again, so an account further down the list no longer waits forever.
+- The update hold now says how many accounts are waiting for memory. It used to answer "nothing in flight, safe to restart" while work was still queued — correct for "would a restart strand anything", but it read as idle when it was not.
+- Settings has an Image price: what Relay reports to Gateway as the price of one image, in credits. It starts at 0 — free — and can be changed at any time.
+
 ## 0.3.33 — 2026-11-20
 - Force close now tells Gateway to stop sending work to that account. Before, closing an account normally did this but force closing did not, so Gateway kept handing jobs to a browser that was no longer running: the work was accepted, nothing could pick it up, and no error said so. Force close now does the same thing Close does.
 - Reopening an account no longer shows the previous launch's connection result while the new one is still connecting. It shows that nothing is checked yet, then the real result.

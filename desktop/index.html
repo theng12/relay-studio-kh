@@ -287,6 +287,13 @@
         </div>
 
         <div class="card">
+          <h3>Image price</h3>
+          <label class="field">Credits per image <input id="image-price" type="number" min="0" step="1"></label>
+          <p id="image-price-state" class="secondary" role="status">Reading the saved image price...</p>
+          <p class="help">What Relay reports to Gateway as the price of one image on the image channel. Free is 0 credits.</p>
+        </div>
+
+        <div class="card">
           <h3>Window and data</h3>
           <p>Closing the window keeps Relay running. Quit Relay from the app menu to stop it.</p>
           <p id="data-folder" class="secondary">Reading Relay’s data folder...</p>
