@@ -856,7 +856,7 @@ export function mountAccounts(invoke) {
     refs.processState.className = `state ${process.tone}`;
     refs.processState.textContent = process.label;
     const memory = profile.memory_mb === null || profile.memory_mb === undefined ? '' : ` · ${fmt(profile.memory_mb)} MB`;
-    refs.metaText.textContent = `${profile.enabled ? 'Local enabled' : 'Local disabled'} · ${profile.desired_open ? 'open requested' : 'open not requested'}${memory}`;
+    refs.metaText.textContent = `${profile.enabled ? 'Ready' : 'Off'} · ${profile.desired_open ? 'open' : 'closed'}${memory}`;
     const sharedLabel = connectionStateLabel(profile.gateway?.connection_state);
     const connection = connectionTier(profile.gateway);
     if (sharedLabel) {
@@ -890,7 +890,7 @@ export function mountAccounts(invoke) {
     // The row names the one next step that finishes pairing, instead of leaving it to a legend.
     const nextStepReason = nextStepFor(profile);
     let nextStep = null;
-    if (nextStepReason === 'needs a worker ID') nextStep = 'Next: type a worker ID under ⋯ → Show details, then save.';
+    if (nextStepReason === 'needs a worker ID') nextStep = 'Add a worker ID: ⋯ → Show details.';
     else if (nextStepReason === 'needs a worker token in Relay') nextStep = 'Next: open the Gateway page to finish pairing.';
     else if (nextStepReason === 'needs its worker token saved again') nextStep = 'Next: save this worker token again on the Gateway page.';
     else if (!profile.desired_open && !LIVE_STATES.has(value(profile.process_state))) {
