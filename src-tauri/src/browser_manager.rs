@@ -2511,6 +2511,12 @@ fn may_start(profile: &StoredProfile, held: bool) -> bool {
     !held && profile.desired_open && profile.pid.is_none() && !profile.close_pending
 }
 
+/// The order admission visits the accounts this pass.
+fn admission_order(profiles: &[StoredProfile], last_admitted_number: Option<u32>) -> Vec<usize> {
+    let _ = last_admitted_number;
+    (0..profiles.len()).collect()
+}
+
 /// Work Relay is inside right now: a Chrome it is starting or one it is stopping. A queued
 /// profile is not in flight — queued work stays queued and the next start launches it.
 /// `resumable` reads the persisted intent straight from the row, so every piece this reports
@@ -4008,6 +4014,46 @@ mod tests {
         assert!(admission_reason(&policy, 0).is_ok());
         policy.available_mb = Some(1024);
         assert!(admission_reason(&policy, 0).is_err());
+    }
+
+    fn queued_profile(number: u32) -> StoredProfile {
+        let mut profile = sample_profile();
+        profile.id = format!("queued{number:018}");
+        profile.number = number;
+        profile.label = format!("Profile {number}");
+        profile.desired_open = true;
+        profile
+    }
+
+    #[test]
+    fn admission_rotates_to_the_longest_waiting_account_after_a_slot_frees() {
+        let profiles: Vec<StoredProfile> = (1..=3).map(queued_profile).collect();
+        let mut policy = admission();
+        policy.max_active = Some(1);
+
+        let next_admitted = |last: Option<u32>, resident: u32| {
+            admission_order(&profiles, last).into_iter().find(|&index| {
+                may_start(&profiles[index], false)
+                    && admission_reason(&policy, resident).is_ok()
+            })
+        };
+
+        // Budget admits one at a time: account 1 opens, 2 and 3 queue behind the ceiling.
+        let first = next_admitted(None, 0).expect("first account admitted");
+        assert_eq!(profiles[first].number, 1);
+        let last = Some(profiles[first].number);
+
+        // Ceiling full: no account is admitted while the slot is busy.
+        assert!(next_admitted(last, 1).is_none(), "the ceiling holds the queue");
+
+        // One slot frees. The account admitted next is the longest-waiting one, not the
+        // same early list-order account as the previous pass.
+        let second = next_admitted(last, 0).expect("longest-waiting account admitted");
+        assert_ne!(second, first, "the next slot must not go to account 1 again");
+        assert_eq!(profiles[second].number, 2, "waiting order, not list order");
+
+        let third = next_admitted(Some(profiles[second].number), 0).expect("next account admitted");
+        assert_eq!(profiles[third].number, 3);
     }
 
     #[test]

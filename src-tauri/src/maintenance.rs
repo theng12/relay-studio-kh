@@ -38,6 +38,9 @@ pub(crate) struct Reply {
     pub unsettled: Vec<String>,
     pub dispatch_paused_s: f64,
     pub in_flight: u32,
+    /// Accounts with `desired_open` that are not open yet: they resume by themselves, so they
+    /// never make `safe` false, but they mean the hold is not idle.
+    pub waiting: u32,
 }
 
 /// The pause: an instant, in memory, never written down anywhere.
@@ -100,7 +103,7 @@ fn wait_for_settle(
     Ok(current)
 }
 
-fn reply(current: Vec<InFlight>, pause_s: f64) -> Reply {
+fn reply(current: Vec<InFlight>, pause_s: f64, waiting: u32) -> Reply {
     let unsettled: Vec<String> = current
         .iter()
         .filter(|item| !item.resumable)
@@ -111,6 +114,32 @@ fn reply(current: Vec<InFlight>, pause_s: f64) -> Reply {
         unsettled,
         dispatch_paused_s: pause_s,
         in_flight: current.len() as u32,
+        waiting,
+    }
+}
+
+fn hold_taken_line(answer: &Reply) -> String {
+    format!(
+        "update hold taken: in_flight={}, waiting={}, dispatch paused {}s",
+        answer.in_flight, answer.waiting, answer.dispatch_paused_s
+    )
+}
+
+fn settled_line(answer: &Reply) -> String {
+    if !answer.unsettled.is_empty() {
+        format!(
+            "update hold unsettled: in_flight={}, waiting={}: {}",
+            answer.in_flight,
+            answer.waiting,
+            answer.unsettled.join(", ")
+        )
+    } else if answer.in_flight == 0 && answer.waiting == 0 {
+        "update hold settled: in_flight=0, waiting=0".to_string()
+    } else {
+        format!(
+            "update hold settled: in_flight={}, waiting={}, every id follows",
+            answer.in_flight, answer.waiting
+        )
     }
 }
 
@@ -120,6 +149,16 @@ pub(crate) fn take(
     pause_s: Option<f64>,
     work: impl FnMut() -> Result<Vec<InFlight>, String>,
 ) -> Result<Reply, String> {
+    take_with_waiting(timeout_s, pause_s, || Ok(0), work)
+}
+
+/// The hold request with the queued-account count injected by the caller.
+pub(crate) fn take_with_waiting(
+    timeout_s: Option<f64>,
+    pause_s: Option<f64>,
+    waiting: impl Fn() -> Result<u32, String>,
+    work: impl FnMut() -> Result<Vec<InFlight>, String>,
+) -> Result<Reply, String> {
     let pause = bounded(pause_s, DEFAULT_PAUSE_S, MIN_PAUSE_S, MAX_PAUSE_S);
     let timeout = bounded(timeout_s, DEFAULT_TIMEOUT_S, 0.0, MAX_TIMEOUT_S);
     {
@@ -127,16 +166,24 @@ pub(crate) fn take(
         // reconcile reads it under the state lock, so waiting here would deadlock the two.
         lock().pause_for(pause);
     }
-    // A failure to read the work leaves the pause standing; it still expires by itself.
-    Ok(reply(wait_for_settle(timeout, work)?, pause))
+    // A failure to read work leaves the pause standing; it still expires by itself.
+    let waiting = waiting()?;
+    Ok(reply(wait_for_settle(timeout, work)?, pause, waiting))
 }
 
 /// The release request: resume at once.
 pub(crate) fn release(
+    work: impl FnMut() -> Result<Vec<InFlight>, String>,
+) -> Result<Reply, String> {
+    release_with_waiting(|| Ok(0), work)
+}
+
+pub(crate) fn release_with_waiting(
+    waiting: impl Fn() -> Result<u32, String>,
     mut work: impl FnMut() -> Result<Vec<InFlight>, String>,
 ) -> Result<Reply, String> {
     lock().resume();
-    Ok(reply(work()?, 0.0))
+    Ok(reply(work()?, 0.0, waiting()?))
 }
 
 #[tauri::command]
@@ -147,25 +194,16 @@ pub(crate) fn maintenance_hold(
     pause_s: Option<f64>,
 ) -> Result<Reply, String> {
     super::local_only(&window)?;
-    let answer = take(timeout_s, pause_s, || crate::browser_manager::hold_work(&manager))?;
-    crate::browser_manager::log_line(
-        &manager,
-        &format!(
-            "update hold taken: in_flight={}, dispatch paused {}s",
-            answer.in_flight, answer.dispatch_paused_s
-        ),
-    );
-    let outcome = if answer.unsettled.is_empty() && answer.in_flight == 0 {
-        "update hold settled: in_flight=0".to_string()
-    } else if answer.unsettled.is_empty() {
-        format!(
-            "update hold settled: in_flight={}, every id follows",
-            answer.in_flight
-        )
-    } else {
-        format!("update hold unsettled: {}", answer.unsettled.join(", "))
-    };
-    crate::browser_manager::log_line(&manager, &outcome);
+    // shortcut: the queued count is injected as 0 until browser_manager exposes its accessor;
+    // integration replaces these closures with `|| crate::browser_manager::waiting_count(&manager)`.
+    let answer = take_with_waiting(
+        timeout_s,
+        pause_s,
+        || Ok(0),
+        || crate::browser_manager::hold_work(&manager),
+    )?;
+    crate::browser_manager::log_line(&manager, &hold_taken_line(&answer));
+    crate::browser_manager::log_line(&manager, &settled_line(&answer));
     Ok(answer)
 }
 
@@ -178,7 +216,7 @@ pub(crate) fn maintenance_release(
 }
 
 fn release_for(manager: &BrowserManager) -> Result<Reply, String> {
-    let answer = release(|| crate::browser_manager::hold_work(manager))?;
+    let answer = release_with_waiting(|| Ok(0), || crate::browser_manager::hold_work(manager))?;
     crate::browser_manager::log_line(manager, "update hold resumed");
     Ok(answer)
 }
@@ -273,21 +311,14 @@ fn hold_http(manager: &BrowserManager, url: &str) -> Result<(u16, Vec<u8>), Stri
     let query = url::Url::parse(&format!("http://127.0.0.1{url}")).map_err(|_| "Invalid hold request.")?;
     let timeout_s = query.query_pairs().find(|(key, _)| key == "timeout_s").and_then(|(_, value)| value.parse::<f64>().ok());
     let pause_s = query.query_pairs().find(|(key, _)| key == "pause_s").and_then(|(_, value)| value.parse::<f64>().ok());
-    let answer = take(timeout_s, pause_s, || crate::browser_manager::hold_work(manager))?;
-    crate::browser_manager::log_line(
-        manager,
-        &format!("update hold taken: in_flight={}, dispatch paused {}s", answer.in_flight, answer.dispatch_paused_s),
-    );
-    crate::browser_manager::log_line(
-        manager,
-        &if answer.unsettled.is_empty() && answer.in_flight == 0 {
-            "update hold settled: in_flight=0".to_string()
-        } else if answer.unsettled.is_empty() {
-            format!("update hold settled: in_flight={}, every id follows", answer.in_flight)
-        } else {
-            format!("update hold unsettled: {}", answer.unsettled.join(", "))
-        },
-    );
+    let answer = take_with_waiting(
+        timeout_s,
+        pause_s,
+        || Ok(0),
+        || crate::browser_manager::hold_work(manager),
+    )?;
+    crate::browser_manager::log_line(manager, &hold_taken_line(&answer));
+    crate::browser_manager::log_line(manager, &settled_line(&answer));
     Ok((200, serde_json::to_vec(&answer).map_err(|error| error.to_string())?))
 }
 
@@ -327,11 +358,28 @@ mod tests {
             unsettled: vec![],
             dispatch_paused_s: 120.0,
             in_flight: 0,
+            waiting: 0,
         };
         let value = serde_json::to_value(&answer).expect("reply encodes");
         let mut keys: Vec<String> = value.as_object().expect("reply is an object").keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["dispatch_paused_s", "in_flight", "safe", "unsettled"]);
+        assert_eq!(keys, ["dispatch_paused_s", "in_flight", "safe", "unsettled", "waiting"]);
+    }
+
+    #[test]
+    fn waiting_accounts_keep_the_hold_from_reading_idle() {
+        let _guard = test_lock();
+        let answer = take_with_waiting(Some(0.0), Some(120.0), || Ok(3), || Ok(vec![]))
+            .expect("hold taken");
+        assert!(answer.safe, "queued accounts resume, so a restart is still safe");
+        assert_eq!(answer.in_flight, 0, "nothing is starting or closing");
+        assert_eq!(answer.waiting, 3, "work waiting is not an idle hold");
+        let taken = hold_taken_line(&answer);
+        let settled = settled_line(&answer);
+        assert!(taken.contains("in_flight=0") && taken.contains("waiting=3"), "{taken}");
+        assert!(settled.contains("in_flight=0") && settled.contains("waiting=3"), "{settled}");
+        release_with_waiting(|| Ok(3), || Ok(vec![])).expect("release");
+        assert!(!paused());
     }
 
     #[test]
