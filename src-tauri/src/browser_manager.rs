@@ -1252,6 +1252,10 @@ struct Stored {
     profiles: Vec<StoredProfile>,
     #[serde(default)]
     settings: StoredSettings,
+    // The account admitted in the last pass, kept on disk so a restart (including an update
+    // restart) continues the rotation instead of starting at the head of the list again.
+    #[serde(default)]
+    last_admitted: Option<u32>,
 }
 
 fn default_schema() -> u8 {
@@ -1268,6 +1272,7 @@ impl Default for Stored {
             next_number: 1,
             profiles: Vec::new(),
             settings: StoredSettings::default(),
+            last_admitted: None,
         }
     }
 }
@@ -1389,9 +1394,6 @@ struct Inner {
     measurement: Measurement,
     // Last launch's per-extension seeding lines, keyed by profile id.
     seeding: HashMap<String, String>,
-    // The account admitted in the last pass, so the next pass visits accounts in
-    // rotation and an account late in the list does not wait forever.
-    last_admitted: Option<u32>,
 }
 
 impl Default for Inner {
@@ -1400,7 +1402,6 @@ impl Default for Inner {
             stored: None,
             load_error: None,
             seeding: HashMap::new(),
-            last_admitted: None,
             errors: HashMap::new(),
             attention: HashSet::new(),
             measurement: Measurement::default(),
@@ -2558,10 +2559,123 @@ pub(crate) fn waiting_count(manager: &BrowserManager) -> Result<u32, String> {
     Ok(stored_or_error(&guard)?
         .profiles
         .iter()
-        .filter(|profile| {
-            profile.desired_open && profile.pid.is_none() && !profile.close_pending
-        })
+        .filter(|profile| waiting(profile))
         .count() as u32)
+}
+
+/// A row that resumes by itself: it wants to open, has no Chrome, is not closing, and has not
+/// used up its attempts. A row at `MAX_OPEN_ATTEMPTS` is never relaunched by reconcile — it waits
+/// for a person to press Open — so counting it would promise a resume that never comes.
+fn waiting(profile: &StoredProfile) -> bool {
+    profile.desired_open
+        && profile.pid.is_none()
+        && !profile.close_pending
+        && profile.open_failures < MAX_OPEN_ATTEMPTS
+}
+
+/// What one admission pass did: whether anything started, and the account rotation resumes after.
+struct Admitted {
+    launched: bool,
+    last_admitted: Option<u32>,
+}
+
+/// One admission pass: visit the accounts in rotation, start the ones memory allows, and record
+/// what each refusal or failure said. A launch before any footprint was measured ends the pass,
+/// so the next account is admitted against a real number rather than a guess.
+#[allow(clippy::too_many_arguments)]
+fn admit_pass(
+    profiles: &mut [StoredProfile],
+    settings: &StoredSettings,
+    measurement: &Measurement,
+    last_admitted: Option<u32>,
+    held: bool,
+    errors: &mut HashMap<String, String>,
+    attention: &mut HashSet<String>,
+    seeding_rows: &mut HashMap<String, String>,
+    log: impl Fn(&str),
+    mut start: impl FnMut(&mut StoredProfile) -> Result<(Vec<String>, Vec<String>), String>,
+) -> Admitted {
+    let mut resident = measurement.alive.len() as u32;
+    let mut used = measurement.used_mb;
+    let mut estimate = measurement
+        .per_profile_mb
+        .or(settings.measured_per_profile_mb);
+    let mut probe_opened = false;
+    let mut launched = false;
+    let mut last_admitted = last_admitted;
+    for index in admission_order(profiles, last_admitted) {
+        if probe_opened {
+            break;
+        }
+        let profile = &profiles[index];
+        if !may_start(profile, held) {
+            continue;
+        }
+        if profile.open_failures >= MAX_OPEN_ATTEMPTS {
+            errors.insert(profile.id.clone(), exit_message(profile.open_failures));
+            attention.insert(profile.id.clone());
+            continue;
+        }
+        let admission = Admission {
+            max_active: settings.max_active,
+            available_mb: measurement.available_mb,
+            reserve_mb: settings.reserve_mb,
+            budget_mb: settings.memory_budget_mb,
+            used_mb: used,
+            per_profile_mb: estimate,
+        };
+        match admission_reason(&admission, resident) {
+            Err(reason) => {
+                // The numbers only exist at the moment of refusal; write them down so the
+                // question "how much does it need, and how much is there" is answerable
+                // from a file rather than from a screen nobody can open.
+                log(&format!(
+                    "admission refused for profile {}: {reason} — room {} MB, reserve {} MB, available {} MB, budget {}, measured per profile {} MB",
+                    profile.id,
+                    admission_room_mb(&admission).map_or("unknown".to_string(), |mb| format!("{mb}")),
+                    admission.reserve_mb,
+                    admission.available_mb.map_or("unknown".to_string(), |mb| format!("{mb}")),
+                    admission.budget_mb.map_or("none".to_string(), |mb| format!("{mb} MB")),
+                    admission.per_profile_mb.map_or("not measured yet".to_string(), |mb| format!("{mb}")),
+                ));
+                errors.insert(profile.id.clone(), reason);
+                attention.remove(&profile.id);
+            }
+            Ok(()) => {
+                let id = profile.id.clone();
+                match start(&mut profiles[index]) {
+                    Ok((problems, seeding)) => {
+                        launched = true;
+                        errors.remove(&id);
+                        attention.remove(&id);
+                        if !seeding.is_empty() {
+                            seeding_rows.insert(id.clone(), seeding.join(" · "));
+                        }
+                        if let Some(first) = problems.first() {
+                            log(&format!("extensions not loaded for profile {id}: {}", problems.join("; ")));
+                            errors.insert(
+                                id.clone(),
+                                format!("Chrome opened, but an extension did not load: {first}"),
+                            );
+                        }
+                        last_admitted = Some(profiles[index].number);
+                        resident = resident.saturating_add(1);
+                        match estimate {
+                            Some(value) => {
+                                used = used.map(|current| current.saturating_add(value));
+                            }
+                            None => probe_opened = true,
+                        }
+                    }
+                    Err(reason) => {
+                        errors.insert(id.clone(), reason);
+                        attention.insert(id);
+                    }
+                }
+            }
+        }
+    }
+    Admitted { launched, last_admitted }
 }
 
 /// One line in lifecycle.log for the update hold's own milestones.
@@ -2766,97 +2880,23 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
 
     let settings = stored.settings.clone();
     let mut seeding_rows: HashMap<String, String> = HashMap::new();
-    let mut resident = measurement.alive.len() as u32;
-    let mut used = measurement.used_mb;
-    let mut estimate = measurement
-        .per_profile_mb
-        .or(settings.measured_per_profile_mb);
-    let mut probe_opened = false;
+    let mut last_admitted = stored.last_admitted;
     let mut launched = false;
-    let mut last_admitted = guard.last_admitted;
     if let Some(chrome_path) = chrome.as_deref() {
-        for index in admission_order(&stored.profiles, last_admitted) {
-            if probe_opened {
-                break;
-            }
-            let profile = &stored.profiles[index];
-            // The update hold is one of the conditions, so taking it closes the start path in
-            // the single place every launch passes through: queued work stays queued and a
-            // browser that never begins never claims.
-            if !may_start(profile, crate::maintenance::paused()) {
-                continue;
-            }
-            if profile.open_failures >= MAX_OPEN_ATTEMPTS {
-                errors.insert(profile.id.clone(), exit_message(profile.open_failures));
-                attention.insert(profile.id.clone());
-                continue;
-            }
-            let admission = Admission {
-                max_active: settings.max_active,
-                available_mb: measurement.available_mb,
-                reserve_mb: settings.reserve_mb,
-                budget_mb: settings.memory_budget_mb,
-                used_mb: used,
-                per_profile_mb: estimate,
-            };
-            match admission_reason(&admission, resident) {
-                Err(reason) => {
-                    // The numbers only exist at the moment of refusal; write them down so the
-                    // question "how much does it need, and how much is there" is answerable
-                    // from a file rather than from a screen nobody can open.
-                    lifecycle_log(
-                        shared,
-                        &format!(
-                            "admission refused for profile {}: {reason} — room {} MB, reserve {} MB, available {} MB, budget {}, measured per profile {} MB",
-                            profile.id,
-                            admission_room_mb(&admission).map_or("unknown".to_string(), |mb| format!("{mb}")),
-                            admission.reserve_mb,
-                            admission.available_mb.map_or("unknown".to_string(), |mb| format!("{mb}")),
-                            admission.budget_mb.map_or("none".to_string(), |mb| format!("{mb} MB")),
-                            admission.per_profile_mb.map_or("not measured yet".to_string(), |mb| format!("{mb}")),
-                        ),
-                    );
-                    errors.insert(profile.id.clone(), reason);
-                    attention.remove(&profile.id);
-                }
-                Ok(()) => {
-                    let id = profile.id.clone();
-                    match launch(shared, &mut stored.profiles[index], chrome_path) {
-                        Ok((problems, seeding)) => {
-                            changed = true;
-                            launched = true;
-                            errors.remove(&id);
-                            attention.remove(&id);
-                            if !seeding.is_empty() {
-                                seeding_rows.insert(id.clone(), seeding.join(" · "));
-                            }
-                            if let Some(first) = problems.first() {
-                                lifecycle_log(
-                                    shared,
-                                    &format!("extensions not loaded for profile {id}: {}", problems.join("; ")),
-                                );
-                                errors.insert(
-                                    id.clone(),
-                                    format!("Chrome opened, but an extension did not load: {first}"),
-                                );
-                            }
-                            last_admitted = Some(stored.profiles[index].number);
-                            resident = resident.saturating_add(1);
-                            match estimate {
-                                Some(value) => {
-                                    used = used.map(|current| current.saturating_add(value));
-                                }
-                                None => probe_opened = true,
-                            }
-                        }
-                        Err(reason) => {
-                            errors.insert(id.clone(), reason);
-                            attention.insert(id);
-                        }
-                    }
-                }
-            }
-        }
+        let admitted = admit_pass(
+            &mut stored.profiles,
+            &settings,
+            &measurement,
+            last_admitted,
+            crate::maintenance::paused(),
+            &mut errors,
+            &mut attention,
+            &mut seeding_rows,
+            |line| lifecycle_log(shared, line),
+            |profile| launch(shared, profile, chrome_path),
+        );
+        launched = admitted.launched;
+        last_admitted = admitted.last_admitted;
     } else {
         for profile in stored.profiles.iter_mut() {
             if profile.desired_open && profile.pid.is_none() && !profile.close_pending {
@@ -2866,6 +2906,13 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
                 );
             }
         }
+    }
+    if launched {
+        changed = true;
+    }
+    if stored.last_admitted != last_admitted {
+        stored.last_admitted = last_admitted;
+        changed = true;
     }
 
     if launched {
@@ -2888,7 +2935,6 @@ fn reconcile(shared: &Shared) -> Result<(), String> {
     guard.measurement = measurement;
     guard.errors = errors;
     guard.attention = attention;
-    guard.last_admitted = last_admitted;
     for (id, line) in seeding_rows {
         guard.seeding.insert(id, line);
     }
@@ -4078,6 +4124,112 @@ mod tests {
 
         let third = next_admitted(Some(profiles[second].number), 0).expect("next account admitted");
         assert_eq!(profiles[third].number, 3);
+    }
+
+    #[test]
+    fn a_row_at_the_attempt_cap_is_not_counted_as_waiting() {
+        let mut at_cap = sample_profile();
+        at_cap.desired_open = true;
+        at_cap.open_failures = MAX_OPEN_ATTEMPTS;
+        let mut under = sample_profile();
+        under.id = "under-cap-000000000000000".into();
+        under.desired_open = true;
+        under.open_failures = MAX_OPEN_ATTEMPTS - 1;
+        assert!(!waiting(&at_cap), "a row at the cap waits for a person to press Open");
+        assert!(waiting(&under));
+        assert!(!waiting(&sample_profile()), "a closed account is not waiting");
+    }
+
+    #[test]
+    fn rotation_survives_a_restart_through_the_state_file() {
+        let mut stored = Stored::default();
+        stored.last_admitted = Some(2);
+        let encoded = serde_json::to_vec(&stored).expect("state encodes");
+        let reloaded = parse_state(&encoded).expect("state reloads");
+        assert_eq!(reloaded.last_admitted, Some(2), "the cursor is on disk, not in memory");
+        // A state written before this field existed still loads, at the head of the list.
+        let old = r#"{"schema":1,"next_number":1,"profiles":[],"settings":{}}"#;
+        assert_eq!(parse_state(old.as_bytes()).expect("old state loads").last_admitted, None);
+    }
+
+    fn measured(per_profile_mb: Option<u64>) -> Measurement {
+        Measurement {
+            physical_mb: Some(8192),
+            available_mb: Some(4096),
+            used_mb: Some(512),
+            per_profile_mb,
+            ..Measurement::default()
+        }
+    }
+
+    #[test]
+    fn a_rotation_pass_resumes_after_a_deleted_account_probes_once_and_keeps_a_failed_launch() {
+        // The pass itself, not `admission_order`: delete the account admitted last, run out of
+        // measurement before a second start, and fail a launch — the wiring is what is proven.
+        let mut stored = Stored::default();
+        for number in 1..=3 {
+            stored.profiles.push(queued_profile(number));
+        }
+        // One slot: each pass admits one account, so the next pass shows the rotation.
+        stored.settings.max_active = Some(1);
+        let settings = stored.settings.clone();
+        let mut errors = HashMap::new();
+        let mut attention = HashSet::new();
+        let mut seeding = HashMap::new();
+        let mut pass = |settings: &StoredSettings, profiles: &mut [StoredProfile], last: Option<u32>, per: Option<u64>, fail: bool, started: &mut Vec<u32>| {
+            admit_pass(
+                profiles,
+                settings,
+                &measured(per),
+                last,
+                false,
+                &mut errors,
+                &mut attention,
+                &mut seeding,
+                |_| {},
+                |profile| {
+                    if fail {
+                        return Err("Chrome exited unexpectedly.".into());
+                    }
+                    started.push(profile.number);
+                    Ok((vec![], vec![]))
+                },
+            )
+        };
+
+        let mut started = Vec::new();
+        let first = pass(&settings, &mut stored.profiles, None, Some(512), false, &mut started);
+        assert_eq!(started, [1], "nothing admitted before: list order");
+        assert_eq!(first.last_admitted, Some(1));
+
+        let second = pass(&settings, &mut stored.profiles, first.last_admitted, Some(512), false, &mut started);
+        assert_eq!(started, [1, 2], "rotation continues after the account admitted last");
+
+        // The account admitted last is deleted; the cursor names nobody, so rotation restarts at
+        // the head instead of panicking or skipping the pass.
+        stored.profiles.retain(|profile| profile.number != second.last_admitted.unwrap_or_default());
+        let third = pass(&settings, &mut stored.profiles, second.last_admitted, Some(512), false, &mut started);
+        assert_eq!(started, [1, 2, 1], "a deleted cursor resumes at the head");
+        assert_eq!(third.last_admitted, Some(1));
+
+        // No footprint measured yet: the pass starts one probe and stops, so the next account is
+        // admitted against a real number rather than a guess.
+        let mut probe_stored = Stored::default();
+        for number in 1..=2 {
+            probe_stored.profiles.push(queued_profile(number));
+        }
+        let mut probe_started = Vec::new();
+        let probe = pass(&probe_stored.settings, &mut probe_stored.profiles, None, None, false, &mut probe_started);
+        assert_eq!(probe_started, [1], "one probe, then the pass waits for its measurement");
+        assert!(probe.launched);
+
+        // A failed launch names itself and leaves the cursor where it was, so the same account is
+        // tried again next pass.
+        let mut failed_started = Vec::new();
+        let failed = pass(&settings, &mut stored.profiles, third.last_admitted, Some(512), true, &mut failed_started);
+        assert!(failed_started.is_empty());
+        assert_eq!(failed.last_admitted, third.last_admitted);
+        assert!(errors.values().any(|error| error.contains("exited unexpectedly")));
     }
 
     #[test]

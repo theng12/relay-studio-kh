@@ -39,7 +39,9 @@ function fixture() {
   }
   const catalogPath = path.join(root, 'extensions.json');
   fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
-  refreshCatalogLock({ catalogPath, root });
+  // reposGroup: null — the fixture's own sibling layout, whatever RELAY_EXTENSION_REPOS
+  // the operator exported for the real build.
+  refreshCatalogLock({ catalogPath, root, reposGroup: null });
   return { base, root, catalogPath };
 }
 
@@ -53,7 +55,7 @@ test('versions compare as Chrome manifest numbers', () => {
 test('a bundle at its repo version passes, and video\'s missing account module is only reported', () => {
   const f = fixture();
   const notes = [];
-  guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: (line) => notes.push(line) });
+  guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: (line) => notes.push(line), reposGroup: null });
   assert.equal(notes.length, 1);
   assert.match(notes[0], /video.*has no src\/lib\/gateway-account\.js/);
 });
@@ -64,7 +66,7 @@ test('a bundle behind its repo fails the build', () => {
   fs.writeFileSync(path.join(repo, 'manifest.json'), JSON.stringify({ manifest_version: 3, version: '1.0.1' }));
   git(repo, ['add', '.']);
   git(repo, ['commit', '-q', '-m', 'bump']);
-  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {} }), /image: bundled manifest 1\.0\.0 is behind its repo 1\.0\.1/);
+  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {}, reposGroup: null }), /image: bundled manifest 1\.0\.0 is behind its repo 1\.0\.1/);
 });
 
 test('a bundle ahead of its repo fails the build', () => {
@@ -72,7 +74,7 @@ test('a bundle ahead of its repo fails the build', () => {
   const catalog = JSON.parse(fs.readFileSync(f.catalogPath, 'utf8'));
   catalog.extensions.find((entry) => entry.id === 'audio').version = '9.9.9';
   fs.writeFileSync(f.catalogPath, JSON.stringify(catalog));
-  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {} }), /audio: bundled manifest 9\.9\.9 is not in its repo/);
+  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {}, reposGroup: null }), /audio: bundled manifest 9\.9\.9 is not in its repo/);
 });
 
 test('the account module cannot fall out of a bundle whose repo carries it', () => {
@@ -81,7 +83,25 @@ test('the account module cannot fall out of a bundle whose repo carries it', () 
   const image = catalog.extensions.find((entry) => entry.id === 'image');
   image.files = image.files.filter((file) => file.path !== 'src/lib/gateway-account.js');
   fs.writeFileSync(f.catalogPath, JSON.stringify(catalog));
-  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {} }), /image: its repo has src\/lib\/gateway-account\.js but the bundled lock omits it/);
+  assert.throws(() => guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {}, reposGroup: null }), /image: its repo has src\/lib\/gateway-account\.js but the bundled lock omits it/);
+});
+
+test('RELAY_EXTENSION_REPOS points the build at a group folder holding <repo>/app', () => {
+  const f = fixture();
+  // The post-move layout: one group folder, each checkout inside its own `<repo>/app`.
+  for (const id of IDS) {
+    const moved = path.join(f.base, 'group', REPOS[id], 'app');
+    fs.mkdirSync(path.dirname(moved), { recursive: true });
+    fs.renameSync(repoDir(f, id), moved);
+  }
+  fs.rmSync(path.join(f.base, 'chrome-extensions'), { recursive: true, force: true });
+  // Passed, not written to process.env: the suite's tests run concurrently, so a global env
+  // change here would leak into another test's fixture.
+  const reposGroup = path.join(f.base, 'group');
+  const out = path.join(f.base, 'payloads');
+  guardBundleAgainstRepos({ catalogPath: f.catalogPath, root: f.root, log: () => {}, reposGroup });
+  stagePinnedPayloads({ catalogPath: f.catalogPath, root: f.root, outputRoot: out, reposGroup });
+  assert.equal(fs.readFileSync(path.join(out, 'video/src/lib/worker.js'), 'utf8'), '// worker\n');
 });
 
 test('staging reads the pinned commit, never the working tree', () => {
@@ -89,7 +109,7 @@ test('staging reads the pinned commit, never the working tree', () => {
   const repo = repoDir(f, 'video');
   fs.writeFileSync(path.join(repo, 'src/lib/worker.js'), '// uncommitted edit\n');
   const out = path.join(f.base, 'payloads');
-  stagePinnedPayloads({ catalogPath: f.catalogPath, root: f.root, outputRoot: out });
+  stagePinnedPayloads({ catalogPath: f.catalogPath, root: f.root, outputRoot: out, reposGroup: null });
   assert.equal(fs.readFileSync(path.join(out, 'video/src/lib/worker.js'), 'utf8'), '// worker\n');
   assert.equal(fs.existsSync(path.join(out, 'video/manifest.json')), true);
   assert.equal(fs.readFileSync(path.join(out, 'image/src/lib/gateway-account.js'), 'utf8'), '// account\n');

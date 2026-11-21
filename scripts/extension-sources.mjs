@@ -21,7 +21,15 @@ const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 const git = (repo, args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const gitBytes = (repo, args) => execFileSync('git', ['-C', repo, ...args], { maxBuffer: 64 * 1024 * 1024 });
 
-const repoRoot = (root, id) => path.resolve(root, EXTENSION_REPOS[id]);
+// Default: a `chrome-extensions` folder beside the app, with each checkout directly inside it.
+// RELAY_EXTENSION_REPOS names a group folder instead, holding `<repo>/app` — the layout after the
+// extensions moved under `_orchestra/developer-extensions` (2026-11-22). Absolute, never a walk
+// from the app's own checkout: the app moved too, so a relative default is right only by accident.
+const repoRoot = (root, id, group = process.env.RELAY_EXTENSION_REPOS) => {
+  return group
+    ? path.join(path.resolve(group), path.basename(EXTENSION_REPOS[id]), 'app')
+    : path.resolve(root, EXTENSION_REPOS[id]);
+};
 const readCatalog = (catalogPath) => JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
 
 function repoHead(repo, id) {
@@ -54,12 +62,12 @@ export function compareVersions(left, right) {
 
 // Fails the build when the bundled version drifts from its repo, or when the repo carries
 // the Gateway account module and the reviewed bundle lock would leave it out.
-export function guardBundleAgainstRepos({ catalogPath, root, log = console.info }) {
+export function guardBundleAgainstRepos({ catalogPath, root, log = console.info, reposGroup = process.env.RELAY_EXTENSION_REPOS }) {
   const catalog = readCatalog(catalogPath);
   for (const id of Object.keys(EXTENSION_REPOS)) {
     const entry = catalog.extensions?.find((item) => item.id === id);
     if (!entry) fail(`catalog has no ${id} entry`);
-    const repo = repoRoot(root, id);
+    const repo = repoRoot(root, id, reposGroup);
     repoHead(repo, id);
     const version = repoVersion(repo, id);
     const order = compareVersions(entry.version, version);
@@ -77,12 +85,12 @@ export function guardBundleAgainstRepos({ catalogPath, root, log = console.info 
 
 // Copies manifest.json + src/** + CHANGELOG.md from each pinned commit into outputRoot/{id}.
 // Bytes come from git objects, so a dirty working tree can never leak into a release.
-export function stagePinnedPayloads({ catalogPath, outputRoot, root }) {
+export function stagePinnedPayloads({ catalogPath, outputRoot, root, reposGroup = process.env.RELAY_EXTENSION_REPOS }) {
   const catalog = readCatalog(catalogPath);
   for (const id of Object.keys(EXTENSION_REPOS)) {
     const entry = catalog.extensions.find((item) => item.id === id);
     if (entry.accepted === false) continue;
-    const repo = repoRoot(root, id);
+    const repo = repoRoot(root, id, reposGroup);
     if (typeof entry.source_commit !== 'string' || !/^[0-9a-f]{40}$/.test(entry.source_commit)) {
       fail(`extension ${id}: accepted requires a pinned 40-hex source_commit`);
     }
@@ -113,10 +121,10 @@ export function stagePinnedPayloads({ catalogPath, outputRoot, root }) {
 
 // Rewrites desktop/extensions.json from the repos' HEAD commits. This is the deliberate
 // step for a new extension version; the build itself only verifies and stages.
-export function refreshCatalogLock({ catalogPath, root }) {
+export function refreshCatalogLock({ catalogPath, root, reposGroup = process.env.RELAY_EXTENSION_REPOS }) {
   const catalog = readCatalog(catalogPath);
   for (const id of Object.keys(EXTENSION_REPOS)) {
-    const repo = repoRoot(root, id);
+    const repo = repoRoot(root, id, reposGroup);
     const commit = repoHead(repo, id);
     const manifestBytes = gitBytes(repo, ['show', 'HEAD:manifest.json']);
     const manifest = JSON.parse(manifestBytes.toString('utf8'));

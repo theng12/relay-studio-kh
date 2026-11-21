@@ -1,5 +1,11 @@
 # What's New
 
+## 0.3.36 — 2026-11-22
+- An account that has stopped trying to open is no longer counted as waiting. When an update takes its pause, Relay used to say "N waiting" for accounts it will not reopen until you press Open on them — so a hold could promise work would resume by itself when it would not.
+- Accounts keep their turn across a restart. Before, restarting Relay — an update restart included — began the rotation at the top of the list again, so an account further down waited longer than its turn.
+- Relay's build no longer depends on folders that moved on this Mac. Nothing about how Relay works changes.
+- Relay's release entry now carries its one-line description, so the Launcher card is not blank.
+
 ## 0.3.35 — 2026-11-22
 - The saved accounts are back on screen. The add form is one row, its help is one line and the bulk buttons sit in the filter bar, so the first account starts well inside the window at every size — before, it began below the fold.
 - Account rows speak plainly: "Closed · Relay can open it" instead of "open not requested", and "Gateway has not confirmed it" instead of a readback term. The memory line on that page is one short sentence; the Memory page keeps the full breakdown.

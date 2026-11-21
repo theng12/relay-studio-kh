@@ -167,8 +167,10 @@ pub(crate) fn take_with_waiting(
         lock().pause_for(pause);
     }
     // A failure to read work leaves the pause standing; it still expires by itself.
-    let waiting = waiting()?;
-    Ok(reply(wait_for_settle(timeout, work)?, pause, waiting))
+    // Both numbers are read at the same point on hold and on release: after the settle call,
+    // so the reply describes the state the caller is about to restart into.
+    let current = wait_for_settle(timeout, work)?;
+    Ok(reply(current, pause, waiting()?))
 }
 
 /// The release request: resume at once.
@@ -183,7 +185,8 @@ pub(crate) fn release_with_waiting(
     mut work: impl FnMut() -> Result<Vec<InFlight>, String>,
 ) -> Result<Reply, String> {
     lock().resume();
-    Ok(reply(work()?, 0.0, waiting()?))
+    let current = work()?;
+    Ok(reply(current, 0.0, waiting()?))
 }
 
 #[tauri::command]
@@ -381,6 +384,42 @@ mod tests {
         assert!(settled.contains("in_flight=0") && settled.contains("waiting=3"), "{settled}");
         release_with_waiting(|| Ok(3), || Ok(vec![])).expect("release");
         assert!(!paused());
+    }
+
+    #[test]
+    fn work_and_waiting_are_read_at_the_same_point_on_hold_and_on_release() {
+        let _guard = test_lock();
+        let order = std::cell::RefCell::new(Vec::new());
+        let answer = take_with_waiting(
+            Some(0.0),
+            Some(120.0),
+            || {
+                order.borrow_mut().push("waiting");
+                Ok(2)
+            },
+            || {
+                order.borrow_mut().push("work");
+                Ok(vec![])
+            },
+        )
+        .expect("hold taken");
+        assert_eq!(answer.waiting, 2);
+        assert_eq!(*order.borrow(), ["work", "waiting"], "the reply describes the state after the settle");
+
+        order.borrow_mut().clear();
+        let answered = release_with_waiting(
+            || {
+                order.borrow_mut().push("waiting");
+                Ok(1)
+            },
+            || {
+                order.borrow_mut().push("work");
+                Ok(vec![])
+            },
+        )
+        .expect("release");
+        assert_eq!(answered.waiting, 1);
+        assert_eq!(*order.borrow(), ["work", "waiting"], "the same point on release");
     }
 
     #[test]
