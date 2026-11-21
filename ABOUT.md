@@ -1,9 +1,8 @@
 # Relay Studio KH — what it is
 
 Relay Studio KH manages saved Chrome accounts for the owner's browser image and
-video generators and connects their workers to Gateway Studio KH. Most of it ships
-as a connector pane inside Gateway's Providers screen; a Mac desktop shell is being
-prepared but is not a compiled app yet.
+video generators and connects their workers to Gateway Studio KH. It ships both as
+a connector pane inside Gateway's Providers screen and as a signed Mac desktop app.
 
 ## What it does
 
@@ -25,17 +24,21 @@ prepared but is not a compiled app yet.
 - Prepares reviewed image and video extension payloads for the user to load
   unpacked in Chrome; audio is owner-skipped, off and unavailable. No extension
   source is vendored here.
-- Provides a Mac Tauri 2 source candidate with a settings window, a Gateway
-  window, start-at-login default and single-instance handling. It has not been
-  compiled, packaged, installed or qualified; native bundling is disabled.
+- Ships the Mac Tauri 2 desktop app — bundle id `kh.relay.desktop`, signed with the shared
+  `KH Studio Local Signing` identity — with a settings window, a Gateway window, an update hold
+  on fixed loopback port 8648 (per the update-hold contract), start-at-login and
+  single-instance handling. It is published to the signed 1301 feed as a signed DMG.
 - Keeps fixture previews and HTTP proofs explicitly labeled as development only,
   never as production installation or provider readiness.
 
 ## How it is built
 
 Node build and connector assets (`desktop/`, `scripts/`), web UI and fixtures
-(`web/`, `test/`), and a Tauri 2/Rust shell under `src-tauri/` that is source-only
-in this window. Python scripts help prepare icons and release assets.
+(`web/`, `test/`), and the Tauri 2/Rust app under `src-tauri/`. Python scripts help
+prepare icons and release assets. Every release is gated by
+`_orchestra/tools/gate-run.sh _orchestra/tools/gate-configs/relay.sh`, which exports
+`KH_SHARED_UI` and `RELAY_EXTENSION_REPOS` — build paths are absolute, never resolved
+relative to this checkout.
 
 Build the Gateway connector fragment with:
 
@@ -51,5 +54,7 @@ release of the fragment.
 
 ## Current version
 
-0.3.33, from the root `VERSION` file, which the connector build reads; the newest
-`CHANGELOG.md` entry agrees. `package.json` has no version field.
+0.3.36, from the root `VERSION` file, which the connector build reads; the newest
+`CHANGELOG.md` entry agrees. `package.json` has no version field. 0.3.36 is on the
+signed 1301 feed (sha256 4689e8b8…0da4, read back 2026-11-22); installs go through
+Studio Launcher. Release receipts live in `_orchestra/developer-media/relay-studio-kh/lead/`.
