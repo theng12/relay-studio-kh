@@ -1,5 +1,8 @@
 # What's New
 
+## 0.3.37 — 2026-11-22
+- Relay's release card now carries its full description on the Launcher, alongside the one-line summary 0.3.36 added. Nothing about how Relay works changes.
+
 ## 0.3.36 — 2026-11-22
 - An account that has stopped trying to open is no longer counted as waiting. When an update takes its pause, Relay used to say "N waiting" for accounts it will not reopen until you press Open on them — so a hold could promise work would resume by itself when it would not.
 - Accounts keep their turn across a restart. Before, restarting Relay — an update restart included — began the rotation at the top of the list again, so an account further down waited longer than its turn.
