@@ -138,11 +138,11 @@ Build fixtures use Node's temporary directory by default; set `RELAY_TEST_ROOT` 
 
 ## Sources and ownership
 
-- Canonical extension handoff: `/build/Developer/chrome-extensions/_handoffs/2026-11-09-gateway-extension-provider-handoff.md`.
-- Extension sources: `/build/Developer/chrome-extensions/story-studio-{video,image,audio}-generator`.
-- Gateway: `/build/Developer/gateway-kh/repository`, owned by its existing lead.
+- Canonical extension handoff: `~/Developer/chrome-extensions/_handoffs/2026-11-09-gateway-extension-provider-handoff.md`.
+- Extension sources: `~/Developer/chrome-extensions/story-studio-{video,image,audio}-generator`.
+- Gateway: `~/Developer/gateway-kh/repository`, owned by its existing lead.
 - Canonical request: claude-mem `My Own Apps / relay-studio-kh-requests`; Developer's list is a coordinator pointer.
-- Operational evidence: `/build/Developer/_orchestra/relay-lead/`.
+- Operational evidence: `~/Developer/_orchestra/relay-lead/`.
 - Owner deliverables: `~/Desktop/All YouTube Stuff/Apps/Relay Studio KH/`.
 
 The video checkout contains intentional uncommitted owner work. Read-only use is approved; overlapping edits require verified writer handover. Do not stash, reset or commit those files here. Scoped worker access over This Mac's existing LAN/Tailscale is approved. Paid generation/capture, public publishing, unrelated OS/security changes and 1301 activation remain excluded.

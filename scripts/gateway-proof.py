@@ -14,7 +14,8 @@ from unittest.mock import patch
 LOCK = json.loads(Path(__file__).with_name('gateway-proof-lock.json').read_text())
 if LOCK.get('schema') != 1 or LOCK.get('status') != 'reviewed-merged':
     raise RuntimeError('Gateway proof is pending review of the final merged source; no fixture was started.')
-GATEWAY = Path(os.environ.get('RELAY_GATEWAY_SOURCE', '/build/Developer/My Own Apps/gateway-kh/repository')).resolve()
+GATEWAY = Path(os.environ.get('RELAY_GATEWAY_SOURCE')
+               or Path.home() / 'Developer' / 'My Own Apps' / 'gateway-kh' / 'repository').resolve()
 EXPECTED = LOCK['gateway']['commit']
 SOURCE_FILES = ('gateway/extension_workers.py', 'gateway/adapters/chrome_extension.py')
 if not isinstance(EXPECTED, str) or not re.fullmatch(r'[0-9a-f]{40}', EXPECTED):

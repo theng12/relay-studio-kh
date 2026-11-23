@@ -1,16 +1,16 @@
 # Relay lead and workers
 
-**Efficient delegation and parallel work (owner 2026-11-10):** Invoke the global `efficient-orchestration` skill for multi-step coordination after required ponytail; follow the authoritative [Efficient delegation and parallel work section](/build/Developer/_orchestra/developer-handoff/LEAD-RULES.md#efficient-delegation-and-parallel-work). Relay and its image/video/audio leads own complete bounded implementation/check/review/fix outcomes and brief workers with required skills, graph queries, exact working folders, source and owned files. Run independent source/light work in parallel; serialize only conflicting writers, the existing KH Apps heavy-job schedule and conflicting target actions. This supersedes blanket one-app source/light parks; existing permission, release, device, security, paid/public and Production holds remain.
+**Efficient delegation and parallel work (owner 2026-11-10):** Invoke the global `efficient-orchestration` skill for multi-step coordination after required ponytail; follow the authoritative [Efficient delegation and parallel work section]($HOME/Developer/_orchestra/developer-handoff/LEAD-RULES.md#efficient-delegation-and-parallel-work). Relay and its image/video/audio leads own complete bounded implementation/check/review/fix outcomes and brief workers with required skills, graph queries, exact working folders, source and owned files. Run independent source/light work in parallel; serialize only conflicting writers, the existing KH Apps heavy-job schedule and conflicting target actions. This supersedes blanket one-app source/light parks; existing permission, release, device, security, paid/public and Production holds remain.
 
 First tool call each session and after compaction: invoke `ponytail` via Skill. Before hand search run:
 
 ```bash
-graphify query "chrome extension provider worker API claim progress result credits" --budget 1500 --graph /build/Developer/_graphs/gateway/graphify-out/graph.json
+graphify query "chrome extension provider worker API claim progress result credits" --budget 1500 --graph $HOME/Developer/_graphs/gateway/graphify-out/graph.json
 ```
 
 The graph describes main; verify actual unreleased source. Never update the shared graph. Give every worker these first steps, exact paths, one deliverable and owned files. Invoke headroom before files over roughly 500 lines; impeccable for UI work. End reports with actual skills and graph queries.
 
-Follow shared `/build/Developer/_orchestra/developer-handoff/LEAD-RULES.md` sections Who does what, Every task, Finish through until complete, Every app version + What's New, and Stable app signing. Read applicable instructions for any extension scope touched. Do not transplant Gateway rules into a new runtime.
+Follow the shared `$HOME/Developer/_orchestra/developer-handoff/LEAD-RULES.md` sections Who does what, Every task, Finish through until complete, Every app version + What's New, and Stable app signing. Read applicable instructions for any extension scope touched. Do not transplant Gateway rules into a new runtime.
 
 This project owns only its files. Preserve intentional dirty extension work. Gateway changes go through its existing lead; Story changes go through Developer. Prefer Gateway-native worker integration; a new server is not authorized. Do not expose a second Story endpoint.
 
