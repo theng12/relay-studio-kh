@@ -5,5 +5,12 @@
     <link>https://theng12.github.io/relay-studio-kh/appcast.xml</link>
     <description>Relay Studio KH releases</description>
     <language>en</language>
+    <item>
+      <title>Relay Studio KH 0.3.38</title>
+      <sparkle:version>0.3.38</sparkle:version>
+      <sparkle:shortVersionString>0.3.38</sparkle:shortVersionString>
+      <enclosure url="https://github.com/theng12/relay-studio-kh/releases/download/0.3.38/96af6233602d-Relay.Studio.KH_0.3.38_aarch64.dmg" sparkle:edSignature="w8CCyeFjt29N4nhOMDVcF0ZqDXJNtQc/znydfAQFOh2mlVCnCfeOnXfXKQtCi+0ihAUEzioj2/rkmrjMRRS+Dg==" length="6112952" type="application/octet-stream"/>
+      <pubDate>Mon, 23 Nov 2026 14:36:36 +0000</pubDate>
+    </item>
   </channel>
 </rss>
