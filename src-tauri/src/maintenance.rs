@@ -245,28 +245,93 @@ fn origin_allowed(origin: Option<&str>) -> bool {
 /// The estate's hold token: a 0600 regular file of 64 hex characters. A missing, empty, loose or
 /// unreadable file is a refusal, never a skipped check (INTEGRATION.md §0; row `20261123-77`), and
 /// the reply is 401 — never a 200 that reads as a refusal.
+///
+/// Relay reads its own file only. `KHHoldTokenFile` in the bundle names the same path, so the shim
+/// and the route agree on the one token.
 fn hold_token_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .map(|home| Path::new(&home).join("Library/Application Support/kh.relay.desktop/hold-token"))
+}
+
+/// The shared estate file other KH apps still point at. Read once, copied, never read again.
+fn legacy_hold_token_path() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|home| Path::new(&home).join("Library/KHUpdater/state/hold-token"))
 }
 
 #[cfg(unix)]
-fn authorized(authorization: Option<&str>, token_path: Option<&Path>) -> bool {
-    let Some(path) = token_path else {
-        return false;
-    };
+fn valid_token_file(path: &Path) -> bool {
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
     if !meta.is_file() || meta.permissions().mode() & 0o077 != 0 {
         return false;
     }
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let raw = raw.trim();
+    raw.len() == 64 && raw.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// The sentence the app shows to the person when there is no token to hold with.
+pub(crate) const NO_HOLD_TOKEN: &str =
+    "Relay can't check for updates: its update permission file is missing.";
+
+/// Move the token onto Relay's own file before the shim starts. There is no path where an absent
+/// token is quietly skipped: no own file and no legacy file is a refusal, with a sentence the
+/// person can see.
+/// Copy a valid estate token onto Relay's own file at 0600. Returns the source it came from;
+/// `None` when the estate file is absent or invalid, so the caller refuses.
+#[cfg(unix)]
+fn migrate_token(own: &Path, legacy: &Path) -> Option<std::path::PathBuf> {
+    if !valid_token_file(legacy) {
+        return None;
+    }
+    std::fs::create_dir_all(own.parent()?).ok()?;
+    std::fs::copy(legacy, own).ok()?;
+    std::fs::set_permissions(own, std::fs::Permissions::from_mode(0o600)).ok()?;
+    valid_token_file(own).then(|| legacy.to_path_buf())
+}
+
+#[cfg(unix)]
+pub(crate) fn prepare_hold_token(manager: &BrowserManager) -> Result<(), String> {
+    let Some(own) = hold_token_path() else {
+        return Err(NO_HOLD_TOKEN.to_string());
+    };
+    if valid_token_file(&own) {
+        return Ok(());
+    }
+    let copied = legacy_hold_token_path()
+        .as_deref()
+        .and_then(|legacy| migrate_token(&own, legacy));
+    match copied {
+        Some(legacy) => {
+            crate::browser_manager::log_line(
+                manager,
+                &format!(
+                    "hold token copied once from {} to {}",
+                    legacy.display(),
+                    own.display()
+                ),
+            );
+            Ok(())
+        }
+        _ => {
+            crate::browser_manager::log_line(manager, &format!("update hold: {NO_HOLD_TOKEN}"));
+            Err(NO_HOLD_TOKEN.to_string())
+        }
+    }
+}
+
+#[cfg(unix)]
+fn authorized(authorization: Option<&str>, token_path: Option<&Path>) -> bool {
+    let Some(path) = token_path.filter(|path| valid_token_file(path)) else {
+        return false;
+    };
     let Ok(expected) = std::fs::read_to_string(path) else {
         return false;
     };
     let expected = expected.trim();
-    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return false;
-    }
     let Some(given) = authorization.and_then(|value| value.strip_prefix("Bearer ")) else {
         return false;
     };
@@ -524,6 +589,33 @@ mod tests {
         std::fs::write(&path, "xyz").expect("token");
         assert!(!authorized(Some(&format!("Bearer {token}")), Some(&path)), "not 64 hex is a refusal");
         assert!(!authorized(Some(&format!("Bearer {token}")), None), "a missing token file is a refusal");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_token_is_copied_once_from_the_estate_file_and_never_read_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("relay-hold-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let own = dir.join("support/hold-token");
+        let legacy = dir.join("estate/hold-token");
+        std::fs::create_dir_all(legacy.parent().expect("estate dir")).expect("estate dir");
+        let first = "a".repeat(64);
+        std::fs::write(&legacy, &first).expect("legacy token");
+        std::fs::set_permissions(&legacy, std::fs::Permissions::from_mode(0o600)).expect("mode");
+        assert!(migrate_token(&own, &legacy).is_some(), "a valid estate token is copied");
+        assert!(valid_token_file(&own), "the own file is the token from now on");
+        let mode = std::fs::metadata(&own).expect("own").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the copy keeps the token private");
+        // The estate file changing later must not reach Relay: its own file already exists.
+        std::fs::write(&legacy, "b".repeat(64)).expect("legacy changed");
+        assert!(valid_token_file(&own));
+        assert_eq!(std::fs::read_to_string(&own).expect("own").trim(), first);
+        // Neither file, or an invalid estate file, is a refusal.
+        std::fs::remove_file(&own).expect("remove own");
+        std::fs::set_permissions(&legacy, std::fs::Permissions::from_mode(0o644)).expect("mode");
+        assert!(migrate_token(&own, &legacy).is_none(), "a loose estate token is not copied");
+        assert!(!valid_token_file(&own));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

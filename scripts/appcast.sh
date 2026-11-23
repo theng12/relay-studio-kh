@@ -7,7 +7,7 @@
 # The private key stays outside the repo and CI (~/.kh-sparkle/kh.relay.desktop/private.key).
 set -eu
 VERSION="${1:?version}"; DMG="${2:?dmg}"; URL="${3:?download url}"; DOCS="${4:-docs}"
-SHIM="${KH_SPARKLE_SHIM:-/build/Developer/_orchestra/developer-system/sparkle-shim-20261123}"
+SHIM="${KH_SPARKLE_SHIM:-$HOME/Developer/_orchestra/developer-system/sparkle-shim-20261123}"
 KEY="${RELAY_SPARKLE_KEY:-$HOME/.kh-sparkle/kh.relay.desktop/private.key}"
 [ -f "$DMG" ] || { echo "no DMG at $DMG"; exit 1; }
 [ -f "$KEY" ] || { echo "no signing key at $KEY"; exit 1; }

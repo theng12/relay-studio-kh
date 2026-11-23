@@ -5,7 +5,9 @@
 # untouched. Panic messages themselves are unchanged; only the prefix differs. A prefix that does
 # not exist on the build machine simply never matches.
 [build]
-rustflags = ["--remap-path-prefix=/build=/build"]
+# The remap itself lives in the wrapper, which resolves $HOME at build time: a committed literal
+# would name one machine's home, and cargo does not expand variables inside rustflags.
+rustc-wrapper = "scripts/rustc-remap.sh"
 
 # The test binary links Sparkle through the shim but is not inside a bundle, so dyld needs the
 # vendored framework here instead of at @executable_path/../Frameworks. `relative = true` resolves

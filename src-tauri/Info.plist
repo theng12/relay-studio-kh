@@ -11,7 +11,7 @@
 	<key>KHHoldURL</key>
 	<string>http://127.0.0.1:8648/api/maintenance/hold</string>
 	<key>KHHoldTokenFile</key>
-	<string>~/Library/KHUpdater/state/hold-token</string>
+	<string>~/Library/Application Support/kh.relay.desktop/hold-token</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 </dict>

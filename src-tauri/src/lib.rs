@@ -695,6 +695,13 @@ pub fn run() {
                 builder = builder.position(frame.x, frame.y);
             }
             let main = builder.build()?;
+            // The token lives on Relay's own file; the estate file is copied across once, before the
+            // shim reads it. No token at all is a refusal the person sees, not only a log line.
+            if let Err(sentence) = maintenance::prepare_hold_token(
+                &app.state::<browser_manager::BrowserManager>(),
+            ) {
+                let _ = main.emit("relay-error", sentence);
+            }
             // After the window exists (INTEGRATION.md §2). The shim holds Relay first and only a
             // 200 with `safe:true` opens the gate; a missing token refuses the update, and a
             // refusal here never blocks Relay's own work.
@@ -703,6 +710,7 @@ pub fn run() {
                     &app.state::<browser_manager::BrowserManager>(),
                     &format!("kh-sparkle: update check refused: {reason}"),
                 );
+                let _ = main.emit("relay-error", format!("Relay can't check for updates: {reason}"));
             }
             // Mint a worker token per bound kind through the pairing token, off the UI thread.
             let pairing_handle = app.handle().clone();
