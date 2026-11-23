@@ -123,7 +123,7 @@
       "id": "image",
       "name": "Image generator",
       "version": "0.50.34",
-      "source_commit": "f22a4c0e8712d5e41df904aa2c5d487d918725d4",
+      "source_commit": "db629ad9631055ab82d528e428d03bba645c0522",
       "accepted": true,
       "manifest_sha256": "e4965d16cba87d32dad238556519dc8d3b516cdd512ff85420fd1bd1bf3fc821",
       "files": [
@@ -301,7 +301,7 @@
       "id": "audio",
       "name": "Audio generator — not working yet",
       "version": "0.7.36",
-      "source_commit": "e60cd30dddd176b192e1b63ac3e94804412c2100",
+      "source_commit": "8d141a78d329c0fa4b1efaf710b49bf376ab4314",
       "required": false,
       "accepted": true,
       "manifest_sha256": "f8a942a060be8ace2bba941029d2b745504979e5e84573eb7a6dd08d7487bc57",
