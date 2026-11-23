@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by Tauri at bundle time (MacConfig.infoPlist), so the keys
+     are written on every build and no later step can drop them. The shim reads them at start. -->
+<plist version="1.0">
+<dict>
+	<key>SUFeedURL</key>
+	<string>https://theng12.github.io/relay-studio-kh/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>iVcht+QxnA8+7/ebKi4lTJmJy7ERyP1ifQQ39uOiLo0=</string>
+	<key>KHHoldURL</key>
+	<string>http://127.0.0.1:8648/api/maintenance/hold</string>
+	<key>KHHoldTokenFile</key>
+	<string>~/Library/KHUpdater/state/hold-token</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+</dict>
+</plist>

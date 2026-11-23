@@ -3,6 +3,7 @@ mod devtools;
 mod extensions;
 mod maintenance;
 mod seeding;
+mod sparkle;
 mod storage;
 mod login_item;
 mod manager_gateway;
@@ -694,6 +695,15 @@ pub fn run() {
                 builder = builder.position(frame.x, frame.y);
             }
             let main = builder.build()?;
+            // After the window exists (INTEGRATION.md §2). The shim holds Relay first and only a
+            // 200 with `safe:true` opens the gate; a missing token refuses the update, and a
+            // refusal here never blocks Relay's own work.
+            if let Err(reason) = sparkle::start() {
+                browser_manager::log_line(
+                    &app.state::<browser_manager::BrowserManager>(),
+                    &format!("kh-sparkle: update check refused: {reason}"),
+                );
+            }
             // Mint a worker token per bound kind through the pairing token, off the UI thread.
             let pairing_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

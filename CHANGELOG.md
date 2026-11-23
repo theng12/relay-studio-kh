@@ -1,5 +1,9 @@
 # What's New
 
+## 0.3.38 — 2026-11-23
+- Relay now updates itself. When a new version is on the release page it asks Relay to pause first — browsers stay open, queued accounts stay queued — and only a hold that answers "safe, nothing would be stranded" lets the update go ahead. A missing or invalid hold token refuses the update instead of guessing.
+- Update checks use Relay's own signing key, so an update that was not signed for this app is never installed.
+
 ## 0.3.37 — 2026-11-22
 - Relay's release card now carries its full description on the Launcher, alongside the one-line summary 0.3.36 added. Nothing about how Relay works changes.
 

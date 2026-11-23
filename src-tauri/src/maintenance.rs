@@ -7,6 +7,9 @@
 //! always starts open — an install that aborts can never leave Relay refusing work.
 
 use serde::Serialize;
+use std::path::Path;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -239,6 +242,43 @@ fn origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
+/// The estate's hold token: a 0600 regular file of 64 hex characters. A missing, empty, loose or
+/// unreadable file is a refusal, never a skipped check (INTEGRATION.md §0; row `20261123-77`), and
+/// the reply is 401 — never a 200 that reads as a refusal.
+fn hold_token_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|home| Path::new(&home).join("Library/KHUpdater/state/hold-token"))
+}
+
+#[cfg(unix)]
+fn authorized(authorization: Option<&str>, token_path: Option<&Path>) -> bool {
+    let Some(path) = token_path else {
+        return false;
+    };
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() || meta.permissions().mode() & 0o077 != 0 {
+        return false;
+    }
+    let Ok(expected) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let expected = expected.trim();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return false;
+    }
+    let Some(given) = authorization.and_then(|value| value.strip_prefix("Bearer ")) else {
+        return false;
+    };
+    let given = given.trim();
+    given.len() == expected.len()
+        && given
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+            == 0
+}
+
 /// The installer speaks HTTP, not Tauri IPC. Serve the contract on a fixed loopback port.
 pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
     let server = match tiny_http::Server::http(("127.0.0.1", PORT)) {
@@ -276,6 +316,25 @@ pub(crate) fn start_http_listener(app: &tauri::AppHandle) {
                         .with_header(
                             tiny_http::Header::from_bytes("Content-Type", "text/plain").expect("header"),
                         ),
+                    );
+                    continue;
+                }
+                let authorization = request
+                    .headers()
+                    .iter()
+                    .find(|header| header.field.equiv("Authorization"))
+                    .map(|header| header.value.as_str());
+                if !authorized(authorization, hold_token_path().as_deref()) {
+                    crate::browser_manager::log_line(
+                        &manager,
+                        "update hold refused: missing or invalid hold token",
+                    );
+                    let _ = request.respond(
+                        tiny_http::Response::from_data(b"Unauthorized".to_vec())
+                            .with_status_code(401)
+                            .with_header(
+                                tiny_http::Header::from_bytes("Content-Type", "text/plain").expect("header"),
+                            ),
                     );
                     continue;
                 }
@@ -443,6 +502,29 @@ mod tests {
         assert!(!hold.paused_at(start + Duration::from_secs(121)), "it expires from the clock alone");
         hold.resume();
         assert!(!hold.is_paused(), "DELETE resumes at once");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_hold_token_must_be_a_0600_64_hex_file_presented_as_bearer() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("relay-hold-token-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("token dir");
+        let path = dir.join("hold-token");
+        let token = "a".repeat(64);
+        std::fs::write(&path, &token).expect("token");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("mode");
+        assert!(authorized(Some(&format!("Bearer {token}")), Some(&path)), "the matching token passes");
+        assert!(!authorized(None, Some(&path)), "no token presented is a refusal");
+        assert!(!authorized(Some(&format!("bearer {token}")), Some(&path)), "the scheme is exact");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("mode");
+        assert!(!authorized(Some(&format!("Bearer {token}")), Some(&path)), "a loose token file is a refusal");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("mode");
+        std::fs::write(&path, "xyz").expect("token");
+        assert!(!authorized(Some(&format!("Bearer {token}")), Some(&path)), "not 64 hex is a refusal");
+        assert!(!authorized(Some(&format!("Bearer {token}")), None), "a missing token file is a refusal");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

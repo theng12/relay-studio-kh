@@ -6,3 +6,9 @@
 # not exist on the build machine simply never matches.
 [build]
 rustflags = ["--remap-path-prefix=/build=/build"]
+
+# The test binary links Sparkle through the shim but is not inside a bundle, so dyld needs the
+# vendored framework here instead of at @executable_path/../Frameworks. `relative = true` resolves
+# against the folder holding .cargo — this repo's is at the root, so the value keeps src-tauri/ (INTEGRATION.md §3A).
+[env]
+DYLD_FRAMEWORK_PATH = { value = "src-tauri/vendor/khsparkle", relative = true }
