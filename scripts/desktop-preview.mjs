@@ -22,6 +22,8 @@ window.__TAURI__ = { event: { listen: async () => () => {} }, core: { invoke: as
   const recorded = {...args}; if ('token' in recorded) recorded.token = '[redacted]';
   window.__relayFixture.calls.push({name,args:recorded});
   if (name === 'get_settings') return structuredClone(settings);
+  // The fixture's own scratch folder, so the Settings card reads honestly instead of erroring.
+  if (name === 'data_folder') return '/var/folders/relay-fixture-data';
   if (name === 'save_settings') {
     if (args.gatewayUrl) {
       const url = new URL(args.gatewayUrl);
@@ -95,10 +97,16 @@ createServer(async (req,res) => {
   res.setHeader('Cache-Control','no-store');
   if(req.url==='/fixture-bridge.js') {res.setHeader('Content-Type','text/javascript');res.end(bridge);return;}
   if(req.url==='/favicon.ico') {res.writeHead(204).end();return;}
-  const entry=files.get(req.url); if(!entry) {res.writeHead(404).end();return;}
+  // /capture.html is the same page without the fixture banner, for release screenshots of the
+  // real UI with fixture data. Nothing else differs.
+  const capture = req.url === '/capture.html';
+  const entry=files.get(capture ? '/' : req.url); if(!entry) {res.writeHead(404).end();return;}
   try {
     let body=await readFile(new URL(entry[0],assets), entry[1]==='image/png' ? undefined : 'utf8');
-    if(entry[0]==='index.html') body=body.replace('<script type="module"','<script src="./fixture-bridge.js"></script><script type="module"').replace('<body>','<body><p style="color:#e7edf6;background:#151b24;padding:12px;font:13px system-ui;margin:0">Browser fixture — synthetic accounts and memory. No Chrome processes, Keychain items, saved login preferences or Gateway jobs are changed.</p>');
+    if(entry[0]==='index.html') {
+      body=body.replace('<script type="module"','<script src="./fixture-bridge.js"></script><script type="module"');
+      if(!capture) body=body.replace('<body>','<body><p style="color:#e7edf6;background:#151b24;padding:12px;font:13px system-ui;margin:0">Browser fixture — synthetic accounts and memory. No Chrome processes, Keychain items, saved login preferences or Gateway jobs are changed.</p>');
+    }
     res.setHeader('Content-Type',entry[1]);res.end(body);
   } catch {res.writeHead(500).end('Prepare desktop web assets first.');}
 }).listen(port,'127.0.0.1',()=>console.info('Desktop browser fixture ready at http://127.0.0.1:'+port+'; real native behavior is unverified.'));

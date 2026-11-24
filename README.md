@@ -2,6 +2,14 @@
 
 Relay manages saved Chrome accounts for the existing image and video browser generators and connects their workers to Gateway Studio KH. Browser TTS is owner-skipped, optional and off. The existing connector remains a pane in Gateway's Providers screen; the Mac shell adds real on-demand Chrome profile lifecycle and a local account list. Gateway owns authentication, jobs, models/capabilities, shared account credits, reservations, artifacts and deployment. No separate production service is added.
 
+## What it looks like
+
+![Relay's overview: saved accounts, browsers open, memory budget and Gateway status](docs/screenshots/overview-light.png)
+
+![Relay's Accounts page: each saved Chrome account with its connection and activity state](docs/screenshots/accounts-light.png)
+
+More: [Settings in light](docs/screenshots/settings-light.png) — appearance, start at login and the image price Relay reports to Gateway — and [Accounts in dark](docs/screenshots/accounts-dark.png).
+
 ## Browser account manager — 0.3.0 candidate
 
 One account register supports stable numbered profiles, bulk/range selection, open/close and an attention action for the exact profile. Saving one hundred profiles does not open one hundred browsers. Native admission measures memory and applies an adjustable budget/reserve and optional active-process ceiling; saved profiles have no arbitrary count cap. Chrome owns each managed profile's cookies/storage; Relay does not copy credentials or touch the user's existing Chrome profiles.
