@@ -20,7 +20,12 @@ NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP/Contents/Info.plis
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/relay-idle.XXXXXX")
 HOME_DIR="$WORK/home"; mkdir -p "$HOME_DIR/Library/Application Support" "$HOME_DIR/Library/Caches"
-front() { osascript -e 'tell application "System Events" to name of first application process whose frontmost is true' 2>/dev/null; }
+# Read-only LaunchServices query: never invokes AppleScript / System Events.
+front() {
+  local asn
+  asn=$(lsappinfo front 2>/dev/null) || return 0
+  [ -n "$asn" ] && lsappinfo info -only name "$asn" 2>/dev/null | sed -n '1s/^"\([^"]*\)".*/\1/p'
+}
 # An instance someone else left running is reused, never killed: a measurement must not end a
 # window it did not open.
 RUNNING=$(pgrep -f "$APP/Contents/MacOS/" | head -1)
