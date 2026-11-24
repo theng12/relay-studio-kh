@@ -2,6 +2,7 @@
 
 ## 0.3.39 — 2026-11-24
 - Relay's README and release page now show what Relay looks like, with screenshots taken from this build.
+- Relay now bundles newer browser extensions: video 1.3.31, image 0.50.35 and audio 0.7.37 (manifest sha256 a739cf048178…, 929818a9fa66…, 82ed80db018d…). They are the versions their repos serve today.
 - A Relay built by hand from source can no longer produce a download that names this Mac's home folder. The build stops and says what to run instead.
 
 ## 0.3.38 — 2026-11-23
