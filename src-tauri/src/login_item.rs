@@ -16,14 +16,27 @@ pub(crate) fn should_retire_agent(legacy_present: bool, registered_now: bool) ->
     legacy_present && registered_now
 }
 
-fn status_is_registered(status: isize) -> Option<bool> {
+/// What macOS says about Relay's login item. `NeedsApproval` is not success and must never be
+/// reported as one: the item exists but will not start Relay until the person approves it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum LoginItem {
+    Enabled,
+    NeedsApproval,
+    Off,
+}
+
+fn login_item_of(status: isize) -> Option<LoginItem> {
     match status {
-        0 => Some(false),          // notRegistered
-        1 => Some(true),           // enabled
-        2 => Some(false),          // requiresApproval: registered but not yet approved
+        0 => Some(LoginItem::Off),            // notRegistered
+        1 => Some(LoginItem::Enabled),        // enabled
+        2 => Some(LoginItem::NeedsApproval),  // requiresApproval: registered but not yet approved
         _ => None,
     }
 }
+
+/// The sentence the person sees when macOS is waiting for their approval.
+pub(crate) const NEEDS_APPROVAL: &str =
+    "Relay is set to start at login, but macOS is waiting for you to approve it. Open System Settings, General, Login Items and switch Relay on.";
 
 #[cfg(target_os = "macos")]
 fn service() -> Option<*mut objc2::runtime::AnyObject> {
@@ -57,16 +70,38 @@ fn call(service: *mut objc2::runtime::AnyObject, register: bool) -> Result<(), S
 }
 
 /// `None` means this macOS or build cannot use SMAppService; the caller keeps the old path.
-pub(crate) fn registered() -> Option<bool> {
+pub(crate) fn state() -> Option<LoginItem> {
     #[cfg(target_os = "macos")]
     {
         let service = service()?;
         let status: isize = unsafe { objc2::msg_send![service, status] };
-        status_is_registered(status)
+        login_item_of(status)
     }
     #[cfg(not(target_os = "macos"))]
     {
         None
+    }
+}
+
+/// True only when the item is enabled — approval pending is not enabled.
+pub(crate) fn registered() -> Option<bool> {
+    state().map(|state| state == LoginItem::Enabled)
+}
+
+/// Clear and register again, so an item carrying an older signing identity is replaced by one
+/// under the identity now running. The clear is best-effort: the register and the status read are
+/// what decide, and a failed clear must not skip the register.
+pub(crate) fn reregister() -> Result<Option<LoginItem>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(service) = service() else { return Err("unsupported".into()) };
+        let _ = call(service, false);
+        call(service, true)?;
+        Ok(state())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("unsupported".into())
     }
 }
 
@@ -116,10 +151,11 @@ mod tests {
 
     #[test]
     fn status_maps_to_the_truth_including_needing_approval() {
-        assert_eq!(status_is_registered(0), Some(false));
-        assert_eq!(status_is_registered(1), Some(true));
-        assert_eq!(status_is_registered(2), Some(false), "approval pending is not enabled yet");
-        assert_eq!(status_is_registered(9), None);
+        assert_eq!(login_item_of(0), Some(LoginItem::Off));
+        assert_eq!(login_item_of(1), Some(LoginItem::Enabled));
+        assert_eq!(login_item_of(2), Some(LoginItem::NeedsApproval), "approval pending is its own state");
+        assert_eq!(login_item_of(9), None);
+        assert!(NEEDS_APPROVAL.contains("System Settings") && NEEDS_APPROVAL.contains("approve"));
     }
 
     #[test]

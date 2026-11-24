@@ -229,6 +229,11 @@ fn snapshot(app: &tauri::AppHandle) -> Result<Snapshot, String> {
         .map_err(|_| "Settings are busy.")?
         .clone();
     let (autostart_observed, autostart_error) = match observed {
+        _ if settings.start_at_login
+            && matches!(crate::login_item::state(), Some(crate::login_item::LoginItem::NeedsApproval)) =>
+        {
+            (Some(false), Some(crate::login_item::NEEDS_APPROVAL.to_string()))
+        }
         Ok(value) if value != settings.start_at_login => (Some(value), Some(format!(
             "Your saved choice is {}, but macOS reports Start at Login is {}. Check it in System Settings.",
             if settings.start_at_login { "on" } else { "off" }, if value { "on" } else { "off" }
@@ -513,6 +518,19 @@ fn login_item_is_stale(registered: &str, exe_path: &str) -> bool {
 fn heal_login_item(app: &tauri::AppHandle, start_at_login: bool) {
     if !start_at_login {
         return;
+    }
+    // The real login item first: clear and register again at every launch, so an item that
+    // carries an older signing identity is replaced by one under the identity now running.
+    // `NeedsApproval` is not success — it is shown to the person in the words below.
+    match crate::login_item::reregister() {
+        Ok(Some(crate::login_item::LoginItem::NeedsApproval)) => {
+            if let Ok(mut error) = app.state::<NativeState>().login_error.lock() {
+                *error = Some(crate::login_item::NEEDS_APPROVAL.to_string());
+            }
+            return;
+        }
+        Ok(_) => return,
+        Err(_) => {} // no SMAppService here; the LaunchAgent repair below is the path
     }
     let Ok(exe) = std::env::current_exe() else {
         return;
