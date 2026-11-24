@@ -1,0 +1,9 @@
+# Cargo reads the config nearest the working directory, not the manifest: someone running
+# `cargo build` from inside src-tauri used to miss the root config and bake the home path into the
+# Release binary (issue 20261123-13). This copy makes both entry points clean. Paths are resolved
+# against the folder holding `.cargo`, so the values differ from the root file's.
+[build]
+rustc-wrapper = "../scripts/rustc-remap.sh"
+
+[env]
+DYLD_FRAMEWORK_PATH = { value = "vendor/khsparkle", relative = true }
