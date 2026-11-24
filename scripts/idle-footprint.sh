@@ -26,7 +26,8 @@ for _ in {1..40}; do PID=$(pgrep -f "$APP/Contents/MacOS/" | head -1); [ -n "$PI
 sample() { # ports fds threads footprintMB
   local p=$1
   local ports fds threads foot
-  ports=$(lsof -nP -p "$p" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+  # `-a` ANDs the selections: without it lsof ORs them and this counts every listener on the Mac.
+  ports=$(lsof -nP -a -p "$p" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
   fds=$(lsof -nP -p "$p" 2>/dev/null | wc -l | tr -d ' ')
   threads=$(ps -M -p "$p" 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
   foot=$(footprint -p "$p" 2>/dev/null | awk '/phys_footprint/{for(i=1;i<=NF;i++) if($i ~ /^[0-9.]+$/){u=$(i+1); v=$i; if(u=="GB"){printf "%d", v*1024; exit} if(u=="MB"){printf "%d", v; exit}}}')
