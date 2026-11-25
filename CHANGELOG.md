@@ -1,5 +1,9 @@
 # What's New
 
+## 0.3.41 — 2026-11-25
+- Relay now carries the current version of the shared update component every studio app uses. How updating works is unchanged.
+- Nothing else about how Relay works changes; this build was re-measured for what it does while idle, for ten minutes rather than two.
+
 ## 0.3.40 — 2026-11-25
 - Relay checks at every launch that it is still the app macOS will start at login, and re-registers itself if the entry belongs to an older copy. When macOS is holding that change for your approval, Relay says so and names the one place to allow it, instead of reporting it as done.
 - Nothing else about how Relay works changes.
