@@ -1,6 +1,7 @@
 # What's New
 
 ## 0.3.41 — 2026-11-25
+- Relay now bundles newer browser extensions: video 1.3.32 and image 0.50.36 (manifest sha256 ad81a7ab…, f213caef…). They are the versions their repos serve today; audio stays at 0.7.37.
 - Relay now carries the current version of the shared update component every studio app uses. How updating works is unchanged.
 - Nothing else about how Relay works changes; this build was re-measured for what it does while idle, for ten minutes rather than two.
 

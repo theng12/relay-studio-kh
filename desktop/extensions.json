@@ -4,22 +4,22 @@
     {
       "id": "video",
       "name": "Video generator",
-      "version": "1.3.31",
-      "source_commit": "b0a3d3674fe397fb0acb62b7444a38a66b4a7437",
+      "version": "1.3.32",
+      "source_commit": "fe3b5d26afc4a3d1ad6b0cf681ff75ddbf104a4a",
       "accepted": true,
-      "manifest_sha256": "a739cf0481784c44d19bc6447da1efa1da35c6f8e97dbe4ed6131901f72d1f68",
+      "manifest_sha256": "ad81a7abfb4ee74f3f6c3ebf70d752d25efdcf5768636672d2e10ee9623fda1d",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "939b8ece13bd19da80b9afce851940c72a58236f7451ea48fb1d0b69f51c6717"
+          "sha256": "d7964269ebdd3184da0c884ffd32e61ad8959cb8270cfc99b6067a8ab072c286"
         },
         {
           "path": "manifest.json",
-          "sha256": "a739cf0481784c44d19bc6447da1efa1da35c6f8e97dbe4ed6131901f72d1f68"
+          "sha256": "ad81a7abfb4ee74f3f6c3ebf70d752d25efdcf5768636672d2e10ee9623fda1d"
         },
         {
           "path": "src/background.js",
-          "sha256": "7011fabf8c4d6390ca250fbeeef880c49824dbc5b7f3a67384d3114f0583f38b"
+          "sha256": "dcb8d087dc0e8f3f4a15766142e042e82e8617d417f824249487bd5c2eee98b7"
         },
         {
           "path": "src/flow-recorder.js",
@@ -115,29 +115,29 @@
         },
         {
           "path": "src/popup/popup.js",
-          "sha256": "ae56a4bb3de7a6f43dcce63d16ff6e7a2399de50d6777bee31acaac469fd2b8d"
+          "sha256": "571b9835f39c74c73b83b7e2b12acf98b7ea69d394f2b2e2ba5e1e1cabfe2c08"
         }
       ]
     },
     {
       "id": "image",
       "name": "Image generator",
-      "version": "0.50.35",
-      "source_commit": "ffebbe1df4166199f14e690e3fc50b06e4a83236",
+      "version": "0.50.36",
+      "source_commit": "91b842b2701672a8f16eddaaa74bd8bff1ccec37",
       "accepted": true,
-      "manifest_sha256": "929818a9fa668010e9531cd91ae02b319e0035e10bc42719d4247d7c64def17e",
+      "manifest_sha256": "f213caef41488cea58e2644e509f7f2d103a93fc18d70d005c4d40db6a08f254",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "sha256": "bebf853b672685ce9e8f827f7c0973d57820f2c3a05f2c1b74f4dbfa30bf67dc"
+          "sha256": "5e633004ed41483a627fd7400eb3f4155560e81bce2ec2f67e2cbc599d631938"
         },
         {
           "path": "manifest.json",
-          "sha256": "929818a9fa668010e9531cd91ae02b319e0035e10bc42719d4247d7c64def17e"
+          "sha256": "f213caef41488cea58e2644e509f7f2d103a93fc18d70d005c4d40db6a08f254"
         },
         {
           "path": "src/background.js",
-          "sha256": "39738dd6e6cf0f8c3abee8078bbc9d5fba9140e521c9fd79700b6da6777d1134"
+          "sha256": "20aa328376094b63f4e606ded0e63b9b0f6a018c321f885237a2403f4e1123a7"
         },
         {
           "path": "src/content/aistudio-main.js",
