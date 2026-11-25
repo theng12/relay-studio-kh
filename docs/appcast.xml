@@ -6,6 +6,14 @@
     <description>Relay Studio KH releases</description>
     <language>en</language>
     <item>
+      <title>Relay Studio KH 0.3.41</title>
+      <sparkle:version>0.3.41</sparkle:version>
+      <sparkle:shortVersionString>0.3.41</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.13</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/theng12/relay-studio-kh/releases/download/0.3.41/fbb5b4e3b079-Relay.Studio.KH_0.3.41_aarch64.dmg" sparkle:edSignature="7Ru5N73k7z2pRFKtv4oiCJbwvugtH6henH2ZmRRwRFLHIcxAcefJYNsAPwWVmZ/Rsqy8SZZx0unpCWHtAi2mAg==" length="6108468" type="application/octet-stream"/>
+      <pubDate>Wed, 25 Nov 2026 18:52:53 +0000</pubDate>
+    </item>
+    <item>
       <title>Relay Studio KH 0.3.40</title>
       <sparkle:version>0.3.40</sparkle:version>
       <sparkle:shortVersionString>0.3.40</sparkle:shortVersionString>
